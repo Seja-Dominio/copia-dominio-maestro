@@ -1,0 +1,32 @@
+{
+  "name": "NpsEntry",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "month": {
+      "type": "string",
+      "description": "yyyy-MM"
+    },
+    "monthly_score": {
+      "type": "number",
+      "description": "Nota NPS do m\u00eas (0-100)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es do m\u00eas"
+    },
+    "recorded_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_id",
+    "month",
+    "monthly_score"
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "name": "FeeContract",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "number"
+    },
+    "title": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "monthly_value": {
+      "type": "number"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "contracted_hours": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "cancelled"
+      ],
+      "default": "active"
+    },
+    "billing_day": {
+      "type": "number",
+      "default": 1
+    },
+    "professionals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collaborator_id": {
+            "type": "string"
+          },
+          "collaborator_name": {
+            "type": "string"
+          },
+          "contracted_hours": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "client_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
