@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 
 /**
  * Safely deletes an entity record by first logging it to DeleteLog for recovery.
@@ -13,7 +13,7 @@ export async function safeDelete(entityType, entityName, entityData, opts = {}) 
   })();
 
   // Log to DeleteLog for recovery
-  await base44.entities.DeleteLog.create({
+  await maestro.entities.DeleteLog.create({
     entity_type: entityType,
     entity_id: entityData.id,
     entity_data: entityData,
@@ -25,5 +25,5 @@ export async function safeDelete(entityType, entityName, entityData, opts = {}) 
   });
 
   // Actually delete the entity
-  await base44.entities[entityName].delete(entityData.id);
+  await maestro.entities[entityName].delete(entityData.id);
 }

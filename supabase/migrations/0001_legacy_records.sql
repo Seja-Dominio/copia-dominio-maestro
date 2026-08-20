@@ -23,7 +23,7 @@ drop policy if exists legacy_records_authenticated_read on public.legacy_records
 create policy legacy_records_authenticated_read
   on public.legacy_records for select
   to authenticated
-  using (true);
+  using (entity not in ('Collaborator', 'User'));
 
 -- Escrita fica restrita ao backend/importador com service role.
 -- O service role ignora RLS; o frontend não pode alterar o acervo legado diretamente.

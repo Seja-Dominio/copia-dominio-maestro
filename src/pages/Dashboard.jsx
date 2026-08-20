@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createPageUrl } from "@/utils";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import {
   Briefcase, AlertCircle, Users, AlertTriangle, XCircle, GripVertical, Lock, Unlock, EyeOff, Eye
 } from "lucide-react";
@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await base44.functions.invoke('getDashboardData', { collaborator_id: sessionCollaborator?.id });
+      const res = await maestro.functions.invoke('getDashboardData', { collaborator_id: sessionCollaborator?.id });
       const d = res?.data || {};
       setProjects(Array.isArray(d.projects) ? d.projects : []);
       setJobs(Array.isArray(d.jobs) ? d.jobs : (d.jobs ? JSON.parse(d.jobs) : []));
@@ -281,11 +281,11 @@ export default function Dashboard() {
 
   const [allTeams, setAllTeams] = useState([]);
   useEffect(() => {
-    base44.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
+    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
       setAllTeams(squads.map(s => s.name).sort());
     });
     if (isAdmin) {
-      base44.entities.JobHistory.filter({ type: "change" }, "-created_date", 1000)
+      maestro.entities.JobHistory.filter({ type: "change" }, "-created_date", 1000)
         .then(h => setJobHistory(h)).catch(() => {});
     }
   }, [isAdmin]);
@@ -551,7 +551,7 @@ export default function Dashboard() {
     setWidgetOrder(newOrder);
     // Persist
     if (resolvedCollaborator?.id) {
-      await base44.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_layout: newOrder });
+      await maestro.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_layout: newOrder });
       const session = sessionStorage.getItem("collaborator");
       if (session) {
         const collab = JSON.parse(session);
@@ -660,7 +660,7 @@ export default function Dashboard() {
                                 const newWidgets = { ...visibleWidgets, [id]: false };
                                 setVisibleWidgets(newWidgets);
                                 if (resolvedCollaborator?.id) {
-                                  await base44.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_widgets: newWidgets });
+                                  await maestro.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_widgets: newWidgets });
                                   const session = sessionStorage.getItem("collaborator");
                                   if (session) { const c = JSON.parse(session); c.dashboard_widgets = newWidgets; sessionStorage.setItem("collaborator", JSON.stringify(c)); }
                                 }
@@ -721,7 +721,7 @@ export default function Dashboard() {
                     const newWidgets = { ...visibleWidgets, [id]: true };
                     setVisibleWidgets(newWidgets);
                     if (resolvedCollaborator?.id) {
-                      await base44.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_widgets: newWidgets });
+                      await maestro.entities.Collaborator.update(resolvedCollaborator.id, { dashboard_widgets: newWidgets });
                       const session = sessionStorage.getItem("collaborator");
                       if (session) { const c = JSON.parse(session); c.dashboard_widgets = newWidgets; sessionStorage.setItem("collaborator", JSON.stringify(c)); }
                     }
@@ -738,7 +738,7 @@ export default function Dashboard() {
       })()}
 
       {selectedCollaborator && (
-        <CollaboratorHoursModal collaborator={selectedCollaborator} timesheets={timesheets} onClose={() => setSelectedCollaborator(null)} onUpdate={() => base44.entities.Timesheet.list("-created_date", 500).then(ts => setTimesheets(ts))} />
+        <CollaboratorHoursModal collaborator={selectedCollaborator} timesheets={timesheets} onClose={() => setSelectedCollaborator(null)} onUpdate={() => maestro.entities.Timesheet.list("-created_date", 500).then(ts => setTimesheets(ts))} />
       )}
 
       {selectedJob && (
@@ -751,7 +751,7 @@ export default function Dashboard() {
             setSelectedJob(updatedJob);
           }}
           onSubtasksChange={() => {
-            base44.entities.Subtask.filter({ job_id: selectedJob.id }, "order", 100).then(subs => setSelectedJobSubtasks(subs));
+            maestro.entities.Subtask.filter({ job_id: selectedJob.id }, "order", 100).then(subs => setSelectedJobSubtasks(subs));
           }}
         />
       )}

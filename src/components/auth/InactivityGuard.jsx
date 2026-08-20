@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 
 const INACTIVITY_TIMEOUT = 120 * 60 * 1000; // 120 minutos
 const WARNING_BEFORE = 2 * 60 * 1000; // aviso 2 min antes
@@ -11,7 +11,7 @@ async function stopAllRunningTimesheets(capAt) {
   try {
     const session = JSON.parse(sessionStorage.getItem("collaborator") || "null");
     if (!session?.id) return;
-    const running = await base44.entities.Timesheet.filter({ collaborator_id: session.id, is_running: true });
+    const running = await maestro.entities.Timesheet.filter({ collaborator_id: session.id, is_running: true });
     if (!running.length) return;
     const now = new Date();
     await Promise.all(running.map(ts => {
@@ -19,7 +19,7 @@ async function stopAllRunningTimesheets(capAt) {
       // Se capAt (timestamp da última atividade), limitar duração até esse momento
       if (capAt) dur = Math.max(1, Math.floor((capAt - new Date(ts.started_at).getTime()) / 60000));
       const endTime = capAt ? new Date(capAt).toISOString() : now.toISOString();
-      return base44.entities.Timesheet.update(ts.id, {
+      return maestro.entities.Timesheet.update(ts.id, {
         is_running: false,
         ended_at: endTime,
         duration_minutes: Math.max(1, dur),

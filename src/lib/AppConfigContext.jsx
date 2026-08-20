@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 
 export const DEFAULT_STATUS_LIST = [
   { key: "pending_briefing",  label: "Pend. Briefing/Roteiro", color: "bg-amber-100 text-amber-700 border-amber-200",   dot: "bg-amber-500" },
@@ -36,12 +36,12 @@ export function AppConfigProvider({ children }) {
 
   async function loadStatuses() {
     try {
-      const configs = await base44.entities.AppConfig.filter({ key: "job_statuses_v2" });
+      const configs = await maestro.entities.AppConfig.filter({ key: "job_statuses_v2" });
       if (configs.length > 0 && configs[0].value?.statuses?.length > 0) {
         setStatusList(configs[0].value.statuses);
         return;
       }
-      const old = await base44.entities.AppConfig.filter({ key: "job_statuses" });
+      const old = await maestro.entities.AppConfig.filter({ key: "job_statuses" });
       if (old.length > 0 && old[0].value) {
         const saved = old[0].value;
         const migrated = DEFAULT_STATUS_LIST.map(s => ({
@@ -55,7 +55,7 @@ export function AppConfigProvider({ children }) {
 
   async function loadTimezone() {
     try {
-      const configs = await base44.entities.AppConfig.filter({ key: "system_timezone" });
+      const configs = await maestro.entities.AppConfig.filter({ key: "system_timezone" });
       if (configs.length > 0 && configs[0].value?.timezone) {
         const tz = configs[0].value.timezone;
         setTimezone(tz);

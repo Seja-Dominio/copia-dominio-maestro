@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,14 +51,14 @@ export default function Proposals() {
 
   async function loadProposals() {
     setLoading(true);
-    const data = await base44.entities.Proposal.list("-created_date", 200);
+    const data = await maestro.entities.Proposal.list("-created_date", 200);
     const today = new Date().toISOString().split("T")[0];
     const expirePromises = data.filter(p =>
       p.status === "sent" && p.valid_until && p.valid_until < today
-    ).map(p => base44.entities.Proposal.update(p.id, { status: "expired" }));
+    ).map(p => maestro.entities.Proposal.update(p.id, { status: "expired" }));
     if (expirePromises.length > 0) {
       await Promise.all(expirePromises);
-      const refreshed = await base44.entities.Proposal.list("-created_date", 200);
+      const refreshed = await maestro.entities.Proposal.list("-created_date", 200);
       setProposals(refreshed);
     } else {
       setProposals(data);
@@ -131,17 +131,17 @@ export default function Proposals() {
     const { type, proposal } = confirmModal;
     setConfirmModal(null);
     if (type === "delete") {
-      await base44.entities.Proposal.delete(proposal.id);
+      await maestro.entities.Proposal.delete(proposal.id);
     } else if (type === "approve") {
       const update = { status: "approved" };
       if (!proposal.approved_at) update.approved_at = new Date().toISOString();
-      await base44.entities.Proposal.update(proposal.id, update);
+      await maestro.entities.Proposal.update(proposal.id, update);
       if (proposal.proposal_type === "contrato_mensal" && proposal.client_id) {
         navigate(`/ClientPortfolio?openClient=${proposal.client_id}`);
         return;
       }
     } else if (type === "reject") {
-      await base44.entities.Proposal.update(proposal.id, { status: "rejected" });
+      await maestro.entities.Proposal.update(proposal.id, { status: "rejected" });
     }
     loadProposals();
   }

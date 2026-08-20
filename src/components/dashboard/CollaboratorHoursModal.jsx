@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -42,7 +42,7 @@ export default function CollaboratorHoursModal({ collaborator, timesheets, onClo
     setAddingHours(true);
     var client = clientData.find(function(c) { return c.id === selectedClient; });
     var durationMinutes = Math.round(parseFloat(newHours) * 60);
-    await base44.entities.Timesheet.create({
+    await maestro.entities.Timesheet.create({
       collaborator_id: collaborator.id,
       collaborator_name: collaborator.name,
       client_id: selectedClient,

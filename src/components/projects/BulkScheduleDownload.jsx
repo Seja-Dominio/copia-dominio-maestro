@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import jsPDF from "jspdf";
@@ -7,7 +7,7 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const LOGO_HORIZONTAL_URL = "https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/e61b9b073_a4.png";
-const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
+const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/maestro-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
 
 const FORMAT_OPTIONS = [
   { value: "card",           label: "Card",             bg: [74,222,128] },
@@ -59,8 +59,8 @@ function buildMergedSchedule(savedSchedule, jobs) {
 
 async function generateProjectPDF(project, logoImg, simboloImg) {
   const [projData, jobs] = await Promise.all([
-    base44.entities.Project.filter({ id: project.id }, "id", 1),
-    base44.entities.Job.filter({ project_id: project.id }, "-created_date", 300),
+    maestro.entities.Project.filter({ id: project.id }, "id", 1),
+    maestro.entities.Job.filter({ project_id: project.id }, "-created_date", 300),
   ]);
   const savedSchedule = projData[0]?.schedule_data || {};
   const schedule = buildMergedSchedule(savedSchedule, jobs);

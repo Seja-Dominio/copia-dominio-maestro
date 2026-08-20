@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { X, Send, MessageSquare, Check, AlertCircle, Image, FileText, RefreshCw, CheckSquare, Square } from "lucide-react";
 
@@ -19,7 +19,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     async function loadData() {
       // Load client
       if (job.client_id) {
-        const list = await base44.entities.Client.filter({ id: job.client_id });
+        const list = await maestro.entities.Client.filter({ id: job.client_id });
         if (list?.[0]) setClient(list[0]);
       }
 
@@ -27,8 +27,8 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
       setLoadingAttachments(true);
       try {
         const [freshJobs, comments] = await Promise.all([
-          base44.entities.Job.filter({ id: job.id }),
-          base44.entities.Comment.filter({ entity_id: job.id, entity_type: "job" })
+          maestro.entities.Job.filter({ id: job.id }),
+          maestro.entities.Comment.filter({ entity_id: job.id, entity_type: "job" })
         ]);
         
         const freshJob = freshJobs?.[0];
@@ -117,7 +117,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     try {
       // If text only or no attachments selected, send text
       if (toSend.length === 0 && caption.trim()) {
-        const result = await base44.functions.invoke("sendWhatsapp", {
+        const result = await maestro.functions.invoke("sendWhatsapp", {
           phone: groupId,
           message: caption,
         });
@@ -139,7 +139,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
           console.log("phone/groupId:", groupId);
           setSendProgress({ current: i + 1, total });
 
-          const result = await base44.functions.invoke("sendWhatsappFile", {
+          const result = await maestro.functions.invoke("sendWhatsappFile", {
             phone: groupId,
             fileUrl: att.url,
             caption: i === 0 ? caption : "", // Caption only on first file

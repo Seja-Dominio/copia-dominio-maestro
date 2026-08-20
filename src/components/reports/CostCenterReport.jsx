@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -25,7 +25,7 @@ export default function CostCenterReport({ entries, period }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.entities.CostCenter.list("name", 100).then(cc => {
+    maestro.entities.CostCenter.list("name", 100).then(cc => {
       setCostCenters(cc);
       setLoading(false);
     });

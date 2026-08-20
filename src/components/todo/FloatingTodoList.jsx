@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -46,8 +46,8 @@ export default function FloatingTodoList() {
     try {
       // Carregar tarefas próprias + tarefas enviadas para outros que ainda estão pendentes
       const [own, sent] = await Promise.all([
-        base44.entities.MiniTask.filter({ collaborator_id: collabId }, "created_date", 200),
-        base44.entities.MiniTask.filter({ sender_id: collabId, is_completed: false }, "created_date", 100),
+        maestro.entities.MiniTask.filter({ collaborator_id: collabId }, "created_date", 200),
+        maestro.entities.MiniTask.filter({ sender_id: collabId, is_completed: false }, "created_date", 100),
       ]);
       // Mesclar sem duplicatas (tarefas enviadas para si mesmo já estão em own)
       const ownIds = new Set(own.map(t => t.id));
@@ -64,7 +64,7 @@ export default function FloatingTodoList() {
     e.preventDefault();
     if (!newText.trim() || !collabId) return;
     setAdding(true);
-    const created = await base44.entities.MiniTask.create({
+    const created = await maestro.entities.MiniTask.create({
       title: newText.trim(),
       collaborator_id: collabId,
       collaborator_name: collab?.name || "",
@@ -82,7 +82,7 @@ export default function FloatingTodoList() {
       is_completed: nowCompleted,
       completed_at: nowCompleted ? new Date().toISOString() : null,
     };
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setTasks(prev =>
       prev.map(t => (t.id === task.id ? { ...t, ...update } : t))
     );
@@ -92,7 +92,7 @@ export default function FloatingTodoList() {
     const update = { due_date: date || null, due_time: time !== undefined ? (time || null) : undefined };
     // Remove undefined keys
     Object.keys(update).forEach(k => update[k] === undefined && delete update[k]);
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setTasks(prev =>
       prev.map(t => (t.id === task.id ? { ...t, ...update } : t))
     );
@@ -109,14 +109,14 @@ export default function FloatingTodoList() {
       priority_changed_by: newPriority > 0 ? collabId : null,
       priority_changed_by_name: newPriority > 0 ? (collab?.name || "") : null,
     };
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setTasks(prev =>
       prev.map(t => (t.id === task.id ? { ...t, ...update } : t))
     );
   }
 
   async function updateChecklist(task, newChecklist) {
-    await base44.entities.MiniTask.update(task.id, { checklist: newChecklist });
+    await maestro.entities.MiniTask.update(task.id, { checklist: newChecklist });
     setTasks(prev =>
       prev.map(t => (t.id === task.id ? { ...t, checklist: newChecklist } : t))
     );

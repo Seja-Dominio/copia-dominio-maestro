@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format, parseISO, startOfWeek, addWeeks, subWeeks, addMonths, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, Calendar, User, Filter, CheckCircle2, XCircle, Clock, Briefcase, ChevronDown, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
@@ -87,9 +87,9 @@ export default function Agenda() {
   async function loadAll() {
     setLoading(true);
     const [ev, col, cl] = await Promise.all([
-    base44.entities.AgendaEvent.list("-date", 300),
-    base44.entities.Collaborator.list("name", 50),
-    base44.entities.Client.filter({ status: "active" }, "name", 100)]
+    maestro.entities.AgendaEvent.list("-date", 300),
+    maestro.entities.Collaborator.list("name", 50),
+    maestro.entities.Client.filter({ status: "active" }, "name", 100)]
     );
     setEvents(ev);
     setCollaborators(col);
@@ -162,7 +162,7 @@ export default function Agenda() {
   const sortedDates = Object.keys(grouped).sort();
 
   async function handleStatusChange(ev, newStatus) {
-    await base44.entities.AgendaEvent.update(ev.id, { status: newStatus });
+    await maestro.entities.AgendaEvent.update(ev.id, { status: newStatus });
     setEvents((prev) => prev.map((e) => e.id === ev.id ? { ...e, status: newStatus } : e));
   }
 

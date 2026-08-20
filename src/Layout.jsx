@@ -13,7 +13,7 @@ import {
   HelpCircle, ChevronDown, ChevronLeft,
   Sun, Moon, Settings, FileCheck } from "lucide-react";
 
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -61,7 +61,7 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const u = await base44.auth.me();
+        const u = await maestro.auth.me();
         if (u) setUser(u);
       } catch {}
     };
@@ -79,7 +79,7 @@ export default function Layout({ children, currentPageName }) {
       Financial: "Financeiro", Conversations: "Conversas", Reports: "Relatórios",
       Configuracoes: "Configurações", Settings: "Settings",
     }[currentPageName] || currentPageName;
-    base44.entities.Collaborator.update(collaboratorData.id, {
+    maestro.entities.Collaborator.update(collaboratorData.id, {
       last_seen_page: pageLabel,
       last_seen_at: new Date().toISOString(),
     }).catch(() => {});
@@ -175,7 +175,7 @@ export default function Layout({ children, currentPageName }) {
                 isAdmin={collaboratorData?.access_level === "admin"}
                 onLogout={() => {
                   sessionStorage.removeItem("collaborator");
-                  base44.auth.logout();
+                  maestro.auth.logout();
                 }}
               />
             </div>
@@ -217,7 +217,7 @@ export default function Layout({ children, currentPageName }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
                     sessionStorage.removeItem("collaborator");
-                    base44.auth.logout();
+                    maestro.auth.logout();
                   }}>
                     Sair
                   </DropdownMenuItem>

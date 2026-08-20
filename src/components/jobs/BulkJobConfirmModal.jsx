@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { X, Briefcase, Loader2, CheckSquare, Square, RefreshCw } from "lucide-react";
 import { format } from "date-fns";

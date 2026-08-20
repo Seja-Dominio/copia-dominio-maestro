@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, memo } from "react";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { AlertCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { autoCompleteSubtasks } from "./subtaskAutoComplete";
 
 // Statuses are dynamic — loaded from AppConfigContext
@@ -105,7 +105,7 @@ export default function KanbanView({ jobs, subtasks, getSubtasksForJob, onSelect
       const statusOrder = statusList.filter(s => s.key !== "cancelled").map(s => s.key);
 
       // Auto-complete/reopen subtasks based on new status (handles both forward and backward moves)
-      await autoCompleteSubtasks(status, jobSubs, base44, statusOrder);
+      await autoCompleteSubtasks(status, jobSubs, maestro, statusOrder);
     }
     clearInterval(autoScrollRef.current);
     setDraggedJob(null);

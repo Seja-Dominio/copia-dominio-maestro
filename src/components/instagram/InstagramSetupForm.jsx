@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Search, Loader2, Save, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +32,7 @@ export default function InstagramSetupForm({ client, onSaved }) {
     setError("");
     setFetchedData(null);
     try {
-      const res = await base44.integrations.Core.InvokeLLM({
+      const res = await maestro.integrations.Core.InvokeLLM({
         prompt: `Acesse o perfil do Instagram https://www.instagram.com/${username}/ e extraia as informações públicas visíveis na página do perfil:
 - Nome de exibição do perfil
 - Biografia/descrição
@@ -71,7 +71,7 @@ Se realmente não conseguir acessar nenhuma informação, retorne found: false.`
 
   async function handleSave() {
     setSaving(true);
-    await base44.entities.Client.update(client.id, {
+    await maestro.entities.Client.update(client.id, {
       instagram_username: username,
       instagram_account_id: accountId.trim() || undefined,
     });

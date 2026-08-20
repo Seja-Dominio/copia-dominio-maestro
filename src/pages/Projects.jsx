@@ -1,7 +1,7 @@
 import { useState, useEffect, memo, useMemo, useCallback } from "react";
 
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -187,10 +187,10 @@ export default function Projects() {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     const [data, jobs, clients, timesheets] = await Promise.all([
-      base44.entities.Project.list("-created_date", 100),
-      base44.entities.Job.list("-created_date", 500),
-      base44.entities.Client.list("name", 200),
-      base44.entities.Timesheet.filter({ is_running: false }, "-created_date", 2000),
+      maestro.entities.Project.list("-created_date", 100),
+      maestro.entities.Job.list("-created_date", 500),
+      maestro.entities.Client.list("name", 200),
+      maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 2000),
     ]);
     setProjects(data);
     const grouped = {};
@@ -263,7 +263,7 @@ export default function Projects() {
     // Optimistic update
     setProjects(prev => prev.map(p => p.id === project.id ? { ...p, is_favorite: !project.is_favorite } : p));
     try {
-      await base44.entities.Project.update(project.id, { is_favorite: !project.is_favorite });
+      await maestro.entities.Project.update(project.id, { is_favorite: !project.is_favorite });
     } catch {
       // Revert on error
       setProjects(prev => prev.map(p => p.id === project.id ? { ...p, is_favorite: project.is_favorite } : p));
@@ -285,7 +285,7 @@ export default function Projects() {
   // Carregar squads para filtro de equipes
   const [allTeams, setAllTeams] = useState([]);
   useEffect(() => {
-    base44.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
+    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
       setAllTeams(squads.map(s => s.name).sort());
     });
   }, []);

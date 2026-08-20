@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { maestro } from '@/api/maestroClient';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 const DefaultFallback = () => (
@@ -13,7 +13,7 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
   const [state, setState] = useState('loading'); // loading | authenticated | unauthenticated | not_registered
 
   useEffect(() => {
-    base44.auth.isAuthenticated()
+    maestro.auth.isAuthenticated()
       .then(authed => {
         if (authed) {
           setState('authenticated');

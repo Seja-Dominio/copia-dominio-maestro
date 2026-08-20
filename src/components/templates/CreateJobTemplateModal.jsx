@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Plus, Trash2, ChevronDown } from "lucide-react";
@@ -74,8 +74,8 @@ export default function CreateJobTemplateModal({ onClose, onCreate, editingTempl
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Collaborator.filter({ is_active: true }, "name", 100),
-      base44.entities.Squad.filter({ is_active: true }, "name", 100),
+      maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
+      maestro.entities.Squad.filter({ is_active: true }, "name", 100),
     ]).then(([collabs, squads]) => {
       setCollaborators(collabs);
       setAllTeams(squads.map(s => s.name).sort());
@@ -129,9 +129,9 @@ export default function CreateJobTemplateModal({ onClose, onCreate, editingTempl
     };
     let result;
     if (editingTemplate) {
-      result = await base44.entities.JobTemplate.update(editingTemplate.id, payload);
+      result = await maestro.entities.JobTemplate.update(editingTemplate.id, payload);
     } else {
-      result = await base44.entities.JobTemplate.create(payload);
+      result = await maestro.entities.JobTemplate.create(payload);
     }
     onCreate(result);
   }

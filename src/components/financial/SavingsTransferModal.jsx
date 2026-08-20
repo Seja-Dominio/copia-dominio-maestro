@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, ArrowRight } from "lucide-react";
@@ -20,7 +20,7 @@ export default function SavingsTransferModal({ account, boxes, onClose, onTransf
     setSaving(true);
 
     // Create transaction record
-    await base44.entities.SavingsTransaction.create({
+    await maestro.entities.SavingsTransaction.create({
       savings_box_id: selectedBoxId,
       savings_box_name: selectedBox?.name || "",
       bank_account_id: account.id,
@@ -33,12 +33,12 @@ export default function SavingsTransferModal({ account, boxes, onClose, onTransf
     // Update balances
     if (direction === "deposit") {
       // CC → Caixinha: diminui CC, aumenta caixinha
-      await base44.entities.BankAccount.update(account.id, { balance: (account.balance || 0) - val });
-      await base44.entities.SavingsBox.update(selectedBoxId, { balance: (selectedBox?.balance || 0) + val });
+      await maestro.entities.BankAccount.update(account.id, { balance: (account.balance || 0) - val });
+      await maestro.entities.SavingsBox.update(selectedBoxId, { balance: (selectedBox?.balance || 0) + val });
     } else {
       // Caixinha → CC: aumenta CC, diminui caixinha
-      await base44.entities.BankAccount.update(account.id, { balance: (account.balance || 0) + val });
-      await base44.entities.SavingsBox.update(selectedBoxId, { balance: (selectedBox?.balance || 0) - val });
+      await maestro.entities.BankAccount.update(account.id, { balance: (account.balance || 0) + val });
+      await maestro.entities.SavingsBox.update(selectedBoxId, { balance: (selectedBox?.balance || 0) - val });
     }
 
     onTransfer();

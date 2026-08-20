@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import DraggableWidget from "@/components/dashboard/DraggableWidget";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ export function useFinancialDragDrop() {
   const saveLayout = useCallback(async (newOrder, newVisibility) => {
     if (!collaboratorId) return;
     const update = { financial_layout: newOrder, financial_widgets: newVisibility };
-    await base44.entities.Collaborator.update(collaboratorId, update);
+    await maestro.entities.Collaborator.update(collaboratorId, update);
     // Update session
     const collab = JSON.parse(sessionStorage.getItem("collaborator") || "{}");
     sessionStorage.setItem("collaborator", JSON.stringify({ ...collab, ...update }));

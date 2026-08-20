@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -46,8 +46,8 @@ export default function InsightsTab({ client }) {
   async function loadData() {
     setLoading(true);
     const [ins, pts] = await Promise.all([
-      base44.entities.ClientInsight.filter({ client_id: client.id }, "-date", 200),
-      base44.entities.PostMetric.filter({ client_id: client.id }, "-published_at", 200),
+      maestro.entities.ClientInsight.filter({ client_id: client.id }, "-date", 200),
+      maestro.entities.PostMetric.filter({ client_id: client.id }, "-published_at", 200),
     ]);
     setInsights(ins);
     setPosts(pts);
@@ -59,7 +59,7 @@ export default function InsightsTab({ client }) {
   async function handleSync() {
     if (!client.instagram_account_id) return;
     setSyncing(true);
-    await base44.functions.invoke("fetchInstagramInsights", {
+    await maestro.functions.invoke("fetchInstagramInsights", {
       client_id: client.id,
       instagram_account_id: client.instagram_account_id,
     });
@@ -69,7 +69,7 @@ export default function InsightsTab({ client }) {
 
   async function handleGenerateAI() {
     setAiLoading(true);
-    const res = await base44.functions.invoke("generateAIInsights", {
+    const res = await maestro.functions.invoke("generateAIInsights", {
       client_id: client.id,
       client_name: client.name,
       date_from: dateFrom,
@@ -80,12 +80,12 @@ export default function InsightsTab({ client }) {
   }
 
   async function handleExcludePost(postId) {
-    await base44.entities.PostMetric.update(postId, { is_excluded: true });
+    await maestro.entities.PostMetric.update(postId, { is_excluded: true });
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, is_excluded: true } : p));
   }
 
   async function handleRestorePost(postId) {
-    await base44.entities.PostMetric.update(postId, { is_excluded: false });
+    await maestro.entities.PostMetric.update(postId, { is_excluded: false });
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, is_excluded: false } : p));
   }
 

@@ -24,6 +24,15 @@ O `--verify` é somente leitura e compara quantidade, entidade, ID e `updated_da
 
 Não coloque a service-role key em `.env.local` usado pelo frontend nem no Git.
 
+O login de colaboradores continua usando Base44 por padrão. Depois de aplicar
+`supabase/migrations/0002_collaborator_auth.sql`, importar os colaboradores e
+publicar a Edge Function `collaborator-login`, habilite o novo fluxo no
+frontend com:
+
+```bash
+VITE_MAESTRO_AUTH_PROVIDER=supabase npm run dev
+```
+
 ---
 
 ### Estado legado

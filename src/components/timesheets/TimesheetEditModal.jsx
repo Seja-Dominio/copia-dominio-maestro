@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Save, Trash2 } from "lucide-react";
 import { useConfirmDelete } from "@/components/ConfirmDeleteContext";
 import { safeDelete } from "@/lib/safeDelete";
@@ -42,9 +42,9 @@ export default function TimesheetEditModal({ timesheet, collaborators, onClose, 
       notes: form.notes,
     };
     if (timesheet?.id) {
-      await base44.entities.Timesheet.update(timesheet.id, data);
+      await maestro.entities.Timesheet.update(timesheet.id, data);
     } else {
-      await base44.entities.Timesheet.create({
+      await maestro.entities.Timesheet.create({
         ...data,
         job_id: timesheet.job_id,
         job_title: timesheet.job_title,

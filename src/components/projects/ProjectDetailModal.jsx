@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Save, Plus } from "lucide-react";
@@ -24,7 +24,7 @@ export default function ProjectDetailModal({ project: initialProject, onClose, o
   const teams = project.teams?.length ? project.teams : (project.team ? [project.team] : []);
 
   useEffect(() => {
-    base44.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
+    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
       setAllTeams(squads.map(s => s.name).sort());
     });
   }, []);
@@ -52,7 +52,7 @@ export default function ProjectDetailModal({ project: initialProject, onClose, o
 
   async function save() {
     setSaving(true);
-    const updated = await base44.entities.Project.update(project.id, project);
+    const updated = await maestro.entities.Project.update(project.id, project);
     onUpdate(updated);
     setDirty(false);
     setSaving(false);

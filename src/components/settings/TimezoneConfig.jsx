@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Globe, Check } from "lucide-react";
@@ -45,11 +45,11 @@ export default function TimezoneConfig() {
 
   const handleSave = async () => {
     setSaving(true);
-    const existing = await base44.entities.AppConfig.filter({ key: "system_timezone" });
+    const existing = await maestro.entities.AppConfig.filter({ key: "system_timezone" });
     if (existing.length > 0) {
-      await base44.entities.AppConfig.update(existing[0].id, { value: { timezone: selected } });
+      await maestro.entities.AppConfig.update(existing[0].id, { value: { timezone: selected } });
     } else {
-      await base44.entities.AppConfig.create({ key: "system_timezone", value: { timezone: selected } });
+      await maestro.entities.AppConfig.create({ key: "system_timezone", value: { timezone: selected } });
     }
     await refreshTimezone();
     setSaving(false);

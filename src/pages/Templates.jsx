@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +34,8 @@ export default function Templates() {
   async function loadData() {
     setLoading(true);
     const [jt, pt] = await Promise.all([
-      base44.entities.JobTemplate.list("-created_date", 100),
-      base44.entities.ProjectTemplate.list("-created_date", 100),
+      maestro.entities.JobTemplate.list("-created_date", 100),
+      maestro.entities.ProjectTemplate.list("-created_date", 100),
     ]);
     setJobTemplates(jt);
     setProjectTemplates(pt);
@@ -44,10 +44,10 @@ export default function Templates() {
 
   async function deleteTemplate(id, type) {
     if (type === "job") {
-      await base44.entities.JobTemplate.delete(id);
+      await maestro.entities.JobTemplate.delete(id);
       setJobTemplates(prev => prev.filter(t => t.id !== id));
     } else {
-      await base44.entities.ProjectTemplate.delete(id);
+      await maestro.entities.ProjectTemplate.delete(id);
       setProjectTemplates(prev => prev.filter(t => t.id !== id));
     }
   }
@@ -60,10 +60,10 @@ export default function Templates() {
     };
 
     if (type === "job") {
-      const created = await base44.entities.JobTemplate.create(newData);
+      const created = await maestro.entities.JobTemplate.create(newData);
       setJobTemplates(prev => [created, ...prev]);
     } else {
-      const created = await base44.entities.ProjectTemplate.create(newData);
+      const created = await maestro.entities.ProjectTemplate.create(newData);
       setProjectTemplates(prev => [created, ...prev]);
     }
   }

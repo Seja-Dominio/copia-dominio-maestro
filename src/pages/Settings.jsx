@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, Trash2, AlertTriangle, Loader2 } from "lucide-react";
@@ -12,14 +12,14 @@ export default function Settings() {
   const [deleteResult, setDeleteResult] = useState(null);
 
   useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
+    maestro.auth.me().then(setUser).catch(() => {});
   }, []);
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     setDeleteResult(null);
 
-    const response = await base44.functions.invoke("deleteAccount", {});
+    const response = await maestro.functions.invoke("deleteAccount", {});
 
     if (response.data?.success) {
       setDeleteResult("success");
@@ -28,7 +28,7 @@ export default function Settings() {
         sessionStorage.removeItem("collaborator");
         sessionStorage.removeItem("lastRoute");
         localStorage.clear();
-        base44.auth.logout();
+        maestro.auth.logout();
       }, 2000);
     } else {
       setDeleteResult("error");

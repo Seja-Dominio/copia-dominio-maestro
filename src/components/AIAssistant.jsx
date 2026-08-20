@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Sparkles, X, Send, Loader2, Wand2 } from "lucide-react";
 
 const SUGGESTIONS = [
@@ -48,7 +48,7 @@ export default function AIAssistant({ currentPage }) {
       }
 
       // Generate briefing via LLM
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await maestro.integrations.Core.InvokeLLM({
         prompt: `Você é um especialista em marketing digital de uma agência. Crie um briefing profissional e detalhado para o job com o título: "${jobTitle}".
 
 O briefing deve incluir:
@@ -64,14 +64,14 @@ Seja específico e prático. Formato: texto corrido, máximo 200 palavras.`,
       });
 
       // Try to find and update the job
-      const jobs = await base44.entities.Job.list("-created_date", 100);
+      const jobs = await maestro.entities.Job.list("-created_date", 100);
       const matchingJob = jobs.find(j =>
         j.title.toLowerCase().includes(jobTitle.toLowerCase()) ||
         jobTitle.toLowerCase().includes(j.title.toLowerCase())
       );
 
       if (matchingJob) {
-        await base44.entities.Job.update(matchingJob.id, { briefing: response });
+        await maestro.entities.Job.update(matchingJob.id, { briefing: response });
         setMessages(prev => [...prev, {
           role: "assistant",
           content: `✅ Briefing gerado e salvo no job **"${matchingJob.title}"**!\n\n${response}`
@@ -88,7 +88,7 @@ Seja específico e prático. Formato: texto corrido, máximo 200 palavras.`,
 
     // Regular assistant response
     const history = messages.map(m => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`).join("\n");
-    const response = await base44.integrations.Core.InvokeLLM({
+    const response = await maestro.integrations.Core.InvokeLLM({
       prompt: `Você é um assistente especializado no sistema AgênciaOS, uma plataforma de gestão para agências de marketing digital.
 
 O sistema tem: Dashboard, Projetos, Jobs, Propostas, Produção, Mídia, Financeiro, Conversas, Cadastros, Relatórios e Templates.

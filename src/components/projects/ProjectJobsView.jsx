@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -69,7 +69,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   useEffect(() => {
     loadData();
-    base44.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
+    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
       setAllTeams(squads.map(s => s.name).sort());
     });
   }, [project.id]);
@@ -83,7 +83,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   async function handleSaveName() {
     if (!nameValue.trim()) return;
-    const updated = await base44.entities.Project.update(projectData.id, { name: nameValue.trim() });
+    const updated = await maestro.entities.Project.update(projectData.id, { name: nameValue.trim() });
     setProjectData(prev => ({ ...prev, name: nameValue.trim() }));
     setEditingName(false);
     onProjectUpdate && onProjectUpdate({ ...projectData, name: nameValue.trim() });
@@ -94,7 +94,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
     const newTeams = currentTeams.includes(team)
       ? currentTeams.filter(t => t !== team)
       : [...currentTeams, team];
-    const updated = await base44.entities.Project.update(projectData.id, { teams: newTeams });
+    const updated = await maestro.entities.Project.update(projectData.id, { teams: newTeams });
     setProjectData(prev => ({ ...prev, teams: newTeams }));
     onProjectUpdate && onProjectUpdate({ ...projectData, teams: newTeams });
     if (!newTeams.includes(selectedTeam) && newTeams.length > 0) setSelectedTeam(newTeams[0]);
@@ -103,12 +103,12 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
   async function loadData() {
     setLoading(true);
     const [j, s, ts, c, collab, dlogs] = await Promise.all([
-      base44.entities.Job.filter({ project_id: project.id }, "-created_date", 200),
-      base44.entities.Subtask.list("-created_date", 500),
-      base44.entities.Timesheet.filter({ project_id: project.id }, "-created_date", 500),
-      project.client_id ? base44.entities.Client.filter({ id: project.client_id }, "name", 1) : Promise.resolve([]),
-      base44.entities.Collaborator.filter({ is_active: true }, "name", 100),
-      base44.entities.DeleteLog.filter({ entity_type: "job" }, "-deleted_at", 100),
+      maestro.entities.Job.filter({ project_id: project.id }, "-created_date", 200),
+      maestro.entities.Subtask.list("-created_date", 500),
+      maestro.entities.Timesheet.filter({ project_id: project.id }, "-created_date", 500),
+      project.client_id ? maestro.entities.Client.filter({ id: project.client_id }, "name", 1) : Promise.resolve([]),
+      maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
+      maestro.entities.DeleteLog.filter({ entity_type: "job" }, "-deleted_at", 100),
     ]);
     setJobs(j);
     setSubtasks(s.filter(st => j.some(jb => jb.id === st.job_id)));
@@ -121,7 +121,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       .map(dl => ({ ...dl.entity_data, _deletedAt: dl.deleted_at, _deletedBy: dl.deleted_by_name, _deleteLogId: dl.id }));
     setDeletedJobs(projDeletedJobs);
     // Extract observations from schedule_data
-    const proj = await base44.entities.Project.filter({ id: project.id }, "id", 1);
+    const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
     const schedData = proj[0]?.schedule_data || {};
     const obs = [];
     Object.entries(schedData).forEach(([dayStr, posts]) => {
@@ -205,9 +205,9 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       onConfirm: async () => {
         setConfirmAction(null);
         setArchiving(true);
-        await Promise.all(jobs.filter(j => j.status !== "cancelled").map(j => base44.entities.Job.update(j.id, { status: "completed" })));
-        await Promise.all(subtasks.map(s => base44.entities.Subtask.update(s.id, { is_completed: true, status: "completed" })));
-        await base44.entities.Project.update(project.id, { status: "archived" });
+        await Promise.all(jobs.filter(j => j.status !== "cancelled").map(j => maestro.entities.Job.update(j.id, { status: "completed" })));
+        await Promise.all(subtasks.map(s => maestro.entities.Subtask.update(s.id, { is_completed: true, status: "completed" })));
+        await maestro.entities.Project.update(project.id, { status: "archived" });
         const updatedProject = { ...projectData, status: "archived" };
         setArchiving(false);
         setProjectData(updatedProject);
@@ -229,7 +229,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       onConfirm: async () => {
         setConfirmAction(null);
         setArchiving(true);
-        const updated = await base44.entities.Project.update(project.id, { status: "in_progress" });
+        const updated = await maestro.entities.Project.update(project.id, { status: "in_progress" });
         setArchiving(false);
         setProjectData(prev => ({ ...prev, status: "in_progress" }));
         onProjectUpdate && onProjectUpdate(updated);
@@ -239,7 +239,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   async function handleStatusChange(jobId, newStatus, e) {
     e.stopPropagation();
-    const updated = await base44.entities.Job.update(jobId, { status: newStatus });
+    const updated = await maestro.entities.Job.update(jobId, { status: newStatus });
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: newStatus } : j));
   }
 
@@ -258,7 +258,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
         setJobs(prev => prev.filter(j => j.id !== jobId));
         try {
           const deletedAt = new Date().toISOString();
-          await base44.entities.DeleteLog.create({
+          await maestro.entities.DeleteLog.create({
             entity_type: "job",
             entity_id: jobId,
             entity_data: job,
@@ -266,7 +266,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
             deleted_by_name: collab?.name || "Desconhecido",
             deleted_at: deletedAt,
           });
-          await base44.entities.Job.delete(jobId);
+          await maestro.entities.Job.delete(jobId);
           // Add to deletedJobs for local display
           setDeletedJobs(prev => [{ ...job, _deletedAt: deletedAt, _deletedBy: collab?.name || "Desconhecido", _deleteLogId: jobId + "_del" }, ...prev]);
         } catch (err) {
@@ -287,7 +287,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
         setConfirmAction(null);
         setArchiving(true);
         // Log all jobs to DeleteLog before deleting
-        await Promise.all(jobs.map(j => base44.entities.DeleteLog.create({
+        await Promise.all(jobs.map(j => maestro.entities.DeleteLog.create({
           entity_type: "job",
           entity_id: j.id,
           entity_data: j,
@@ -295,9 +295,9 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
           deleted_by_name: collab?.name || "Desconhecido",
           deleted_at: new Date().toISOString(),
         })));
-        await Promise.all(jobs.map(j => base44.entities.Job.delete(j.id)));
-        await Promise.all(subtasks.map(s => base44.entities.Subtask.delete(s.id)));
-        await base44.entities.Project.delete(project.id);
+        await Promise.all(jobs.map(j => maestro.entities.Job.delete(j.id)));
+        await Promise.all(subtasks.map(s => maestro.entities.Subtask.delete(s.id)));
+        await maestro.entities.Project.delete(project.id);
         setArchiving(false);
         onProjectUpdate && onProjectUpdate(null);
         onBack();
@@ -307,14 +307,14 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   async function toggleObservation(obs) {
     // Update in schedule_data
-    const proj = await base44.entities.Project.filter({ id: project.id }, "id", 1);
+    const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
     const schedData = { ...(proj[0]?.schedule_data || {}) };
     const dayPosts = schedData[obs.date] || [];
     const idx = dayPosts.findIndex(p => p.id === obs.id);
     if (idx >= 0) {
       dayPosts[idx] = { ...dayPosts[idx], is_completed: !dayPosts[idx].is_completed };
       schedData[obs.date] = dayPosts;
-      await base44.entities.Project.update(project.id, { schedule_data: schedData });
+      await maestro.entities.Project.update(project.id, { schedule_data: schedData });
       setObservations(prev => prev.map(o => o.id === obs.id ? { ...o, is_completed: !o.is_completed } : o));
     }
   }
@@ -908,7 +908,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
             setJobs(prev => [newJob, ...prev]);
             setShowCreate(false);
             // Buscar subtasks recém-criadas pelo template
-            const newSubs = await base44.entities.Subtask.filter({ job_id: newJob.id }, "order", 50);
+            const newSubs = await maestro.entities.Subtask.filter({ job_id: newJob.id }, "order", 50);
             if (newSubs.length > 0) {
               setSubtasks(prev => [...prev, ...newSubs]);
             }

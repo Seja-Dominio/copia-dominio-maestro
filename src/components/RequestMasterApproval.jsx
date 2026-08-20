@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { ShieldAlert, Send, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,7 +38,7 @@ export default function RequestMasterApproval({
     setSending(true);
     try {
       // Create the request
-      const request = await base44.entities.MasterRequest.create({
+      const request = await maestro.entities.MasterRequest.create({
         requester_id: collaborator.id,
         requester_name: collaborator.name,
         action_type: actionType,
@@ -50,11 +50,11 @@ export default function RequestMasterApproval({
       });
 
       // Notify all masters
-      const allCollabs = await base44.entities.Collaborator.filter({ is_active: true });
+      const allCollabs = await maestro.entities.Collaborator.filter({ is_active: true });
       const masters = allCollabs.filter(c => c.access_level === "master" || c.access_level === "admin");
 
       for (const master of masters) {
-        await base44.entities.Notification.create({
+        await maestro.entities.Notification.create({
           user_id: master.id,
           type: "master_request",
           title: "Nova requisição de gestor",

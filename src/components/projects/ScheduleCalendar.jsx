@@ -16,14 +16,14 @@ import {
   addMonths, subMonths
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { fireJobCreatedNotifications } from "@/lib/jobNotifications";
 import SpellCheckTextarea from "@/components/SpellCheckTextarea";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
 // Logo vertical (símbolo D) — usada como marca d'água e nas células vazias
-const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
+const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/maestro-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
 // Logo horizontal completa — usada no header do PDF
 const LOGO_HORIZONTAL_URL = "https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/e61b9b073_a4.png";
 
@@ -46,7 +46,7 @@ function getBgFromFormats(formats) {
 
 // Salva schedule no Project entity como campo JSON
 async function persistSchedule(projectId, schedule) {
-  await base44.entities.Project.update(projectId, { schedule_data: schedule });
+  await maestro.entities.Project.update(projectId, { schedule_data: schedule });
 }
 
 function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobData, dragHandleProps, onComplete }) {
@@ -84,7 +84,7 @@ function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobD
       onUpdate({ ...post, reference_url: trimmed || undefined });
       // Sync to Job entity if post is backed by a job
       if (post.job_id) {
-        base44.entities.Job.update(post.job_id, { reference_url: trimmed || "" });
+        maestro.entities.Job.update(post.job_id, { reference_url: trimmed || "" });
       }
     }
     setEditingUrl(false);
@@ -99,7 +99,7 @@ function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobD
         const jobId = post.job_id;
         const formatLabel = FORMAT_OPTIONS.find(o => o.value === post.formats?.[0])?.label || "";
         const newTitle = `${formatLabel} — ${trimmed}`;
-        base44.entities.Job.update(jobId, { title: newTitle });
+        maestro.entities.Job.update(jobId, { title: newTitle });
       }
     }
     setEditing(false);
@@ -640,7 +640,7 @@ export default function ScheduleCalendar({ project, onClose }) {
   // Load all projects from the same client
   useEffect(() => {
     if (!project.client_id) return;
-    base44.entities.Project.filter({ client_id: project.client_id }, "-created_date", 100).then(projs => {
+    maestro.entities.Project.filter({ client_id: project.client_id }, "-created_date", 100).then(projs => {
       setClientProjects(projs);
     });
   }, [project.client_id]);
@@ -682,9 +682,9 @@ export default function ScheduleCalendar({ project, onClose }) {
       setLoadingSchedule(true);
       try {
         const [proj, jobs, allTpls] = await Promise.all([
-          base44.entities.Project.filter({ id: activeProjectId }, "id", 1),
-          base44.entities.Job.filter({ project_id: activeProjectId }, "-created_date", 200),
-          base44.entities.JobTemplate.list("name", 200),
+          maestro.entities.Project.filter({ id: activeProjectId }, "id", 1),
+          maestro.entities.Job.filter({ project_id: activeProjectId }, "-created_date", 200),
+          maestro.entities.JobTemplate.list("name", 200),
         ]);
         const savedSchedule = proj[0]?.schedule_data || {};
         setDocLink1(proj[0]?.doc_link_1 || "");
@@ -781,24 +781,24 @@ export default function ScheduleCalendar({ project, onClose }) {
       const diffMs = new Date(dstDay + "T12:00:00") - new Date(srcDay + "T12:00:00");
       const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
-      base44.entities.Job.update(movedPost.job_id, { post_date: dstDay });
+      maestro.entities.Job.update(movedPost.job_id, { post_date: dstDay });
       setExistingJobs(prev => prev.map(j => j.id === movedPost.job_id ? { ...j, post_date: dstDay } : j));
 
       // Recalculate subtask deadlines based on days_before_post from the new post_date
       const newPostDate = new Date(dstDay + "T12:00:00");
-      base44.entities.Subtask.filter({ job_id: movedPost.job_id }, "order", 50).then(subtasks => {
+      maestro.entities.Subtask.filter({ job_id: movedPost.job_id }, "order", 50).then(subtasks => {
         subtasks.forEach(sub => {
           if (sub.days_before_post !== undefined && sub.days_before_post !== null) {
             const d = new Date(newPostDate);
             d.setDate(d.getDate() - Number(sub.days_before_post));
             const newDeadline = d.toISOString().split("T")[0];
-            base44.entities.Subtask.update(sub.id, { deadline: newDeadline });
+            maestro.entities.Subtask.update(sub.id, { deadline: newDeadline });
           } else if (sub.deadline) {
             // Fallback: shift by diff if no days_before_post defined
             const d = new Date(sub.deadline + "T12:00:00");
             d.setDate(d.getDate() + diffDays);
             const newDeadline = d.toISOString().split("T")[0];
-            base44.entities.Subtask.update(sub.id, { deadline: newDeadline });
+            maestro.entities.Subtask.update(sub.id, { deadline: newDeadline });
           }
         });
       });
@@ -845,7 +845,7 @@ export default function ScheduleCalendar({ project, onClose }) {
       // Cancel the actual job — schedule will reflect via job data
       const associatedJob = existingJobs.find(j => j.id === post.job_id);
       if (associatedJob && associatedJob.status !== "cancelled") {
-        base44.entities.Job.update(associatedJob.id, { status: "cancelled" });
+        maestro.entities.Job.update(associatedJob.id, { status: "cancelled" });
         const updatedJobs = existingJobs.map(j => j.id === associatedJob.id ? { ...j, status: "cancelled" } : j);
         setExistingJobs(updatedJobs);
         // Rebuild schedule from updated jobs
@@ -922,7 +922,7 @@ export default function ScheduleCalendar({ project, onClose }) {
     const template = findTemplateForPost(post);
     const title = template?.job_title || (post.text ? `${formatLabel} — ${post.text}` : formatLabel);
 
-    const created = await base44.entities.Job.create({
+    const created = await maestro.entities.Job.create({
       title,
       project_id: activeProject.id,
       project_name: activeProject.name,
@@ -946,7 +946,7 @@ export default function ScheduleCalendar({ project, onClose }) {
            d.setDate(d.getDate() - Number(s.days_before_post));
            deadline = d.toISOString().split("T")[0];
          }
-         return base44.entities.Subtask.create({
+         return maestro.entities.Subtask.create({
            job_id: created.id,
            title: s.title,
            responsible_id: s.responsible_id || "",
@@ -974,7 +974,7 @@ export default function ScheduleCalendar({ project, onClose }) {
     const template = templateId ? (allTemplatesList.find(t => t.id === templateId) || templates.find(t => t.id === templateId)) : findTemplateForPost(post);
     const title = template?.job_title || (post.text ? `${formatLabel} — ${post.text}` : formatLabel);
 
-    const created = await base44.entities.Job.create({
+    const created = await maestro.entities.Job.create({
       title,
       project_id: activeProject.id,
       project_name: activeProject.name,
@@ -997,7 +997,7 @@ export default function ScheduleCalendar({ project, onClose }) {
           d.setDate(d.getDate() - Number(s.days_before_post));
           deadline = d.toISOString().split("T")[0];
         }
-        return base44.entities.Subtask.create({
+        return maestro.entities.Subtask.create({
           job_id: created.id,
           title: s.title,
           responsible_id: s.responsible_id || "",
@@ -1385,7 +1385,7 @@ export default function ScheduleCalendar({ project, onClose }) {
                       placeholder="Cole o link aqui"
                       value={doc.link}
                       onChange={e => doc.setLink(e.target.value)}
-                      onBlur={() => base44.entities.Project.update(activeProjectId, { [doc.field]: doc.link }).catch(() => {})}
+                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.field]: doc.link }).catch(() => {})}
                       className="h-6 w-40 text-[10px] px-2 rounded border border-gray-200 bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
                     />
                     <input
@@ -1393,7 +1393,7 @@ export default function ScheduleCalendar({ project, onClose }) {
                       placeholder="Nome (ex: Roteiro)"
                       value={doc.label}
                       onChange={e => doc.setLabel(e.target.value)}
-                      onBlur={() => base44.entities.Project.update(activeProjectId, { [doc.labelField]: doc.label }).catch(() => {})}
+                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.labelField]: doc.label }).catch(() => {})}
                       className="h-6 w-28 text-[10px] px-2 rounded border border-gray-200 bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
                     />
                     {doc.link && (

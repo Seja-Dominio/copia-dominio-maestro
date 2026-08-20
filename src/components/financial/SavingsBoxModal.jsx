@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
@@ -16,7 +16,7 @@ export default function SavingsBoxModal({ account, onClose, onCreated }) {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
-    const box = await base44.entities.SavingsBox.create({
+    const box = await maestro.entities.SavingsBox.create({
       bank_account_id: account.id,
       bank_account_name: account.name,
       name: name.trim(),

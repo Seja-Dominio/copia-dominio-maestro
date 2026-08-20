@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { nowManaus } from "@/lib/dateUtils";
@@ -21,7 +21,7 @@ export default function TimesheetMonitor({ collaborators }) {
   useEffect(() => {
     async function load() {
       try {
-        const ts = await base44.entities.Timesheet.filter({ is_running: true }, "-started_at", 50);
+        const ts = await maestro.entities.Timesheet.filter({ is_running: true }, "-started_at", 50);
         setRunningTimesheets(ts);
       } catch (e) {
         console.warn("TimesheetMonitor: falha ao carregar", e);

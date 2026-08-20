@@ -106,6 +106,38 @@ async function importRecords(records) {
     }
     console.log(`Importados ${Math.min(offset + batch.length, records.length)}/${records.length}`);
   }
+
+  const collaboratorRows = records
+    .filter((record) => record.entity === "Collaborator")
+    .map(({ record_id, payload, source_updated_at }) => {
+      const { password_hash: _passwordHash, ...profile } = payload;
+      return {
+        id: record_id,
+        login: String(payload.login || record_id),
+        password_hash: String(payload.password_hash || ""),
+        is_active: payload.is_active !== false,
+        profile: { ...profile, id: record_id },
+        source_updated_at,
+      };
+    });
+
+  if (collaboratorRows.length) {
+    const authEndpoint = `${url.replace(/\/$/, "")}/rest/v1/maestro_collaborators?on_conflict=id`;
+    const response = await fetch(authEndpoint, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(collaboratorRows),
+    });
+    if (!response.ok) {
+      throw new Error(`Falha ao importar autenticação de colaboradores (${response.status}): ${await response.text()}`);
+    }
+    console.log(`Autenticação preparada para ${collaboratorRows.length} colaboradores.`);
+  }
 }
 
 async function verifyRecords(records) {

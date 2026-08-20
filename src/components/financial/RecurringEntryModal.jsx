@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -69,7 +69,7 @@ export default function RecurringEntryModal({ isOpen, onClose, clients, onCreate
     }
 
     try {
-      await base44.entities.FinancialEntry.bulkCreate(entries);
+      await maestro.entities.FinancialEntry.bulkCreate(entries);
       onCreated(entries);
       setFormData({
         title: "",

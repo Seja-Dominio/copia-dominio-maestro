@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { X, Briefcase, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,8 +31,8 @@ export default function GenerateClientContractModal({ onClose }) {
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Client.list("name", 200),
-      base44.entities.FeeContract.filter({ status: "active" }, "-created_date", 200),
+      maestro.entities.Client.list("name", 200),
+      maestro.entities.FeeContract.filter({ status: "active" }, "-created_date", 200),
     ]).then(([c, fc]) => { setClients(c); setContracts(fc); setLoading(false); });
   }, []);
 
@@ -92,7 +92,7 @@ O contrato deve conter as seguintes cláusulas:
 Inclua campos de assinatura para ambas as partes com local e data.
 Retorne APENAS o HTML, sem markdown, sem blocos de código.`;
 
-    const result = await base44.integrations.Core.InvokeLLM({ prompt, model: "gemini_3_flash" });
+    const result = await maestro.integrations.Core.InvokeLLM({ prompt, model: "gemini_3_flash" });
     let html = result;
     if (typeof html === "object") html = html.text || html.content || JSON.stringify(html);
     html = html.replace(/```html?\n?/gi, "").replace(/```\n?/gi, "").trim();

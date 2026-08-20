@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Send, Loader2, ChevronDown, X } from "lucide-react";
 
 export default function SendTaskForm({ currentCollab, onTaskSent }) {
@@ -11,7 +11,7 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    base44.entities.Collaborator.filter({ is_active: true }, "name", 200)
+    maestro.entities.Collaborator.filter({ is_active: true }, "name", 200)
       .then(list => setCollaborators(list.filter(c => c.id !== currentCollab?.id)));
   }, [currentCollab?.id]);
 
@@ -23,7 +23,7 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
     e.preventDefault();
     if (!text.trim() || !selectedCollab) return;
     setSending(true);
-    await base44.entities.MiniTask.create({
+    await maestro.entities.MiniTask.create({
       title: text.trim(),
       collaborator_id: selectedCollab.id,
       collaborator_name: selectedCollab.name,

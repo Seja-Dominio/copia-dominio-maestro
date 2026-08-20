@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Crown, Save, Plus, Edit2, History, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NpsScoreBadge from "./NpsScoreBadge";
@@ -47,7 +47,7 @@ export default function ClientEditDrawer({ client, npsHistory = [], npsEntries =
 
   async function handleSave() {
     setSaving(true);
-    await base44.entities.Client.update(client.id, {
+    await maestro.entities.Client.update(client.id, {
       ...form,
       services,
       instagram_account_id: form.instagram_account_id || undefined,
@@ -80,22 +80,22 @@ export default function ClientEditDrawer({ client, npsHistory = [], npsEntries =
     const scoreBefore = client.nps_score ?? 100;
     const newGeneral = Math.round((scoreBefore * 0.7 + monthlyScore * 0.3));
     if (currentMonthEntry) {
-      await base44.entities.NpsEntry.update(currentMonthEntry.id, { monthly_score: monthlyScore, notes: monthlyNotes });
+      await maestro.entities.NpsEntry.update(currentMonthEntry.id, { monthly_score: monthlyScore, notes: monthlyNotes });
     } else {
-      await base44.entities.NpsEntry.create({
+      await maestro.entities.NpsEntry.create({
         client_id: client.id, client_name: client.name,
         month: currentMonth, monthly_score: monthlyScore, notes: monthlyNotes,
         recorded_by: "manual",
       });
     }
-    await base44.entities.NpsHistory.create({
+    await maestro.entities.NpsHistory.create({
       client_id: client.id, client_name: client.name,
       event_type: "monthly_entry", delta: newGeneral - scoreBefore,
       score_before: scoreBefore, score_after: newGeneral,
       description: `Nota mensal ${currentMonth}: ${monthlyScore}`,
       justification: monthlyNotes,
     });
-    await base44.entities.Client.update(client.id, { nps_score: newGeneral });
+    await maestro.entities.Client.update(client.id, { nps_score: newGeneral });
     setNpsSaving(false);
     onSaved?.();
     onClose();
@@ -105,14 +105,14 @@ export default function ClientEditDrawer({ client, npsHistory = [], npsEntries =
     if (!justification.trim()) return;
     setNpsSaving(true);
     const scoreBefore = client.nps_score ?? 100;
-    await base44.entities.NpsHistory.create({
+    await maestro.entities.NpsHistory.create({
       client_id: client.id, client_name: client.name,
       event_type: "manual_change", delta: editScore - scoreBefore,
       score_before: scoreBefore, score_after: editScore,
       description: `Nota alterada manualmente para ${editScore}`,
       justification,
     });
-    await base44.entities.Client.update(client.id, { nps_score: editScore, nps_justification: justification, nps_manual_override: true });
+    await maestro.entities.Client.update(client.id, { nps_score: editScore, nps_justification: justification, nps_manual_override: true });
     setNpsSaving(false);
     onSaved?.();
     onClose();

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format, subDays, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { nowManaus } from "@/lib/dateUtils";
@@ -36,10 +36,10 @@ export default function ProductivityDailyReport({ period }) {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      base44.entities.Job.list("-created_date", 5000),
-      base44.entities.Timesheet.list("-created_date", 5000),
-      base44.entities.Collaborator.list("name", 100),
-      base44.entities.JobHistory.list("-created_date", 10000),
+      maestro.entities.Job.list("-created_date", 5000),
+      maestro.entities.Timesheet.list("-created_date", 5000),
+      maestro.entities.Collaborator.list("name", 100),
+      maestro.entities.JobHistory.list("-created_date", 10000),
     ]).then(([j, ts, c, h]) => {
       setJobs(j);
       setTimesheets(ts.filter(t => !t.is_running));

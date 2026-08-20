@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StandardDrawer from "@/components/ui/StandardDrawer";
@@ -32,8 +32,8 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Client.list("name", 100),
-      base44.entities.Squad.filter({ is_active: true }, "name", 100),
+      maestro.entities.Client.list("name", 100),
+      maestro.entities.Squad.filter({ is_active: true }, "name", 100),
     ]).then(([c, squads]) => {
       setClients(c.filter(cl => cl.status !== "inactive"));
       setAvailableTeams(squads.map(s => s.name).sort());
@@ -60,7 +60,7 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
     const finalName = form.name.trim() || buildAutoName();
     if (!finalName || !form.client_id) return;
     setSaving(true);
-    const created = await base44.entities.Project.create({
+    const created = await maestro.entities.Project.create({
       name: finalName,
       client_id: form.client_id,
       client_name: form.client_name,

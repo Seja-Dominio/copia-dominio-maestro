@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fireJobCreatedNotifications } from "@/lib/jobNotifications";
@@ -44,11 +44,11 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
 
   useEffect(() => {
     const promises = [
-      base44.entities.Collaborator.filter({ is_active: true }, "name", 100),
-      base44.entities.JobTemplate.list("name", 100),
+      maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
+      maestro.entities.JobTemplate.list("name", 100),
     ];
     if (needsProjectSelection) {
-      promises.push(base44.entities.Project.list("name", 500));
+      promises.push(maestro.entities.Project.list("name", 500));
     }
     Promise.all(promises).then(([c, t, p]) => {
       setCollaborators(c);
@@ -102,7 +102,7 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
     if (!form.title || !form.project_id) return;
     setSaving(true);
     const tplData = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null;
-    const created = await base44.entities.Job.create({
+    const created = await maestro.entities.Job.create({
       ...form,
       score: tplData?.score || form.score || 0,
     });
@@ -118,7 +118,7 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
             postDate.setDate(postDate.getDate() - Number(s.days_before_post));
             deadline = postDate.toISOString().split("T")[0];
           }
-          return base44.entities.Subtask.create({
+          return maestro.entities.Subtask.create({
             job_id: created.id,
             title: s.title,
             responsible_id: s.responsible_id || "",

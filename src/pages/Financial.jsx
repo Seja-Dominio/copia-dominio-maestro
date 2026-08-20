@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -84,14 +84,14 @@ export default function Financial() {
     setLoading(true);
     // Split into 2 batches to avoid rate limits
     const [e, a, sb] = await Promise.all([
-      base44.entities.FinancialEntry.list("-due_date", 200),
-      base44.entities.BankAccount.list(),
-      base44.entities.SavingsBox.filter({ is_active: true }, "name", 200),
+      maestro.entities.FinancialEntry.list("-due_date", 200),
+      maestro.entities.BankAccount.list(),
+      maestro.entities.SavingsBox.filter({ is_active: true }, "name", 200),
     ]);
     const [ts, j, cl] = await Promise.all([
-      base44.entities.Timesheet.list("-created_date", 300),
-      base44.entities.Job.list("-created_date", 200),
-      base44.entities.Client.list("name", 100),
+      maestro.entities.Timesheet.list("-created_date", 300),
+      maestro.entities.Job.list("-created_date", 200),
+      maestro.entities.Client.list("name", 100),
     ]);
     setEntries(e);
     setAccounts(a);
@@ -400,7 +400,7 @@ export default function Financial() {
                     const paidDate = new Date().toISOString().slice(0, 10);
                     const updates = selectedEntries.map(e => {
                       const data = action === "paid" ? { status: "paid", payment_date: paidDate } : { status: "cancelled" };
-                      return base44.entities.FinancialEntry.update(e.id, data);
+                      return maestro.entities.FinancialEntry.update(e.id, data);
                     });
                     await Promise.all(updates);
                     loadData();
@@ -408,7 +408,7 @@ export default function Financial() {
                   onMarkPaid={async (e) => {
                     const paidDate = new Date().toISOString().slice(0, 10);
                     setEntries(prev => prev.map(x => x.id === e.id ? { ...x, status: "paid", payment_date: paidDate } : x));
-                    const updated = await base44.entities.FinancialEntry.update(e.id, { status: "paid", payment_date: paidDate });
+                    const updated = await maestro.entities.FinancialEntry.update(e.id, { status: "paid", payment_date: paidDate });
                     setEntries(prev => prev.map(x => x.id === e.id ? updated : x));
                   }}
                   onDelete={(e) => setDeleteTarget(e)}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, MessageSquare, RefreshCw, Check, Crown } from "lucide-react";
@@ -43,7 +43,7 @@ export default function ClientFormModal({ client, onClose, onSave }) {
   const [customServicesConfigId, setCustomServicesConfigId] = useState(null);
 
   useEffect(() => {
-    base44.entities.AppConfig.filter({ key: "custom_services" }).then(configs => {
+    maestro.entities.AppConfig.filter({ key: "custom_services" }).then(configs => {
       if (configs.length > 0) {
         setCustomServices(configs[0].value?.services || []);
         setCustomServicesConfigId(configs[0].id);
@@ -55,9 +55,9 @@ export default function ClientFormModal({ client, onClose, onSave }) {
     const updated = [...customServices, serviceName];
     setCustomServices(updated);
     if (customServicesConfigId) {
-      await base44.entities.AppConfig.update(customServicesConfigId, { value: { services: updated } });
+      await maestro.entities.AppConfig.update(customServicesConfigId, { value: { services: updated } });
     } else {
-      const created = await base44.entities.AppConfig.create({ key: "custom_services", value: { services: updated } });
+      const created = await maestro.entities.AppConfig.create({ key: "custom_services", value: { services: updated } });
       setCustomServicesConfigId(created.id);
     }
   };
@@ -82,7 +82,7 @@ export default function ClientFormModal({ client, onClose, onSave }) {
     setLoadingGroups(true);
     setGroupDropdown(true);
     try {
-      const res = await base44.functions.invoke("listWhatsappGroups", {});
+      const res = await maestro.functions.invoke("listWhatsappGroups", {});
       setGroups(res.data?.groups || []);
     } catch {
       setGroups([]);
@@ -118,10 +118,10 @@ export default function ClientFormModal({ client, onClose, onSave }) {
       let result;
       const { _newService, ...dataToSave } = formData;
       if (client?.id) {
-        await base44.entities.Client.update(client.id, dataToSave);
+        await maestro.entities.Client.update(client.id, dataToSave);
         result = { ...client, ...dataToSave };
       } else {
-        result = await base44.entities.Client.create(dataToSave);
+        result = await maestro.entities.Client.create(dataToSave);
       }
       onSave(result);
     } finally {

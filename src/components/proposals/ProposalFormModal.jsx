@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Save, Plus, Trash2, Loader2, FileText, ChevronRight, CalendarIcon, ChevronDown } from "lucide-react";
 import StandardDrawer from "@/components/ui/StandardDrawer";
 import { Calendar } from "@/components/ui/calendar";
@@ -38,7 +38,7 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
   });
 
   useEffect(() => {
-    base44.entities.Client.list("name", 200).then(c => {
+    maestro.entities.Client.list("name", 200).then(c => {
       setClients(c);
       setLoading(false);
     });
@@ -80,13 +80,13 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
     };
     if (!data.number && !proposal) {
       // auto-number
-      const all = await base44.entities.Proposal.list("-number", 1);
+      const all = await maestro.entities.Proposal.list("-number", 1);
       data.number = (all[0]?.number || 0) + 1;
     }
     if (proposal) {
-      await base44.entities.Proposal.update(proposal.id, data);
+      await maestro.entities.Proposal.update(proposal.id, data);
     } else {
-      await base44.entities.Proposal.create(data);
+      await maestro.entities.Proposal.create(data);
     }
     setSaving(false);
     onSaved();

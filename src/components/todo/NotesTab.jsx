@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Plus, Trash2, Loader2, FileText } from "lucide-react";
 import NoteEditorDrawer from "./NoteEditorDrawer";
 
@@ -15,7 +15,7 @@ export default function NotesTab() {
 
   useEffect(() => {
     if (!collabId) return;
-    base44.entities.Note.filter({ collaborator_id: collabId }, "-created_date", 50)
+    maestro.entities.Note.filter({ collaborator_id: collabId }, "-created_date", 50)
       .then(setNotes)
       .finally(() => setLoading(false));
   }, [collabId]);
@@ -23,7 +23,7 @@ export default function NotesTab() {
   async function createNote() {
     if (!collabId) return;
     setCreating(true);
-    const created = await base44.entities.Note.create({
+    const created = await maestro.entities.Note.create({
       title: "Nova anotação",
       content: "",
       collaborator_id: collabId,

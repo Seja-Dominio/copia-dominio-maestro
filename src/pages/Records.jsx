@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ export default function Records() {
     loadAll();
     
     // Subscribe to real-time updates
-    const unsubClient = base44.entities.Client.subscribe((event) => {
+    const unsubClient = maestro.entities.Client.subscribe((event) => {
       if (event.type === 'create') {
         setClients(prev => prev.some(c => c.id === event.id) ? prev : [event.data, ...prev]);
       } else if (event.type === 'update') {
@@ -54,7 +54,7 @@ export default function Records() {
       }
     });
 
-    const unsubSupplier = base44.entities.Supplier.subscribe((event) => {
+    const unsubSupplier = maestro.entities.Supplier.subscribe((event) => {
       if (event.type === 'create') {
         setSuppliers(prev => prev.some(s => s.id === event.id) ? prev : [event.data, ...prev]);
       } else if (event.type === 'update') {
@@ -64,7 +64,7 @@ export default function Records() {
       }
     });
 
-    const unsubCollab = base44.entities.Collaborator.subscribe((event) => {
+    const unsubCollab = maestro.entities.Collaborator.subscribe((event) => {
       if (event.type === 'create') {
         setCollaborators(prev => prev.some(c => c.id === event.id) ? prev : [event.data, ...prev]);
       } else if (event.type === 'update') {
@@ -84,9 +84,9 @@ export default function Records() {
   async function loadAll() {
     setLoading(true);
     const [c, col, sup] = await Promise.all([
-      base44.entities.Client.list("-created_date", 100),
-      base44.entities.Collaborator.list("-created_date", 100),
-      base44.entities.Supplier.list("-created_date", 100),
+      maestro.entities.Client.list("-created_date", 100),
+      maestro.entities.Collaborator.list("-created_date", 100),
+      maestro.entities.Supplier.list("-created_date", 100),
     ]);
     setClients(c);
     setCollaborators(col);
@@ -95,7 +95,7 @@ export default function Records() {
   }
 
   async function deleteCollab(id) {
-    await base44.entities.Collaborator.delete(id);
+    await maestro.entities.Collaborator.delete(id);
     setCollaborators(prev => prev.filter(c => c.id !== id));
   }
 
@@ -193,7 +193,7 @@ export default function Records() {
                       <button onClick={() => { setEditingClient(c); setShowClientForm(true); }} className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground" title="Editar">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => { if(window.confirm("Excluir este cliente?")) base44.entities.Client.delete(c.id); }} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-600" title="Excluir">
+                      <button onClick={() => { if(window.confirm("Excluir este cliente?")) maestro.entities.Client.delete(c.id); }} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-600" title="Excluir">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -325,7 +325,7 @@ export default function Records() {
                       <button onClick={() => { setEditingSupplier(s); setShowSupplierForm(true); }} className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground" title="Editar">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => { if(window.confirm("Excluir este fornecedor?")) base44.entities.Supplier.delete(s.id); }} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-600" title="Excluir">
+                      <button onClick={() => { if(window.confirm("Excluir este fornecedor?")) maestro.entities.Supplier.delete(s.id); }} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-600" title="Excluir">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>

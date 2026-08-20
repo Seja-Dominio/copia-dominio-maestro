@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
@@ -37,10 +37,10 @@ export default function SupplierFormModal({ supplier, onClose, onSave }) {
     try {
       let result;
       if (supplier?.id) {
-        await base44.entities.Supplier.update(supplier.id, formData);
+        await maestro.entities.Supplier.update(supplier.id, formData);
         result = { ...supplier, ...formData };
       } else {
-        result = await base44.entities.Supplier.create(formData);
+        result = await maestro.entities.Supplier.create(formData);
       }
       onSave(result);
     } finally {

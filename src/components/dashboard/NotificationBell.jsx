@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Bell, X, Briefcase, CheckSquare, Clock, AlertCircle } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -38,7 +38,7 @@ export default function NotificationBell({ collaboratorId }) {
       loadNotifications(0);
     }
 
-    const unsub = base44.entities.Notification.subscribe(event => {
+    const unsub = maestro.entities.Notification.subscribe(event => {
       if (event.type === "create" && event.data?.user_id === collaboratorId) {
         setNotifications(prev => [event.data, ...prev]);
         setTotal(t => t + 1);
@@ -60,7 +60,7 @@ export default function NotificationBell({ collaboratorId }) {
 
   async function loadNotifications(p) {
     if (!collaboratorId) return;
-    const all = await base44.entities.Notification.filter(
+    const all = await maestro.entities.Notification.filter(
       { user_id: collaboratorId },
       "-created_date",
       30
@@ -79,14 +79,14 @@ export default function NotificationBell({ collaboratorId }) {
     // Update sequentially in batches of 3 to avoid rate limits
     for (let i = 0; i < unreadIds.length; i += 3) {
       const batch = unreadIds.slice(i, i + 3);
-      await Promise.all(batch.map(id => base44.entities.Notification.update(id, { is_read: true })));
+      await Promise.all(batch.map(id => maestro.entities.Notification.update(id, { is_read: true })));
     }
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   }
 
   async function markRead(n) {
     if (!n.is_read) {
-      await base44.entities.Notification.update(n.id, { is_read: true });
+      await maestro.entities.Notification.update(n.id, { is_read: true });
       setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x));
     }
     if (n.entity_id && n.entity_type === "job") {

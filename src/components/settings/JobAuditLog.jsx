@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { CalendarX2, Trash2, Ban, AlertTriangle, Loader2, Search, Filter } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -28,9 +28,9 @@ export default function JobAuditLog() {
 
   useEffect(() => {
     Promise.all([
-      base44.entities.JobHistory.filter({ type: "change" }, "-created_date", 2000),
-      base44.entities.DeleteLog.list("-created_date", 1000),
-      base44.entities.Job.list("-created_date", 2000),
+      maestro.entities.JobHistory.filter({ type: "change" }, "-created_date", 2000),
+      maestro.entities.DeleteLog.list("-created_date", 1000),
+      maestro.entities.Job.list("-created_date", 2000),
     ]).then(([h, d, j]) => {
       setHistory(h);
       setDeleteLogs(d);

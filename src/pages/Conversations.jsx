@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, Settings, Check, AlertCircle, ChevronDown, Users, X } from "lucide-react";
@@ -20,7 +20,7 @@ function SingleSend({ clients }) {
 
   const handleSaveGroupId = async (client) => {
     setSavingGroup(true);
-    await base44.entities.Client.update(client.id, { whatsapp_group_id: groupIdInput.trim() });
+    await maestro.entities.Client.update(client.id, { whatsapp_group_id: groupIdInput.trim() });
     setEditingGroupId(null);
     setSavingGroup(false);
     setSelectedClient({ ...client, whatsapp_group_id: groupIdInput.trim() });
@@ -35,7 +35,7 @@ function SingleSend({ clients }) {
     setSending(true);
     setStatus(null);
     try {
-      const res = await base44.functions.invoke("sendWhatsapp", { phone: selectedClient.whatsapp_group_id, message: message.trim() });
+      const res = await maestro.functions.invoke("sendWhatsapp", { phone: selectedClient.whatsapp_group_id, message: message.trim() });
       if (res.data?.success) { setStatus({ type: "success", text: "Mensagem enviada!" }); setMessage(""); }
       else setStatus({ type: "error", text: res.data?.error || "Erro ao enviar." });
     } catch (e) {
@@ -167,7 +167,7 @@ function BulkSend({ clients }) {
     const res = [];
     for (const client of toSend) {
       try {
-        const r = await base44.functions.invoke("sendWhatsapp", { phone: client.whatsapp_group_id, message: message.trim() });
+        const r = await maestro.functions.invoke("sendWhatsapp", { phone: client.whatsapp_group_id, message: message.trim() });
         res.push({ name: client.name, status: r.data?.success ? "ok" : "error", error: r.data?.error });
       } catch (e) {
         res.push({ name: client.name, status: "error", error: e.message });
@@ -248,7 +248,7 @@ export default function Conversations() {
   const [mode, setMode] = useState("single"); // "single" | "bulk"
 
   useEffect(() => {
-    base44.entities.Client.filter({ status: "active" }, "name", 200).then(data => {
+    maestro.entities.Client.filter({ status: "active" }, "name", 200).then(data => {
       setClients(data);
       setLoading(false);
     });

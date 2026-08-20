@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import StandardDrawer from "@/components/ui/StandardDrawer";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
@@ -116,10 +116,10 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
 
   useEffect(() => {
     Promise.all([
-      base44.entities.Client.list("name", 200),
-      base44.entities.BankAccount.list(),
-      base44.entities.CostCenter.filter({ is_active: true }, "name", 100),
-      base44.entities.FinancialCategory.filter({ is_active: true }, "order", 200),
+      maestro.entities.Client.list("name", 200),
+      maestro.entities.BankAccount.list(),
+      maestro.entities.CostCenter.filter({ is_active: true }, "name", 100),
+      maestro.entities.FinancialCategory.filter({ is_active: true }, "order", 200),
     ]).then(([c, a, cc, sc]) => {
       setClients(c);
       setAccounts(a);
@@ -161,7 +161,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
     if (!baseEntry.competence_date && baseEntry.due_date) baseEntry.competence_date = baseEntry.due_date;
 
     if (editingEntry?.id) {
-      const updated = await base44.entities.FinancialEntry.update(editingEntry.id, baseEntry);
+      const updated = await maestro.entities.FinancialEntry.update(editingEntry.id, baseEntry);
       onCreate(updated);
       return;
     }
@@ -186,7 +186,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
         });
         currentDate = addMonths(currentDate, 1);
       }
-      await base44.entities.FinancialEntry.bulkCreate(entries);
+      await maestro.entities.FinancialEntry.bulkCreate(entries);
       onCreate(entries);
       return;
     }
@@ -199,10 +199,10 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
         entries.push({ ...baseEntry, due_date: dateStr, competence_date: dateStr, status: "forecast" });
         currentDate = advanceDate(currentDate, recurringInterval);
       }
-      await base44.entities.FinancialEntry.bulkCreate(entries);
+      await maestro.entities.FinancialEntry.bulkCreate(entries);
       onCreate(entries[0]);
     } else {
-      const created = await base44.entities.FinancialEntry.create(baseEntry);
+      const created = await maestro.entities.FinancialEntry.create(baseEntry);
       onCreate(created);
     }
   }

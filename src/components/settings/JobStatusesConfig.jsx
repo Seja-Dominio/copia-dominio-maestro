@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { DEFAULT_STATUS_LIST, useStatusConfig } from "@/lib/AppConfigContext";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
@@ -102,11 +102,11 @@ export default function JobStatusesConfig() {
   async function handleSave() {
     setSaving(true);
     const statuses = items.map(({ _new, ...s }) => s);
-    const existing = await base44.entities.AppConfig.filter({ key: "job_statuses_v2" });
+    const existing = await maestro.entities.AppConfig.filter({ key: "job_statuses_v2" });
     if (existing.length > 0) {
-      await base44.entities.AppConfig.update(existing[0].id, { key: "job_statuses_v2", value: { statuses } });
+      await maestro.entities.AppConfig.update(existing[0].id, { key: "job_statuses_v2", value: { statuses } });
     } else {
-      await base44.entities.AppConfig.create({ key: "job_statuses_v2", value: { statuses } });
+      await maestro.entities.AppConfig.create({ key: "job_statuses_v2", value: { statuses } });
     }
     await refresh();
     setSaving(false);

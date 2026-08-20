@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -119,7 +119,7 @@ function AddHoursPanel({ job, collaboratorId, collaboratorName, onClose, onSucce
     if (h < 0 || m < 0 || (h === 0 && m === 0)) return;
     setSaving(true);
     try {
-      await base44.entities.Timesheet.create({
+      await maestro.entities.Timesheet.create({
         job_id: job.id, job_title: job.title,
         project_id: job.project_id, project_name: job.project_name,
         client_id: job.client_id, client_name: job.client_name,
@@ -389,7 +389,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   // Auto-complete pending subtasks if job is already completed (retroactive fix)
   useEffect(() => {
     if (job.status === "completed" && subtasks.some(s => !s.is_completed)) {
-      autoCompleteSubtasks("completed", subtasks, base44, statusOrder).then(updated => {
+      autoCompleteSubtasks("completed", subtasks, maestro, statusOrder).then(updated => {
         setSubtasks(updated);
         onSubtasksChange?.();
       });
@@ -441,7 +441,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     const entry = { time: new Date().toISOString(), type, text, user: collabName, ...extra };
     setHistory(prev => [entry, ...prev]);
     // Persist to DB
-    await base44.entities.JobHistory.create({
+    await maestro.entities.JobHistory.create({
       job_id: job.id,
       type,
       text,
@@ -460,10 +460,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   useEffect(() => {
     async function init() {
       const [c, ts, col, hist] = await Promise.all([
-        base44.entities.Comment.filter({ entity_id: job.id, entity_type: "job" }, "-created_date"),
-        base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50),
-        base44.entities.Collaborator.filter({ is_active: true }, "name", 100),
-        base44.entities.JobHistory.filter({ job_id: job.id }, "-created_date", 100),
+        maestro.entities.Comment.filter({ entity_id: job.id, entity_type: "job" }, "-created_date"),
+        maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50),
+        maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
+        maestro.entities.JobHistory.filter({ job_id: job.id }, "-created_date", 100),
       ]);
       setComments(c);
       setTimesheets(ts);
@@ -476,7 +476,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       // Persist "opened" event
       const openedEntry = { time: new Date().toISOString(), type: "opened", text: `Aberto por ${collabName}`, user: collabName };
       setHistory(prev => [openedEntry, ...prev]);
-      base44.entities.JobHistory.create({ job_id: job.id, type: "opened", text: `Aberto por ${collabName}`, user: collabName, collaborator_id: collabId || undefined });
+      maestro.entities.JobHistory.create({ job_id: job.id, type: "opened", text: `Aberto por ${collabName}`, user: collabName, collaborator_id: collabId || undefined });
 
       // Online users (others with timer running on this job)
       const online = ts.filter(t => t.is_running && t.collaborator_id !== collabId);
@@ -489,15 +489,15 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         setElapsed(Math.floor((Date.now() - new Date(runningHere.started_at).getTime()) / 1000));
       } else if (collabId) {
         // Auto-start: stop any other running timer and start one for this job
-        const allRunning = await base44.entities.Timesheet.filter({ collaborator_id: collabId, is_running: true });
+        const allRunning = await maestro.entities.Timesheet.filter({ collaborator_id: collabId, is_running: true });
         const now = new Date().toISOString();
         await Promise.all(allRunning.map(t =>
-          base44.entities.Timesheet.update(t.id, {
+          maestro.entities.Timesheet.update(t.id, {
             is_running: false, ended_at: now,
             duration_minutes: Math.max(1, Math.floor((Date.now() - new Date(t.started_at).getTime()) / 60000)),
           })
         ));
-        const newTs = await base44.entities.Timesheet.create({
+        const newTs = await maestro.entities.Timesheet.create({
           job_id: job.id, job_title: job.title,
           project_id: job.project_id, project_name: job.project_name,
           client_id: job.client_id, client_name: job.client_name,
@@ -513,9 +513,9 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
   // Realtime: track who else is viewing this job (running timesheets)
   useEffect(() => {
-    const unsub = base44.entities.Timesheet.subscribe(event => {
+    const unsub = maestro.entities.Timesheet.subscribe(event => {
       if (event.data?.job_id !== job.id) return;
-      base44.entities.Timesheet.filter({ job_id: job.id, is_running: true }, "-created_date", 20).then(running => {
+      maestro.entities.Timesheet.filter({ job_id: job.id, is_running: true }, "-created_date", 20).then(running => {
         const others = running.filter(t => t.collaborator_id !== collabId);
         setOnlineUsers(others.map(t => ({ id: t.collaborator_id, name: t.collaborator_name })));
       });
@@ -533,7 +533,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       const t = activeTimerRef.current;
       if (t) {
         const dur = Math.max(1, Math.floor((Date.now() - new Date(t.started_at).getTime()) / 60000));
-        base44.entities.Timesheet.update(t.id, {
+        maestro.entities.Timesheet.update(t.id, {
           ended_at: new Date().toISOString(),
           is_running: false,
           duration_minutes: dur,
@@ -569,10 +569,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     clearInterval(timerRef.current);
     // Always calculate from started_at (immune to browser throttling)
     const dur = Math.max(1, Math.floor((Date.now() - new Date(activeTimer.started_at).getTime()) / 60000));
-    await base44.entities.Timesheet.update(activeTimer.id, { ended_at: new Date().toISOString(), is_running: false, duration_minutes: dur });
+    await maestro.entities.Timesheet.update(activeTimer.id, { ended_at: new Date().toISOString(), is_running: false, duration_minutes: dur });
     setActiveTimer(null);
     setElapsed(0);
-    const ts = await base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
+    const ts = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
     setTimesheets(ts);
     // Log session to history
     if (dur > 0) {
@@ -586,17 +586,17 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   async function startTimer() {
     if (!collabId) return;
     // Parar qualquer timer anterior do colaborador
-    const allRunning = await base44.entities.Timesheet.filter({ collaborator_id: collabId, is_running: true });
+    const allRunning = await maestro.entities.Timesheet.filter({ collaborator_id: collabId, is_running: true });
     const now = new Date().toISOString();
     await Promise.all(allRunning.map(t =>
-      base44.entities.Timesheet.update(t.id, {
+      maestro.entities.Timesheet.update(t.id, {
         is_running: false,
         ended_at: now,
         duration_minutes: Math.max(1, Math.floor((Date.now() - new Date(t.started_at).getTime()) / 60000)),
       })
     ));
 
-    const ts = await base44.entities.Timesheet.create({
+    const ts = await maestro.entities.Timesheet.create({
       job_id: job.id, job_title: job.title,
       project_id: job.project_id, project_name: job.project_name,
       client_id: job.client_id, client_name: job.client_name,
@@ -609,7 +609,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
   useEffect(() => {
     if (activeTimer) {
-      base44.entities.Timesheet.update(activeTimer.id, { is_rework: isReworkMode });
+      maestro.entities.Timesheet.update(activeTimer.id, { is_rework: isReworkMode });
       setActiveTimer(prev => ({ ...prev, is_rework: isReworkMode }));
     }
   }, [isReworkMode]);
@@ -625,12 +625,12 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       const updated = { ...j, [key]: value };
       if (isImmediate) {
         // Save immediately — only send the changed field to avoid race conditions
-        base44.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
+        maestro.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
       } else {
         // Auto-save with debounce for text fields
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-          base44.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
+          maestro.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
         }, 800);
       }
       return updated;
@@ -669,7 +669,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
     // For status changes, auto-complete subtasks and fire notifications
     if (key === "status") {
-      autoCompleteSubtasks(value, subtasks, base44, statusOrder).then(updated => {
+      autoCompleteSubtasks(value, subtasks, maestro, statusOrder).then(updated => {
         setSubtasks(updated);
         onSubtasksChange?.();
       });
@@ -696,7 +696,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           });
           const changed = updatedSubs.filter((s, i) => s.deadline !== subtasks[i].deadline);
           if (changed.length > 0) {
-            Promise.all(changed.map(s => base44.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
+            Promise.all(changed.map(s => maestro.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
               setSubtasks(updatedSubs);
               onSubtasksChange?.();
             });
@@ -714,7 +714,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         });
         const changed = updatedSubs.filter((s, i) => s.deadline !== subtasks[i].deadline);
         if (changed.length > 0) {
-          Promise.all(changed.map(s => base44.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
+          Promise.all(changed.map(s => maestro.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
             setSubtasks(updatedSubs);
             onSubtasksChange?.();
           });
@@ -724,7 +724,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   }
 
   async function updateSubtask(subtaskId, data) {
-    await base44.entities.Subtask.update(subtaskId, data);
+    await maestro.entities.Subtask.update(subtaskId, data);
     const updatedSubtasks = subtasks.map(s => s.id === subtaskId ? { ...s, ...data } : s);
     setSubtasks(updatedSubtasks);
     const sub = subtasks.find(s => s.id === subtaskId);
@@ -748,7 +748,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         const updatedJob = { ...job, status: newJobStatus };
         setJob(updatedJob);
         clearTimeout(saveTimerRef.current);
-        const saved = await base44.entities.Job.update(job.id, updatedJob);
+        const saved = await maestro.entities.Job.update(job.id, updatedJob);
         onUpdate(saved);
 
         // Log status change
@@ -757,7 +757,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         addHistory("change", `Status: ${oldLabel} → ${newLabel}`, { field: "status", old_value: oldLabel, new_value: newLabel });
 
         // Auto-complete/reopen other subtasks based on the new job status
-        const synced = await autoCompleteSubtasks(newJobStatus, updatedSubtasks, base44, statusOrder);
+        const synced = await autoCompleteSubtasks(newJobStatus, updatedSubtasks, maestro, statusOrder);
         setSubtasks(synced);
         onSubtasksChange?.();
 
@@ -769,7 +769,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   async function addSubtask() {
     if (!newSubtask.trim()) return;
     const collab = collaborators.find(c => c.id === newSubtaskResponsible);
-    const created = await base44.entities.Subtask.create({
+    const created = await maestro.entities.Subtask.create({
       job_id: job.id, title: newSubtask.trim(),
       status: newSubtaskStatus || "pending",
       responsible_id: newSubtaskResponsible || undefined,
@@ -809,7 +809,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     if (!newComment.trim() && commentImages.length === 0) return;
     let content = newComment.trim();
     if (commentImages.length > 0) content += commentImages.map(url => `\n![imagem](${url})`).join("");
-    const created = await base44.entities.Comment.create({
+    const created = await maestro.entities.Comment.create({
       entity_type: "job", entity_id: job.id, entity_title: job.title,
       author_name: collabName, content,
     });
@@ -821,7 +821,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   async function handleImageAttach(file) {
     if (!file || !file.type.startsWith("image/")) return;
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const { file_url } = await maestro.integrations.Core.UploadFile({ file });
       if (file_url) setCommentImages(prev => [...prev, file_url]);
     } catch (err) {
       console.error("Erro no upload de imagem:", err);
@@ -840,7 +840,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     setRepeating(true);
     const n = Math.max(1, Math.min(20, count));
     for (let i = 0; i < n; i++) {
-      const newJob = await base44.entities.Job.create({
+      const newJob = await maestro.entities.Job.create({
         title: job.title, project_id: job.project_id, project_name: job.project_name,
         client_id: job.client_id, client_name: job.client_name,
         responsible_id: job.responsible_id, responsible_name: job.responsible_name,
@@ -849,7 +849,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       });
       if (subtasks.length > 0) {
         await Promise.all(subtasks.map(s =>
-          base44.entities.Subtask.create({
+          maestro.entities.Subtask.create({
             job_id: newJob.id, title: s.title,
             responsible_id: s.responsible_id, responsible_name: s.responsible_name,
             status: "pending", order: s.order, complete_at_status: s.complete_at_status || "",
@@ -895,7 +895,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         for (const file of files) {
           if (file.size > 50 * 1024 * 1024) continue;
           try {
-            const { file_url } = await base44.integrations.Core.UploadFile({ file });
+            const { file_url } = await maestro.integrations.Core.UploadFile({ file });
             if (!file_url) continue;
             uploaded.push({
               name: file.name || `colagem-${Date.now()}.png`,
@@ -912,7 +912,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         if (uploaded.length) {
           setJob(j => {
             const newAttachments = [...(j.attachments || []), ...uploaded];
-            base44.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
+            maestro.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
             uploaded.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
             return { ...j, attachments: newAttachments };
           });
@@ -946,7 +946,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     for (const file of files) {
       if (file.size > 50 * 1024 * 1024) continue;
       try {
-        const { file_url } = await base44.integrations.Core.UploadFile({ file });
+        const { file_url } = await maestro.integrations.Core.UploadFile({ file });
         if (!file_url) continue;
         uploaded.push({
           name: file.name, url: file_url,
@@ -960,7 +960,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     if (uploaded.length) {
       setJob(j => {
         const newAttachments = [...(j.attachments || []), ...uploaded];
-        base44.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
+        maestro.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
         uploaded.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
         return { ...j, attachments: newAttachments };
       });
@@ -1156,7 +1156,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 reordered.splice(to, 0, moved);
                 const updated = reordered.map((s, i) => ({ ...s, order: i }));
                 setSubtasks(updated);
-                await Promise.all(updated.map(s => base44.entities.Subtask.update(s.id, { order: s.order })));
+                await Promise.all(updated.map(s => maestro.entities.Subtask.update(s.id, { order: s.order })));
                 onSubtasksChange?.();
               }}>
                 <Droppable droppableId="subtasks">
@@ -1447,7 +1447,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               {tab === "addHours" && (
                 <AddHoursPanel job={job} collaboratorId={collabId} collaboratorName={collabName}
                   onClose={() => setTab("timesheet")} onSuccess={async () => {
-                    const updated = await base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
+                    const updated = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
                     setTimesheets(updated);
                     setTab("timesheet");
                   }} />
@@ -1456,7 +1456,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               {tab === "rework" && (
                 <AddHoursPanel job={job} collaboratorId={collabId} collaboratorName={collabName} isRework
                   onClose={() => setTab("timesheet")} onSuccess={async () => {
-                    const updated = await base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
+                    const updated = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
                     setTimesheets(updated);
                     setTab("timesheet");
                   }} />
@@ -1483,7 +1483,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                         const removed = oldList.filter(f => !list.some(n => n.url === f.url));
                         added.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
                         removed.forEach(f => addHistory("attachment_del", `Anexo removido: "${f.name}"`));
-                        base44.entities.Job.update(j.id, { attachments: list }).then(saved => onUpdate(saved));
+                        maestro.entities.Job.update(j.id, { attachments: list }).then(saved => onUpdate(saved));
                         return { ...j, attachments: list };
                       });
                     }}
@@ -1542,11 +1542,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           isAdmin={sessionCollaborator?.access_level === "admin"}
           onClose={() => setTimesheetModal(null)}
           onSaved={async () => {
-            const updated = await base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
+            const updated = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
             setTimesheets(updated);
           }}
           onDeleted={async () => {
-            const updated = await base44.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
+            const updated = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);
             setTimesheets(updated);
           }}
         />
@@ -1574,7 +1574,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           setCancelJobConfirm(false);
           await stopTimer();
           // Save immediately (bypass debounce) so the job moves to Cancelled section
-          const saved = await base44.entities.Job.update(job.id, { ...job, status: "cancelled" });
+          const saved = await maestro.entities.Job.update(job.id, { ...job, status: "cancelled" });
           setJob(j => ({ ...j, status: "cancelled" }));
           onUpdate(saved);
           addHistory("change", `Status: ${STATUS_CONFIG[job.status]?.label || job.status} → ${STATUS_CONFIG.cancelled?.label || "Cancelado"}`, { field: "status", old_value: STATUS_CONFIG[job.status]?.label || job.status, new_value: STATUS_CONFIG.cancelled?.label || "Cancelado" });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Check, X } from "lucide-react";
 
 const spellCache = new Map();
@@ -37,7 +37,7 @@ export default function SpellCheckTextarea({
 
     setChecking(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await maestro.integrations.Core.InvokeLLM({
         prompt: `Analise o seguinte texto em português e encontre APENAS erros ortográficos e gramaticais claros. Não sugira mudanças de estilo. Retorne um array de erros encontrados.
 
 Texto: "${text}"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Save, Plus, Trash2, GripVertical } from "lucide-react";
@@ -26,7 +26,7 @@ export default function RolesConfig() {
   }, []);
 
   async function loadRoles() {
-    const configs = await base44.entities.AppConfig.filter({ key: "collaborator_roles" });
+    const configs = await maestro.entities.AppConfig.filter({ key: "collaborator_roles" });
     if (configs.length > 0 && configs[0].value?.roles?.length > 0) {
       setRoles(configs[0].value.roles);
     } else {
@@ -57,11 +57,11 @@ export default function RolesConfig() {
   async function handleSave() {
     setSaving(true);
     const filteredRoles = roles.filter(r => r.trim() !== "");
-    const existing = await base44.entities.AppConfig.filter({ key: "collaborator_roles" });
+    const existing = await maestro.entities.AppConfig.filter({ key: "collaborator_roles" });
     if (existing.length > 0) {
-      await base44.entities.AppConfig.update(existing[0].id, { key: "collaborator_roles", value: { roles: filteredRoles } });
+      await maestro.entities.AppConfig.update(existing[0].id, { key: "collaborator_roles", value: { roles: filteredRoles } });
     } else {
-      await base44.entities.AppConfig.create({ key: "collaborator_roles", value: { roles: filteredRoles } });
+      await maestro.entities.AppConfig.create({ key: "collaborator_roles", value: { roles: filteredRoles } });
     }
     setRoles(filteredRoles);
     setSaving(false);
@@ -140,7 +140,7 @@ export default function RolesConfig() {
 
 // Hook para usar lista de cargos em outros componentes
 export async function fetchRolesList() {
-  const configs = await base44.entities.AppConfig.filter({ key: "collaborator_roles" });
+  const configs = await maestro.entities.AppConfig.filter({ key: "collaborator_roles" });
   if (configs.length > 0 && configs[0].value?.roles?.length > 0) {
     return configs[0].value.roles;
   }

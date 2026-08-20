@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 
 /**
  * Dispara notificações para colaboradores com notify_on_status na subtarefa
@@ -26,7 +26,7 @@ export async function fireJobStatusNotifications(job, newStatus, subtasks = [], 
       seen.add(subtask.responsible_id);
 
       promises.push(
-        base44.entities.Notification.create({
+        maestro.entities.Notification.create({
           user_id: subtask.responsible_id,
           type: "subtask_unlocked",
           title: `Job chegou em "${subtask.notify_on_status_label || newStatus}"`,
@@ -51,7 +51,7 @@ export async function fireJobStatusNotifications(job, newStatus, subtasks = [], 
     
     if (jobCollaboratorIds.size > 0) {
       // Busca colaboradores com o cargo especificado
-      const collaborators = await base44.entities.Collaborator.filter({ role: roleToNotify, is_active: true });
+      const collaborators = await maestro.entities.Collaborator.filter({ role: roleToNotify, is_active: true });
       
       for (const collab of collaborators) {
         // Só notifica se o colaborador está envolvido no job (tem subtask)
@@ -61,7 +61,7 @@ export async function fireJobStatusNotifications(job, newStatus, subtasks = [], 
         seen.add(collab.id);
 
         promises.push(
-          base44.entities.Notification.create({
+          maestro.entities.Notification.create({
             user_id: collab.id,
             type: "subtask_unlocked",
             title: `Job movido para "${statusLabel}"`,

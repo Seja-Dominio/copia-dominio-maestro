@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Search, Loader2, ChevronDown, ChevronRight, Users } from "lucide-react";
 import TodoItem from "./TodoItem";
 
@@ -23,8 +23,8 @@ export default function TeamTasksTab() {
   async function loadData() {
     setLoading(true);
     const [tasks, collabs] = await Promise.all([
-      base44.entities.MiniTask.list("-created_date", 1000),
-      base44.entities.Collaborator.filter({ is_active: true }, "name", 200),
+      maestro.entities.MiniTask.list("-created_date", 1000),
+      maestro.entities.Collaborator.filter({ is_active: true }, "name", 200),
     ]);
     setAllTasks(tasks);
     setCollaborators(collabs);
@@ -34,18 +34,18 @@ export default function TeamTasksTab() {
   async function toggleComplete(task) {
     const nowCompleted = !task.is_completed;
     const update = { is_completed: nowCompleted, completed_at: nowCompleted ? new Date().toISOString() : null };
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...update } : t));
   }
 
   async function deleteTask(task) {
-    await base44.entities.MiniTask.delete(task.id);
+    await maestro.entities.MiniTask.delete(task.id);
     setAllTasks(prev => prev.filter(t => t.id !== task.id));
   }
 
   async function setDueDate(task, date, time) {
     const update = { due_date: date || null, due_time: time || null };
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...update } : t));
   }
 
@@ -59,7 +59,7 @@ export default function TeamTasksTab() {
       update.priority_changed_by = null;
       update.priority_changed_by_name = null;
     }
-    await base44.entities.MiniTask.update(task.id, update);
+    await maestro.entities.MiniTask.update(task.id, update);
     setAllTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...update } : t));
   }
 

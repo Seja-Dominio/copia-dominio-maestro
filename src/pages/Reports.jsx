@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { useSearchParams } from "react-router-dom";
 import {
   BarChart3, TrendingUp, Clock, FolderKanban, Briefcase,
@@ -159,33 +159,33 @@ export default function Reports() {
 
     if (section === "financial") {
       fetches.push(
-        base44.entities.FinancialEntry.list("-due_date", 500).then(e => setEntries(e)),
-        base44.entities.BankAccount.list().then(a => setAccounts(a)),
-        timesheets.length === 0 ? base44.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running))) : Promise.resolve(),
-        collaborators.length === 0 ? base44.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
+        maestro.entities.FinancialEntry.list("-due_date", 500).then(e => setEntries(e)),
+        maestro.entities.BankAccount.list().then(a => setAccounts(a)),
+        timesheets.length === 0 ? maestro.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running))) : Promise.resolve(),
+        collaborators.length === 0 ? maestro.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
       );
     }
     if (section === "timesheet") {
       fetches.push(
-        base44.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running))),
-        collaborators.length === 0 ? base44.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
+        maestro.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running))),
+        collaborators.length === 0 ? maestro.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
       );
     }
     if (section === "jobs") {
       fetches.push(
-        base44.entities.Job.list("-created_date", 200).then(j => setJobs(j)),
+        maestro.entities.Job.list("-created_date", 200).then(j => setJobs(j)),
       );
     }
     if (section === "agenda") {
       fetches.push(
-        base44.entities.AgendaEvent.list("-date", 300).then(ev => setAgendaEvents(ev)),
-        clients.length === 0 ? base44.entities.Client.filter({ status: "active" }, "name", 200).then(cl => setClients(cl)) : Promise.resolve(),
+        maestro.entities.AgendaEvent.list("-date", 300).then(ev => setAgendaEvents(ev)),
+        clients.length === 0 ? maestro.entities.Client.filter({ status: "active" }, "name", 200).then(cl => setClients(cl)) : Promise.resolve(),
       );
     }
     if (section === "contracts" || section === "records") {
       fetches.push(
-        base44.entities.Client.filter({ status: "active" }, "name", 200).then(cl => setClients(cl)),
-        collaborators.length === 0 ? base44.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
+        maestro.entities.Client.filter({ status: "active" }, "name", 200).then(cl => setClients(cl)),
+        collaborators.length === 0 ? maestro.entities.Collaborator.list("name", 100).then(col => setCollaborators(col)) : Promise.resolve(),
       );
     }
 
@@ -407,7 +407,7 @@ export default function Reports() {
                 collaborators={collaborators}
                 isAdmin={isAdmin}
                 onRefresh={() => {
-                  base44.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running)));
+                  maestro.entities.Timesheet.list("-created_date", 1000).then(ts => setTimesheets(ts.filter(t => !t.is_running)));
                 }}
               />
             )}

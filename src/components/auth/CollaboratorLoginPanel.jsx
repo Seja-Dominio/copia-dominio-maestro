@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { loginCollaborator } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, User, AlertCircle, Zap, ArrowRight } from "lucide-react";
@@ -16,7 +16,7 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      const response = await base44.functions.invoke('collaboratorLogin', { login, password });
+      const response = await loginCollaborator({ login, password });
       const data = response.data;
 
       if (!data.success) {

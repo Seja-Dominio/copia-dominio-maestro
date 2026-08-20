@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { todayStr as getTodayStr } from "@/lib/dateUtils";
@@ -34,7 +34,7 @@ export default function DailySummaryPanel({ jobs, timesheets, collaborators, sub
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    base44.entities.JobHistory.filter({}, "-created_date", 5000).then(h => {
+    maestro.entities.JobHistory.filter({}, "-created_date", 5000).then(h => {
       setJobHistories(h.filter(e => e.created_date?.startsWith(selectedDate)));
     });
   }, [selectedDate]);

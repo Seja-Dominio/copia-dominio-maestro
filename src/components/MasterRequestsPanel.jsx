@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { ShieldCheck, ShieldX, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, parseISO } from "date-fns";
@@ -14,7 +14,7 @@ export default function MasterRequestsPanel() {
   const [processing, setProcessing] = useState(null);
 
   useEffect(() => {
-    base44.entities.MasterRequest.list("-created_date", 100).then(r => {
+    maestro.entities.MasterRequest.list("-created_date", 100).then(r => {
       setRequests(r);
     }).finally(() => setLoading(false));
   }, []);
@@ -25,7 +25,7 @@ export default function MasterRequestsPanel() {
   const handleAction = async (request, approved) => {
     setProcessing(request.id);
     try {
-      await base44.entities.MasterRequest.update(request.id, {
+      await maestro.entities.MasterRequest.update(request.id, {
         status: approved ? "approved" : "rejected",
         resolved_by: currentUser?.id,
         resolved_by_name: currentUser?.name,
@@ -33,7 +33,7 @@ export default function MasterRequestsPanel() {
       });
 
       // Notify requester
-      await base44.entities.Notification.create({
+      await maestro.entities.Notification.create({
         user_id: request.requester_id,
         type: approved ? "request_approved" : "request_rejected",
         title: approved ? "Requisição aprovada ✓" : "Requisição recusada",
@@ -48,11 +48,11 @@ export default function MasterRequestsPanel() {
       if (approved && request.entity_id) {
         try {
           if (request.action_type === "delete_client" && request.entity_id) {
-            await base44.entities.Client.delete(request.entity_id);
+            await maestro.entities.Client.delete(request.entity_id);
           } else if (request.action_type === "delete_project" && request.entity_id) {
-            await base44.entities.Project.delete(request.entity_id);
+            await maestro.entities.Project.delete(request.entity_id);
           } else if (request.action_type === "delete_collaborator" && request.entity_id) {
-            await base44.entities.Collaborator.update(request.entity_id, { is_active: false });
+            await maestro.entities.Collaborator.update(request.entity_id, { is_active: false });
           }
         } catch (err) {
           console.error("Erro ao executar ação aprovada:", err);

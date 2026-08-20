@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { X, Save, Trash2 } from "lucide-react";
 import { useConfirmDelete } from "@/components/ConfirmDeleteContext";
 import { safeDelete } from "@/lib/safeDelete";
@@ -97,9 +97,9 @@ export default function AgendaEventDrawer({ event, defaultDate, collaborators, c
     if (!form.title || !form.date || !form.activity_type) return;
     setSaving(true);
     if (event) {
-      await base44.entities.AgendaEvent.update(event.id, form);
+      await maestro.entities.AgendaEvent.update(event.id, form);
     } else {
-      await base44.entities.AgendaEvent.create(form);
+      await maestro.entities.AgendaEvent.create(form);
     }
     setSaving(false);
     onSaved();

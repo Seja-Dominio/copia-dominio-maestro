@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Search, RefreshCw, Instagram as InstagramIcon, Settings2 } from "lucide-react";
 import InsightsTab from "@/components/clients/InsightsTab";
 import InstagramSetupForm from "@/components/instagram/InstagramSetupForm";
@@ -18,7 +18,7 @@ export default function Instagram() {
   const [subTab, setSubTab] = useState("organico");
 
   useEffect(() => {
-    base44.entities.Client.filter({ status: "active" }, "name", 200).then(c => {
+    maestro.entities.Client.filter({ status: "active" }, "name", 200).then(c => {
       setClients(c);
       setLoading(false);
     });
@@ -97,7 +97,7 @@ function OrganicSection({ clients, allClients, setClients, search, setSearch, se
 
   function handleSetupSaved() {
     // Refresh clients list
-    base44.entities.Client.filter({ status: "active" }, "name", 200).then(c => {
+    maestro.entities.Client.filter({ status: "active" }, "name", 200).then(c => {
       setClients(c);
       setEditingInstagram(false);
     });

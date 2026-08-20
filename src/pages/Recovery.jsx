@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +63,7 @@ export default function Recovery() {
 
   async function loadData() {
     setLoading(true);
-    const logs = await base44.entities.DeleteLog.filter({ is_restored: false }, "-deleted_at", 1000);
+    const logs = await maestro.entities.DeleteLog.filter({ is_restored: false }, "-deleted_at", 1000);
     setDeleteLogs(logs);
     setLoading(false);
   }
@@ -129,10 +129,10 @@ export default function Recovery() {
       delete data.created_by_id;
 
       const entityName = ENTITY_MAP[dl.entity_type];
-      if (entityName && base44.entities[entityName]) {
-        await base44.entities[entityName].create(data);
+      if (entityName && maestro.entities[entityName]) {
+        await maestro.entities[entityName].create(data);
       }
-      await base44.entities.DeleteLog.update(dl.id, {
+      await maestro.entities.DeleteLog.update(dl.id, {
         is_restored: true,
         restored_at: new Date().toISOString(),
       });

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { ArrowLeft, Trash2, Loader2 } from "lucide-react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
@@ -22,7 +22,7 @@ export default function NoteEditorDrawer({ note, onClose, onUpdate, onDelete }) 
   function saveField(field, value) {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      base44.entities.Note.update(note.id, { [field]: value });
+      maestro.entities.Note.update(note.id, { [field]: value });
       onUpdate(note.id, { [field]: value });
     }, 600);
   }
@@ -32,7 +32,7 @@ export default function NoteEditorDrawer({ note, onClose, onUpdate, onDelete }) 
 
   async function handleDelete() {
     setDeleting(true);
-    await base44.entities.Note.delete(note.id);
+    await maestro.entities.Note.delete(note.id);
     onDelete(note.id);
     onClose();
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { CheckCircle2, RotateCcw, Loader2, AlertTriangle, Send, FileText, Calendar, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import JobApprovalAttachments from "@/components/approval/JobApprovalAttachments";
@@ -26,7 +26,7 @@ export default function JobApproval() {
       }
       try {
         // Use handleJobApproval with a "load" action to get job data, or fetch directly
-        const jobs = await base44.entities.Job.filter({ id: jobId });
+        const jobs = await maestro.entities.Job.filter({ id: jobId });
         const found = jobs[0];
         if (!found) {
           setError("Job não encontrado.");
@@ -46,7 +46,7 @@ export default function JobApproval() {
     if (action === "request_changes" && !feedback.trim()) return;
     setSubmitting(true);
     try {
-      const res = await base44.functions.invoke("handleJobApproval", {
+      const res = await maestro.functions.invoke("handleJobApproval", {
         jobId, token, action, feedback: feedback.trim(),
       });
       setResult(res.data);

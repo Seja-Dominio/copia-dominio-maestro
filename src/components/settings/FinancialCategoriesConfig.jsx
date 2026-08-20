@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -153,7 +153,7 @@ export default function FinancialCategoriesConfig() {
   const [loading, setLoading] = useState(true);
 
   const loadCategories = useCallback(async () => {
-    const data = await base44.entities.FinancialCategory.list("order", 200);
+    const data = await maestro.entities.FinancialCategory.list("order", 200);
     setCategories(data);
     setLoading(false);
   }, []);
@@ -162,7 +162,7 @@ export default function FinancialCategoriesConfig() {
 
   const handleAdd = async (parentKey, type, name) => {
     const subs = categories.filter(c => c.parent_key === parentKey);
-    await base44.entities.FinancialCategory.create({
+    await maestro.entities.FinancialCategory.create({
       parent_key: parentKey,
       name,
       type,
@@ -173,17 +173,17 @@ export default function FinancialCategoriesConfig() {
   };
 
   const handleToggle = async (id, isActive) => {
-    await base44.entities.FinancialCategory.update(id, { is_active: isActive });
+    await maestro.entities.FinancialCategory.update(id, { is_active: isActive });
     setCategories(prev => prev.map(c => c.id === id ? { ...c, is_active: isActive } : c));
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.FinancialCategory.delete(id);
+    await maestro.entities.FinancialCategory.delete(id);
     setCategories(prev => prev.filter(c => c.id !== id));
   };
 
   const handleEdit = async (id, name) => {
-    await base44.entities.FinancialCategory.update(id, { name });
+    await maestro.entities.FinancialCategory.update(id, { name });
     setCategories(prev => prev.map(c => c.id === id ? { ...c, name } : c));
   };
 

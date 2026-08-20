@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Settings, Eye, EyeOff, X, GripVertical, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 export const WIDGET_OPTIONS = [
@@ -87,7 +87,7 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await base44.entities.Collaborator.update(collaboratorId, {
+      await maestro.entities.Collaborator.update(collaboratorId, {
         dashboard_widgets: widgets,
         dashboard_layout: order,
       });

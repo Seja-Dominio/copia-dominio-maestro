@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { FileDown, FileCode, Loader2 } from "lucide-react";
 import { format } from "date-fns";
@@ -30,7 +30,7 @@ export default function SystemExportPanel() {
   const handleReport = async () => {
     setLoadingReport(true);
     try {
-      const res = await base44.functions.invoke("generateSystemReport", {});
+      const res = await maestro.functions.invoke("generateSystemReport", {});
       const { markdown, filename } = res.data;
       downloadMd(markdown, filename || `relatorio-sistema-${format(new Date(), "yyyy-MM-dd")}.md`);
     } catch (err) {
@@ -44,7 +44,7 @@ export default function SystemExportPanel() {
   const handleBlueprint = async () => {
     setLoadingBlueprint(true);
     try {
-      const res = await base44.functions.invoke("exportSystemBlueprint", {});
+      const res = await maestro.functions.invoke("exportSystemBlueprint", {});
       const { markdown, filename } = res.data;
       downloadMd(markdown, filename || `dominio-maestro-blueprint-${format(new Date(), "yyyy-MM-dd")}.md`);
     } catch (err) {

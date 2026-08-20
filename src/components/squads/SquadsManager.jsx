@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +30,8 @@ export default function SquadsManager() {
   async function loadData() {
     setLoading(true);
     const [s, c] = await Promise.all([
-      base44.entities.Squad.list("name", 100),
-      base44.entities.Collaborator.list("name", 200),
+      maestro.entities.Squad.list("name", 100),
+      maestro.entities.Collaborator.list("name", 200),
     ]);
     setSquads(s);
     setCollaborators(c.filter(col => col.is_active !== false));
@@ -40,7 +40,7 @@ export default function SquadsManager() {
 
   async function createSquad() {
     if (!newName.trim()) return;
-    const created = await base44.entities.Squad.create({
+    const created = await maestro.entities.Squad.create({
       name: newName.trim(),
       color: newColor,
       members: [],
@@ -54,21 +54,21 @@ export default function SquadsManager() {
 
   async function renameSquad(id) {
     if (!editName.trim()) return;
-    await base44.entities.Squad.update(id, { name: editName.trim() });
+    await maestro.entities.Squad.update(id, { name: editName.trim() });
     setSquads(prev => prev.map(s => s.id === id ? { ...s, name: editName.trim() } : s));
     setEditingId(null);
   }
 
   async function deleteSquad(id) {
     if (!window.confirm("Excluir este squad?")) return;
-    await base44.entities.Squad.delete(id);
+    await maestro.entities.Squad.delete(id);
     setSquads(prev => prev.filter(s => s.id !== id));
   }
 
   async function removeMember(squadId, collabId) {
     const squad = squads.find(s => s.id === squadId);
     const updatedMembers = (squad.members || []).filter(m => m.collaborator_id !== collabId);
-    await base44.entities.Squad.update(squadId, { members: updatedMembers });
+    await maestro.entities.Squad.update(squadId, { members: updatedMembers });
     setSquads(prev => prev.map(s => s.id === squadId ? { ...s, members: updatedMembers } : s));
   }
 
@@ -82,7 +82,7 @@ export default function SquadsManager() {
         return { collaborator_id: id, collaborator_name: c?.name || "" };
       });
     const updatedMembers = [...(squad.members || []), ...newMembers];
-    await base44.entities.Squad.update(squadId, { members: updatedMembers });
+    await maestro.entities.Squad.update(squadId, { members: updatedMembers });
     setSquads(prev => prev.map(s => s.id === squadId ? { ...s, members: updatedMembers } : s));
     setPickerSquadId(null);
   }
@@ -102,7 +102,7 @@ export default function SquadsManager() {
     if (source.droppableId === destination.droppableId) {
       // Reorder within same squad
       sourceMembers.splice(destination.index, 0, moved);
-      base44.entities.Squad.update(sourceSquad.id, { members: sourceMembers });
+      maestro.entities.Squad.update(sourceSquad.id, { members: sourceMembers });
       setSquads(prev => prev.map(s => s.id === sourceSquad.id ? { ...s, members: sourceMembers } : s));
     } else {
       // Move to different squad — check for duplicate
@@ -110,8 +110,8 @@ export default function SquadsManager() {
       if (destMembers.some(m => m.collaborator_id === moved.collaborator_id)) return;
       destMembers.splice(destination.index, 0, moved);
       Promise.all([
-        base44.entities.Squad.update(sourceSquad.id, { members: sourceMembers }),
-        base44.entities.Squad.update(destSquad.id, { members: destMembers }),
+        maestro.entities.Squad.update(sourceSquad.id, { members: sourceMembers }),
+        maestro.entities.Squad.update(destSquad.id, { members: destMembers }),
       ]);
       setSquads(prev => prev.map(s => {
         if (s.id === sourceSquad.id) return { ...s, members: sourceMembers };

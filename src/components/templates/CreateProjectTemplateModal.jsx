@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Plus, Trash2 } from "lucide-react";
@@ -13,7 +13,7 @@ export default function CreateProjectTemplateModal({ onClose, onCreate, editingT
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    base44.entities.JobTemplate.list("name", 100).then(setJobTemplates);
+    maestro.entities.JobTemplate.list("name", 100).then(setJobTemplates);
   }, []);
 
   function toggleJob(id) {
@@ -33,9 +33,9 @@ export default function CreateProjectTemplateModal({ onClose, onCreate, editingT
     const payload = { name: name.trim(), jobs };
     let result;
     if (editingTemplate) {
-      result = await base44.entities.ProjectTemplate.update(editingTemplate.id, payload);
+      result = await maestro.entities.ProjectTemplate.update(editingTemplate.id, payload);
     } else {
-      result = await base44.entities.ProjectTemplate.create(payload);
+      result = await maestro.entities.ProjectTemplate.create(payload);
     }
     onCreate(result);
   }

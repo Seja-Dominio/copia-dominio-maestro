@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { PiggyBank, Plus, ArrowLeftRight, ChevronDown, Trash2, Wallet } from "lucide-react";
 import SavingsBoxModal from "./SavingsBoxModal";
 import SavingsTransferModal from "./SavingsTransferModal";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 
 function fmtR(val) {
   return `R$ ${(val || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
@@ -27,9 +27,9 @@ export default function AccountBalancesTab({ accounts, savingsBoxes, onRefresh }
     if (!window.confirm(`Excluir caixinha "${box.name}"? O saldo de ${fmtR(box.balance)} será devolvido à conta corrente.`)) return;
     if (box.balance > 0) {
       const acc = accounts.find(a => a.id === box.bank_account_id);
-      if (acc) await base44.entities.BankAccount.update(acc.id, { balance: (acc.balance || 0) + box.balance });
+      if (acc) await maestro.entities.BankAccount.update(acc.id, { balance: (acc.balance || 0) + box.balance });
     }
-    await base44.entities.SavingsBox.update(box.id, { is_active: false, balance: 0 });
+    await maestro.entities.SavingsBox.update(box.id, { is_active: false, balance: 0 });
     onRefresh?.();
   }
 

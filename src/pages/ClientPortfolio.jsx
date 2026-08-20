@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Search, Filter, Crown, Users, TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
@@ -39,10 +39,10 @@ export default function ClientPortfolio() {
 
   const load = useCallback(async () => {
     const [c, h, e, fe] = await Promise.all([
-      base44.entities.Client.list("name", 200),
-      base44.entities.NpsHistory.list("-created_date", 500),
-      base44.entities.NpsEntry.list("-created_date", 200),
-      base44.entities.FinancialEntry.filter({ type: "revenue", origin: "fee_contract" }, "-due_date", 500),
+      maestro.entities.Client.list("name", 200),
+      maestro.entities.NpsHistory.list("-created_date", 500),
+      maestro.entities.NpsEntry.list("-created_date", 200),
+      maestro.entities.FinancialEntry.filter({ type: "revenue", origin: "fee_contract" }, "-due_date", 500),
     ]);
     setClients(c);
     setNpsHistory(h);

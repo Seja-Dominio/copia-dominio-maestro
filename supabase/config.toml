@@ -1,0 +1,2 @@
+[functions.collaborator-login]
+verify_jwt = false

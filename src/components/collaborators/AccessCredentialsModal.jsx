@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,7 +60,7 @@ export default function AccessCredentialsModal({
     try {
       if (collaborator?.id) {
         // Salvar credenciais com senha hasheada via backend
-        await base44.functions.invoke('hashCollaboratorPassword', {
+        await maestro.functions.invoke('hashCollaboratorPassword', {
           collaboratorId: collaborator.id,
           password: formData.password_hash,
           login: formData.login,

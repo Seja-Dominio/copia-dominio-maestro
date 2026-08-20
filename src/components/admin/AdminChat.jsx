@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { MessageCircle, X, Send, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -38,12 +38,12 @@ export default function AdminChat() {
     const bigFields = ["briefing", "caption", "schedule_data", "password_hash", "attachments", "contacts", "permissions", "dashboard_widgets", "dashboard_layout", "financial_widgets", "financial_layout", "items", "subtasks"];
     
     const [clients, jobs, collaborators, subtasks, events, timesheets] = await Promise.all([
-      base44.entities.Client.list("name", 200),
-      base44.entities.Job.list("-created_date", 150),
-      base44.entities.Collaborator.list("name", 100),
-      base44.entities.Subtask.list("-created_date", 300),
-      base44.entities.AgendaEvent.list("-date", 200),
-      base44.entities.Timesheet.list("-created_date", 300),
+      maestro.entities.Client.list("name", 200),
+      maestro.entities.Job.list("-created_date", 150),
+      maestro.entities.Collaborator.list("name", 100),
+      maestro.entities.Subtask.list("-created_date", 300),
+      maestro.entities.AgendaEvent.list("-date", 200),
+      maestro.entities.Timesheet.list("-created_date", 300),
     ]);
 
     return {
@@ -72,7 +72,7 @@ export default function AdminChat() {
 
       const today = new Date().toISOString().split("T")[0];
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await maestro.integrations.Core.InvokeLLM({
         prompt: `Você é o assistente administrativo da agência de marketing "Domínio Performance", integrado ao sistema AgênciaOS.
 
 Você tem acesso aos DADOS REAIS do sistema abaixo. Use APENAS estes dados para responder — nunca invente informações.

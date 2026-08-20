@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 
 /**
@@ -9,9 +9,9 @@ export async function checkAndApplyLatePostPenalties() {
   const today = format(new Date(), "yyyy-MM-dd");
 
   const [jobs, clients, history] = await Promise.all([
-    base44.entities.Job.list("-post_date", 500),
-    base44.entities.Client.filter({ status: "active" }, "name", 200),
-    base44.entities.NpsHistory.filter({ event_type: "late_post" }, "-created_date", 1000),
+    maestro.entities.Job.list("-post_date", 500),
+    maestro.entities.Client.filter({ status: "active" }, "name", 200),
+    maestro.entities.NpsHistory.filter({ event_type: "late_post" }, "-created_date", 1000),
   ]);
 
   // Jobs that are late (post_date < today, not completed/scheduled)
@@ -36,7 +36,7 @@ export async function checkAndApplyLatePostPenalties() {
     const scoreAfter = Math.max(0, scoreBefore - 1);
 
     await Promise.all([
-      base44.entities.NpsHistory.create({
+      maestro.entities.NpsHistory.create({
         client_id: client.id,
         client_name: client.name,
         event_type: "late_post",
@@ -47,7 +47,7 @@ export async function checkAndApplyLatePostPenalties() {
         job_id: job.id,
         job_title: job.title,
       }),
-      base44.entities.Client.update(client.id, { nps_score: scoreAfter }),
+      maestro.entities.Client.update(client.id, { nps_score: scoreAfter }),
     ]);
   }
 }

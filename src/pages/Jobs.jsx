@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -53,10 +53,10 @@ export default function Jobs() {
   const [activeCollaborators, setActiveCollaborators] = useState([]);
 
   useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
+    maestro.auth.me().then(setUser).catch(() => {});
     loadData();
-    base44.entities.Collaborator.filter({ is_active: true }, "name", 100).then(setActiveCollaborators);
-    base44.entities.Client.filter({ status: "active" }, "name", 500).then(setActiveClients);
+    maestro.entities.Collaborator.filter({ is_active: true }, "name", 100).then(setActiveCollaborators);
+    maestro.entities.Client.filter({ status: "active" }, "name", 500).then(setActiveClients);
   }, []);
 
   // Salvar view quando mudar
@@ -67,9 +67,9 @@ export default function Jobs() {
   const loadData = useCallback(async () => {
     setLoading(true);
     const [j, s, p] = await Promise.all([
-      base44.entities.Job.list("-post_date", 5000),
-      base44.entities.Subtask.list("-created_date", 5000),
-      base44.entities.Project.list("-created_date", 5000),
+      maestro.entities.Job.list("-post_date", 5000),
+      maestro.entities.Subtask.list("-created_date", 5000),
+      maestro.entities.Project.list("-created_date", 5000),
     ]);
     // Only keep jobs from active projects (not completed/archived, and current or future reference_month)
     const currentMonth = format(new Date(), "yyyy-MM");
@@ -123,7 +123,7 @@ export default function Jobs() {
     // Optimistic update
     setJobs(curr => curr.map(j => j.id === jobId ? { ...j, status } : j));
     try {
-      await base44.entities.Job.update(jobId, { status });
+      await maestro.entities.Job.update(jobId, { status });
     } catch {
       // Revert on error
       setJobs(curr => curr.map(j => j.id === jobId ? { ...j, status: prev } : j));
@@ -151,7 +151,7 @@ export default function Jobs() {
 
   const [availableTeams, setAvailableTeams] = useState([]);
   useEffect(() => {
-    base44.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
+    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
       setAvailableTeams(squads.map(s => s.name).sort());
     });
   }, []);
@@ -308,7 +308,7 @@ export default function Jobs() {
                 onSubtaskComplete={async (subtaskId) => {
                   // Optimistic: remove from list immediately
                   setSubtasks(prev => prev.map(s => s.id === subtaskId ? { ...s, status: "completed", is_completed: true } : s));
-                  await base44.entities.Subtask.update(subtaskId, { status: "completed", is_completed: true, completed_at: new Date().toISOString() });
+                  await maestro.entities.Subtask.update(subtaskId, { status: "completed", is_completed: true, completed_at: new Date().toISOString() });
                 }}
               />
             )}
@@ -400,7 +400,7 @@ export default function Jobs() {
             setSelectedJob(updated);
           }}
           onSubtasksChange={async () => {
-            const s = await base44.entities.Subtask.list("-created_date", 5000);
+            const s = await maestro.entities.Subtask.list("-created_date", 5000);
             setSubtasks(s);
           }}
         />,
@@ -426,7 +426,7 @@ function TimesheetView() {
 
   useEffect(() => {
     const loadTimesheets = async () => {
-      const ts = await base44.entities.Timesheet.list("-created_date", 200);
+      const ts = await maestro.entities.Timesheet.list("-created_date", 200);
       setTimesheets(ts);
     };
     

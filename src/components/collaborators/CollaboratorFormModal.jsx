@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check } from "lucide-react";
@@ -50,9 +50,9 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
     };
     let result;
     if (collaborator?.id) {
-      result = await base44.entities.Collaborator.update(collaborator.id, data);
+      result = await maestro.entities.Collaborator.update(collaborator.id, data);
     } else {
-      result = await base44.entities.Collaborator.create(data);
+      result = await maestro.entities.Collaborator.create(data);
     }
     onSave(result);
   }
