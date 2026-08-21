@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
+import { getCurrentCollaborator, invokeMaestroFunction, logoutCollaborator } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, Trash2, AlertTriangle, Loader2 } from "lucide-react";
@@ -12,7 +12,7 @@ export default function Settings() {
   const [deleteResult, setDeleteResult] = useState(null);
 
   useEffect(() => {
-    maestro.auth.me().then(setUser).catch(() => {});
+    setUser(getCurrentCollaborator());
   }, []);
 
   const handleDeleteAccount = async () => {
@@ -29,7 +29,8 @@ export default function Settings() {
         sessionStorage.removeItem("collaborator_session_token");
         sessionStorage.removeItem("lastRoute");
         localStorage.clear();
-        maestro.auth.logout();
+        logoutCollaborator();
+        window.location.href = "/";
       }, 2000);
     } else {
       setDeleteResult("error");
@@ -52,7 +53,7 @@ export default function Settings() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm"><span className="font-medium">Nome:</span> {user.full_name}</p>
+            <p className="text-sm"><span className="font-medium">Nome:</span> {user.full_name || user.name}</p>
             <p className="text-sm"><span className="font-medium">Email:</span> {user.email}</p>
           </CardContent>
         </Card>

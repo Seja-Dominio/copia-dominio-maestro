@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { maestro } from '@/api/maestroClient';
 
 const AuthContext = createContext();
 

@@ -13,7 +13,7 @@ import {
   HelpCircle, ChevronDown, ChevronLeft,
   Sun, Moon, Settings, FileCheck } from "lucide-react";
 
-import { maestro } from "@/api/maestroClient";
+import { getCurrentCollaborator, logoutCollaborator, maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -60,10 +60,7 @@ export default function Layout({ children, currentPageName }) {
   // Inatividade gerenciada pelo InactivityGuard (em App.jsx)    
   useEffect(() => {
     const loadUser = async () => {
-      try {
-        const u = await maestro.auth.me();
-        if (u) setUser(u);
-      } catch {}
+      setUser(getCurrentCollaborator());
     };
     loadUser();
     const collabSession = sessionStorage.getItem("collaborator");
@@ -174,9 +171,8 @@ export default function Layout({ children, currentPageName }) {
                 onToggleDark={() => setDarkMode(d => !d)}
                 isAdmin={collaboratorData?.access_level === "admin"}
                 onLogout={() => {
-                  sessionStorage.removeItem("collaborator");
-                  sessionStorage.removeItem("collaborator_session_token");
-                  maestro.auth.logout();
+                  logoutCollaborator();
+                  window.location.href = "/";
                 }}
               />
             </div>
@@ -217,9 +213,8 @@ export default function Layout({ children, currentPageName }) {
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
-                    sessionStorage.removeItem("collaborator");
-                    sessionStorage.removeItem("collaborator_session_token");
-                    maestro.auth.logout();
+                    logoutCollaborator();
+                    window.location.href = "/";
                   }}>
                     Sair
                   </DropdownMenuItem>

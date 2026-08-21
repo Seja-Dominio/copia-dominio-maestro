@@ -86,6 +86,19 @@ export function invokeMaestroFunction(name, payload) {
   return maestro.functions.invoke(name, payload);
 }
 
+export function getCurrentCollaborator() {
+  try {
+    return JSON.parse(sessionStorage.getItem('collaborator') || 'null');
+  } catch {
+    return null;
+  }
+}
+
+export function logoutCollaborator() {
+  sessionStorage.removeItem('collaborator');
+  sessionStorage.removeItem('collaborator_session_token');
+}
+
 const authProvider = import.meta.env.VITE_MAESTRO_AUTH_PROVIDER || 'base44';
 
 export const loginCollaborator = async (credentials) => {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
-import { maestro } from "@/api/maestroClient";
+import { getCurrentCollaborator, maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +53,7 @@ export default function Jobs() {
   const [activeCollaborators, setActiveCollaborators] = useState([]);
 
   useEffect(() => {
-    maestro.auth.me().then(setUser).catch(() => {});
+    setUser(getCurrentCollaborator());
     loadData();
     maestro.entities.Collaborator.filter({ is_active: true }, "name", 100).then(setActiveCollaborators);
     maestro.entities.Client.filter({ status: "active" }, "name", 500).then(setActiveClients);
