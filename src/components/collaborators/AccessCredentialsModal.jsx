@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { maestro } from "@/api/maestroClient";
+import { hashCollaboratorPassword } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,7 +60,7 @@ export default function AccessCredentialsModal({
     try {
       if (collaborator?.id) {
         // Salvar credenciais com senha hasheada via backend
-        await maestro.functions.invoke('hashCollaboratorPassword', {
+        await hashCollaboratorPassword({
           collaboratorId: collaborator.id,
           password: formData.password_hash,
           login: formData.login,

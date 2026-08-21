@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createPageUrl } from "@/utils";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { maestro } from "@/api/maestroClient";
+import { getDashboardData } from "@/api/maestroClient";
 import {
   Briefcase, AlertCircle, Users, AlertTriangle, XCircle, GripVertical, Lock, Unlock, EyeOff, Eye
 } from "lucide-react";
@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await maestro.functions.invoke('getDashboardData', { collaborator_id: sessionCollaborator?.id });
+      const res = await getDashboardData({ collaborator_id: sessionCollaborator?.id });
       const d = res?.data || {};
       setProjects(Array.isArray(d.projects) ? d.projects : []);
       setJobs(Array.isArray(d.jobs) ? d.jobs : (d.jobs ? JSON.parse(d.jobs) : []));

@@ -5,6 +5,25 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 
+export async function invokeSupabaseFunction(name, body = {}) {
+  if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
+  const sessionToken = sessionStorage.getItem('collaborator_session_token');
+  if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
+
+  const response = await fetch(`${url}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Erro ao executar ${name}.`);
+  return data;
+}
+
 export async function loginCollaboratorWithSupabase({ login, password }) {
   if (!supabase) throw new Error('Supabase não está configurado neste ambiente.');
 
