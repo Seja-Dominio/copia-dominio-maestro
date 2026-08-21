@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { X, Send, MessageSquare, Check, AlertCircle, Image, FileText, RefreshCw, CheckSquare, Square } from "lucide-react";
 
@@ -117,7 +117,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     try {
       // If text only or no attachments selected, send text
       if (toSend.length === 0 && caption.trim()) {
-        const result = await maestro.functions.invoke("sendWhatsapp", {
+        const result = await invokeMaestroFunction("sendWhatsapp", {
           phone: groupId,
           message: caption,
         });
@@ -139,7 +139,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
           console.log("phone/groupId:", groupId);
           setSendProgress({ current: i + 1, total });
 
-          const result = await maestro.functions.invoke("sendWhatsappFile", {
+          const result = await invokeMaestroFunction("sendWhatsappFile", {
             phone: groupId,
             fileUrl: att.url,
             caption: i === 0 ? caption : "", // Caption only on first file

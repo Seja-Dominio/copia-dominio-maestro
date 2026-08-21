@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { CheckCircle2, RotateCcw, Loader2, AlertTriangle, Send, FileText, Calendar, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import JobApprovalAttachments from "@/components/approval/JobApprovalAttachments";
@@ -46,7 +46,7 @@ export default function JobApproval() {
     if (action === "request_changes" && !feedback.trim()) return;
     setSubmitting(true);
     try {
-      const res = await maestro.functions.invoke("handleJobApproval", {
+      const res = await invokeMaestroFunction("handleJobApproval", {
         jobId, token, action, feedback: feedback.trim(),
       });
       setResult(res.data);

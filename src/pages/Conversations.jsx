@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, Settings, Check, AlertCircle, ChevronDown, Users, X } from "lucide-react";
@@ -35,7 +35,7 @@ function SingleSend({ clients }) {
     setSending(true);
     setStatus(null);
     try {
-      const res = await maestro.functions.invoke("sendWhatsapp", { phone: selectedClient.whatsapp_group_id, message: message.trim() });
+      const res = await invokeMaestroFunction("sendWhatsapp", { phone: selectedClient.whatsapp_group_id, message: message.trim() });
       if (res.data?.success) { setStatus({ type: "success", text: "Mensagem enviada!" }); setMessage(""); }
       else setStatus({ type: "error", text: res.data?.error || "Erro ao enviar." });
     } catch (e) {
@@ -167,7 +167,7 @@ function BulkSend({ clients }) {
     const res = [];
     for (const client of toSend) {
       try {
-        const r = await maestro.functions.invoke("sendWhatsapp", { phone: client.whatsapp_group_id, message: message.trim() });
+        const r = await invokeMaestroFunction("sendWhatsapp", { phone: client.whatsapp_group_id, message: message.trim() });
         res.push({ name: client.name, status: r.data?.success ? "ok" : "error", error: r.data?.error });
       } catch (e) {
         res.push({ name: client.name, status: "error", error: e.message });

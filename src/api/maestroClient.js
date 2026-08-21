@@ -65,6 +65,12 @@ export async function hashCollaboratorPassword(payload) {
   return { data: await invokeSupabaseFunction('hash-collaborator-password', payload) };
 }
 
+// Temporary compatibility boundary for functions that have not been ported yet.
+// Keeping this call here lets each function switch providers independently.
+export function invokeMaestroFunction(name, payload) {
+  return maestro.functions.invoke(name, payload);
+}
+
 const authProvider = import.meta.env.VITE_MAESTRO_AUTH_PROVIDER || 'base44';
 
 export const loginCollaborator = async (credentials) => {

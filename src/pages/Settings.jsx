@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, Trash2, AlertTriangle, Loader2 } from "lucide-react";
@@ -19,7 +19,7 @@ export default function Settings() {
     setIsDeleting(true);
     setDeleteResult(null);
 
-    const response = await maestro.functions.invoke("deleteAccount", {});
+    const response = await invokeMaestroFunction("deleteAccount", {});
 
     if (response.data?.success) {
       setDeleteResult("success");

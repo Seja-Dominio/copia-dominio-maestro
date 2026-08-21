@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, MessageSquare, RefreshCw, Check, Crown } from "lucide-react";
@@ -82,7 +82,7 @@ export default function ClientFormModal({ client, onClose, onSave }) {
     setLoadingGroups(true);
     setGroupDropdown(true);
     try {
-      const res = await maestro.functions.invoke("listWhatsappGroups", {});
+      const res = await invokeMaestroFunction("listWhatsappGroups", {});
       setGroups(res.data?.groups || []);
     } catch {
       setGroups([]);

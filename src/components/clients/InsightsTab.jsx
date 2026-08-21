@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { maestro } from "@/api/maestroClient";
+import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -59,7 +59,7 @@ export default function InsightsTab({ client }) {
   async function handleSync() {
     if (!client.instagram_account_id) return;
     setSyncing(true);
-    await maestro.functions.invoke("fetchInstagramInsights", {
+    await invokeMaestroFunction("fetchInstagramInsights", {
       client_id: client.id,
       instagram_account_id: client.instagram_account_id,
     });
@@ -69,7 +69,7 @@ export default function InsightsTab({ client }) {
 
   async function handleGenerateAI() {
     setAiLoading(true);
-    const res = await maestro.functions.invoke("generateAIInsights", {
+    const res = await invokeMaestroFunction("generateAIInsights", {
       client_id: client.id,
       client_name: client.name,
       date_from: dateFrom,
