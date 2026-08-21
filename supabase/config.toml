@@ -1,2 +1,5 @@
 [functions.collaborator-login]
 verify_jwt = false
+
+[functions.maestro-data]
+verify_jwt = false

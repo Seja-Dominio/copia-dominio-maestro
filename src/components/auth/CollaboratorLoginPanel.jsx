@@ -28,6 +28,9 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
 
       // Salvar dados do colaborador na sessão
       sessionStorage.setItem("collaborator", JSON.stringify(collaborator));
+      if (data.session_token) {
+        sessionStorage.setItem("collaborator_session_token", data.session_token);
+      }
 
       onLoginSuccess?.(collaborator);
     } catch (err) {

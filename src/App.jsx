@@ -131,6 +131,7 @@ const AuthenticatedApp = () => {
 
   const handleInactivityLogout = () => {
     sessionStorage.removeItem("collaborator");
+    sessionStorage.removeItem("collaborator_session_token");
     window.location.href = "/";
   };
 

@@ -38,6 +38,7 @@ export const AuthProvider = ({ children }) => {
   const navigateToLogin = () => {
     setUser(null);
     sessionStorage.removeItem('collaborator');
+    sessionStorage.removeItem('collaborator_session_token');
     // Reload para voltar à tela de login
     window.location.href = '/';
   };

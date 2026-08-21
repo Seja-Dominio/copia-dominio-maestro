@@ -12,6 +12,29 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+function encode(value: string) {
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decode(value: string) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return atob(padded);
+}
+
+async function signSession(payload: Record<string, unknown>) {
+  const body = encode(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(sessionSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return `${body}.${encode(String.fromCharCode(...new Uint8Array(signature)))}`;
+}
 
 async function verifyPassword(password: string, storedHash: string) {
   // Compatibilidade com os hashes SHA-256+salt e com registros plaintext legados.
@@ -56,7 +79,13 @@ Deno.serve(async (request) => {
       return json({ error: "Sua conta está desativada. Contate o administrador." }, 403);
     }
 
-    return json({ success: true, collaborator: data.profile });
+    const sessionToken = await signSession({
+      sub: data.id,
+      access_level: data.profile.access_level || "collaborator",
+      exp: Math.floor(Date.now() / 1000) + (8 * 60 * 60),
+    });
+
+    return json({ success: true, collaborator: data.profile, session_token: sessionToken });
   } catch (error) {
     console.error("Collaborator login error:", error);
     return json({ error: "Erro ao autenticar. Tente novamente." }, 500);

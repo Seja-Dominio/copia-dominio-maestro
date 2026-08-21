@@ -6,9 +6,13 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { loginCollaboratorWithSupabase } from '@/api/supabaseClient';
+import { createSupabaseEntities, loginCollaboratorWithSupabase } from '@/api/supabaseClient';
 
-export const maestro = base44;
+const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
+
+export const maestro = dataProvider === 'supabase'
+  ? { ...base44, entities: createSupabaseEntities() }
+  : base44;
 export { getPublicSettings };
 
 const authProvider = import.meta.env.VITE_MAESTRO_AUTH_PROVIDER || 'base44';

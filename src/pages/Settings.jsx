@@ -26,6 +26,7 @@ export default function Settings() {
       // Wait 2s to show success, then logout
       setTimeout(() => {
         sessionStorage.removeItem("collaborator");
+        sessionStorage.removeItem("collaborator_session_token");
         sessionStorage.removeItem("lastRoute");
         localStorage.clear();
         maestro.auth.logout();

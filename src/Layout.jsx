@@ -175,6 +175,7 @@ export default function Layout({ children, currentPageName }) {
                 isAdmin={collaboratorData?.access_level === "admin"}
                 onLogout={() => {
                   sessionStorage.removeItem("collaborator");
+                  sessionStorage.removeItem("collaborator_session_token");
                   maestro.auth.logout();
                 }}
               />
@@ -217,6 +218,7 @@ export default function Layout({ children, currentPageName }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
                     sessionStorage.removeItem("collaborator");
+                    sessionStorage.removeItem("collaborator_session_token");
                     maestro.auth.logout();
                   }}>
                     Sair
