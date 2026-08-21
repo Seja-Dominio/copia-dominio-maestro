@@ -85,13 +85,19 @@ function sortRows(rows: LegacyRow[], sort?: string) {
 }
 
 async function listRows(entity: string) {
-  const { data, error } = await supabase
-    .from("legacy_records")
-    .select("entity, record_id, payload, source_created_at, source_updated_at")
-    .eq("entity", entity)
-    .limit(100000);
-  if (error) throw error;
-  return (data || []) as LegacyRow[];
+  const rows: LegacyRow[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("legacy_records")
+      .select("entity, record_id, payload, source_created_at, source_updated_at")
+      .eq("entity", entity)
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...((data || []) as LegacyRow[]));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
 }
 
 async function handleOperation(body: Record<string, unknown>) {
