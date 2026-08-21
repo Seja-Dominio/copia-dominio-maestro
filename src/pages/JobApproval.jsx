@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
+import { getJobApproval, handleJobApproval } from "@/api/maestroClient";
 import { CheckCircle2, RotateCcw, Loader2, AlertTriangle, Send, FileText, Calendar, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import JobApprovalAttachments from "@/components/approval/JobApprovalAttachments";
@@ -25,9 +25,8 @@ export default function JobApproval() {
         return;
       }
       try {
-        // Use handleJobApproval with a "load" action to get job data, or fetch directly
-        const jobs = await maestro.entities.Job.filter({ id: jobId });
-        const found = jobs[0];
+        const response = await getJobApproval({ jobId, token });
+        const found = response?.data?.job;
         if (!found) {
           setError("Job não encontrado.");
         } else {
@@ -46,7 +45,7 @@ export default function JobApproval() {
     if (action === "request_changes" && !feedback.trim()) return;
     setSubmitting(true);
     try {
-      const res = await invokeMaestroFunction("handleJobApproval", {
+      const res = await handleJobApproval({
         jobId, token, action, feedback: feedback.trim(),
       });
       setResult(res.data);

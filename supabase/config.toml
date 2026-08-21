@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.hash-collaborator-password]
 verify_jwt = false
+
+[functions.handle-job-approval]
+verify_jwt = false

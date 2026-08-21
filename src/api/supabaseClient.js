@@ -24,6 +24,22 @@ export async function invokeSupabaseFunction(name, body = {}) {
   return data;
 }
 
+export async function invokePublicSupabaseFunction(name, body = {}) {
+  if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
+
+  const response = await fetch(`${url}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Erro ao executar ${name}.`);
+  return data;
+}
+
 export async function loginCollaboratorWithSupabase({ login, password }) {
   if (!supabase) throw new Error('Supabase não está configurado neste ambiente.');
 

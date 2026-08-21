@@ -6,7 +6,7 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { createSupabaseEntities, invokeSupabaseFunction, loginCollaboratorWithSupabase } from '@/api/supabaseClient';
+import { createSupabaseEntities, invokePublicSupabaseFunction, invokeSupabaseFunction, loginCollaboratorWithSupabase } from '@/api/supabaseClient';
 
 const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
 
@@ -63,6 +63,21 @@ export async function hashCollaboratorPassword(payload) {
   }
 
   return { data: await invokeSupabaseFunction('hash-collaborator-password', payload) };
+}
+
+export async function getJobApproval(payload) {
+  if (dataProvider === 'supabase') {
+    return { data: await invokePublicSupabaseFunction('handle-job-approval', { ...payload, action: 'load' }) };
+  }
+  const jobs = await maestro.entities.Job.filter({ id: payload.jobId });
+  return { data: { job: jobs[0] } };
+}
+
+export async function handleJobApproval(payload) {
+  if (dataProvider === 'supabase') {
+    return { data: await invokePublicSupabaseFunction('handle-job-approval', payload) };
+  }
+  return maestro.functions.invoke('handleJobApproval', payload);
 }
 
 // Temporary compatibility boundary for functions that have not been ported yet.
