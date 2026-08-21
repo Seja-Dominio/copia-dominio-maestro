@@ -44,6 +44,12 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function comparableDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function readExportRows(filePath) {
   const workbook = XLSX.readFile(filePath, { raw: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -173,7 +179,7 @@ async function verifyRecords(records) {
   const mismatched = [...localByKey.keys()].filter((key) => {
     const local = localByKey.get(key);
     const current = remoteByKey.get(key);
-    return current && local.source_updated_at !== current.source_updated_at;
+    return current && comparableDate(local.source_updated_at) !== comparableDate(current.source_updated_at);
   });
 
   console.log(`Destino: ${remote.length} registros`);
