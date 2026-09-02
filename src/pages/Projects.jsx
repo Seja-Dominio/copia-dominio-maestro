@@ -18,6 +18,7 @@ import ProjectJobsView from "../components/projects/ProjectJobsView";
 import AllJobsCalendar from "../components/projects/AllJobsCalendar";
 import BulkScheduleDownload from "../components/projects/BulkScheduleDownload";
 import { useStatusConfig } from "@/lib/AppConfigContext";
+import { isMaster } from "@/lib/accessControl";
 
 const statusConfig = {
   no_status: { label: "Sem status", color: "bg-gray-100 text-gray-600", icon: Circle },
@@ -177,7 +178,7 @@ export default function Projects() {
   const [pendingJobId, setPendingJobId] = useState(null);
 
   const collabSession = JSON.parse(sessionStorage.getItem("collaborator") || "null");
-  const isAdmin = collabSession?.access_level === "admin";
+  const isAdmin = isMaster(collabSession);
   const { statusList } = useStatusConfig();
 
   const [jobsByProject, setJobsByProject] = useState({});

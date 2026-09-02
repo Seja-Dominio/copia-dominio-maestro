@@ -13,6 +13,7 @@ import AccessCredentialsModal from "../components/collaborators/AccessCredential
 import ClientFormModal from "../components/clients/ClientFormModal";
 import SupplierFormModal from "../components/suppliers/SupplierFormModal";
 import SquadsManager from "../components/squads/SquadsManager";
+import { isMaster } from "@/lib/accessControl";
 
 const TABS = [
   { id: "clients", label: "Clientes", icon: Building2 },
@@ -30,7 +31,7 @@ export default function Records() {
   const [search, setSearch] = useState("");
 
   const sessionCollaborator = (() => { try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; } })();
-  const isAdmin = sessionCollaborator?.access_level === "admin";
+  const isAdmin = isMaster(sessionCollaborator);
   const [editingCollab, setEditingCollab] = useState(null);
   const [showCollabForm, setShowCollabForm] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);

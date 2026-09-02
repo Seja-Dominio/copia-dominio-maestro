@@ -1,4 +1,5 @@
 import { maestro } from "@/api/maestroClient";
+import { isMaster } from "@/lib/accessControl";
 
 /**
  * Safely deletes an entity record by first logging it to DeleteLog for recovery.
@@ -11,6 +12,10 @@ export async function safeDelete(entityType, entityName, entityData, opts = {}) 
   const collab = (() => {
     try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; }
   })();
+
+  if (!isMaster(collab)) {
+    throw new Error("Apenas o Master pode excluir este registro.");
+  }
 
   // Log to DeleteLog for recovery
   await maestro.entities.DeleteLog.create({
