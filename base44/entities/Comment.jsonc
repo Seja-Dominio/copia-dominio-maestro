@@ -1,0 +1,40 @@
+{
+  "name": "Comment",
+  "type": "object",
+  "properties": {
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "job",
+        "project",
+        "proposal"
+      ]
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "entity_title": {
+      "type": "string"
+    },
+    "author_name": {
+      "type": "string"
+    },
+    "author_avatar": {
+      "type": "string"
+    },
+    "content": {
+      "type": "string"
+    },
+    "mentions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "entity_type",
+    "entity_id",
+    "content"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "name": "MiniTask",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Texto da tarefa"
+    },
+    "is_completed": {
+      "type": "boolean",
+      "default": false
+    },
+    "completed_at": {
+      "type": "string",
+      "description": "ISO timestamp de conclus\u00e3o"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de prazo opcional"
+    },
+    "due_time": {
+      "type": "string",
+      "description": "Hor\u00e1rio de prazo (HH:mm)"
+    },
+    "collaborator_id": {
+      "type": "string",
+      "description": "ID do colaborador dono da tarefa"
+    },
+    "collaborator_name": {
+      "type": "string"
+    },
+    "sender_id": {
+      "type": "string",
+      "description": "ID do colaborador que enviou a tarefa (se diferente do dono)"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Nome do remetente"
+    },
+    "sender_access_level": {
+      "type": "string",
+      "description": "N\u00edvel de acesso do remetente (admin/collaborator)"
+    },
+    "priority": {
+      "type": "number",
+      "default": 0,
+      "description": "0=normal, 1=alta (vermelho), 2=urgente (preto)"
+    },
+    "priority_changed_by": {
+      "type": "string",
+      "description": "ID do admin que alterou a prioridade"
+    },
+    "priority_changed_by_name": {
+      "type": "string",
+      "description": "Nome do admin que alterou a prioridade"
+    },
+    "checklist": {
+      "type": "array",
+      "description": "Subtarefas/checklist da tarefa",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "title",
+    "collaborator_id"
+  ]
+}

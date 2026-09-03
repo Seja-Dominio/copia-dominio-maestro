@@ -1,0 +1,62 @@
+{
+  "name": "SavingsTransaction",
+  "type": "object",
+  "properties": {
+    "savings_box_id": {
+      "type": "string",
+      "description": "ID da caixinha"
+    },
+    "savings_box_name": {
+      "type": "string"
+    },
+    "bank_account_id": {
+      "type": "string"
+    },
+    "bank_account_name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "deposit",
+        "withdraw",
+        "yield"
+      ],
+      "description": "deposit=CC\u2192caixinha, withdraw=caixinha\u2192CC, yield=rendimento"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "savings_box_id",
+    "bank_account_id",
+    "type",
+    "amount"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

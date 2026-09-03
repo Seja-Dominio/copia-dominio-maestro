@@ -1,0 +1,158 @@
+{
+  "name": "Job",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "string",
+      "description": "Ex: 96.1"
+    },
+    "title": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "project_name": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "responsible_id": {
+      "type": "string"
+    },
+    "responsible_name": {
+      "type": "string"
+    },
+    "content_type": {
+      "type": "string",
+      "enum": [
+        "feed_card",
+        "reels",
+        "story",
+        "video",
+        "trafego_pago",
+        "card_trafego",
+        "video_trafego",
+        "foto",
+        "promocao",
+        "email",
+        "blog",
+        "outros"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "default": "pending_briefing",
+      "description": "Status do job (din\u00e2mico via AppConfig)"
+    },
+    "demand_type": {
+      "type": "string",
+      "description": "Tipo de demanda (ex: interna)"
+    },
+    "post_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "briefing": {
+      "type": "string"
+    },
+    "caption": {
+      "type": "string",
+      "description": "Legenda do post"
+    },
+    "reference_url": {
+      "type": "string",
+      "description": "Link de refer\u00eancia de v\u00eddeo/conte\u00fado para o cliente"
+    },
+    "template_id": {
+      "type": "string"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false
+    },
+    "score": {
+      "type": "number",
+      "default": 0
+    },
+    "estimated_hours": {
+      "type": "number"
+    },
+    "logged_hours": {
+      "type": "number",
+      "default": 0
+    },
+    "fee_contract_id": {
+      "type": "string"
+    },
+    "involved": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "description": "Anexos do job",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string"
+          },
+          "uploaded_at": {
+            "type": "string"
+          },
+          "annotations": {
+            "type": "array",
+            "description": "Coment\u00e1rios/anota\u00e7\u00f5es na imagem",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "title",
+    "project_id"
+  ]
+}

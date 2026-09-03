@@ -1,0 +1,78 @@
+{
+  "name": "Subtask",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "responsible_id": {
+      "type": "string"
+    },
+    "responsible_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "in_review",
+        "completed",
+        "blocked"
+      ],
+      "default": "pending"
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date"
+    },
+    "complete_at_status": {
+      "type": "string",
+      "description": "Etapa do job que conclui automaticamente esta tarefa"
+    },
+    "days_before_post": {
+      "type": "number"
+    },
+    "dependency_type": {
+      "type": "string",
+      "enum": [
+        "finish_to_start",
+        "start_to_start",
+        "finish_to_finish"
+      ],
+      "default": "finish_to_start"
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das subtarefas predecessoras"
+    },
+    "is_completed": {
+      "type": "boolean",
+      "default": false
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "order": {
+      "type": "number",
+      "default": 0
+    },
+    "notes": {
+      "type": "string"
+    },
+    "is_blocked": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "job_id",
+    "title"
+  ]
+}

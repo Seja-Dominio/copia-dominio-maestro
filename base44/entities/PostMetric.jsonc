@@ -1,0 +1,85 @@
+{
+  "name": "PostMetric",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string"
+    },
+    "post_id": {
+      "type": "string",
+      "description": "ID do post no Instagram"
+    },
+    "post_type": {
+      "type": "string",
+      "enum": [
+        "IMAGE",
+        "VIDEO",
+        "CAROUSEL_ALBUM",
+        "REELS"
+      ],
+      "description": "Tipo de m\u00eddia"
+    },
+    "caption": {
+      "type": "string",
+      "description": "Legenda do post"
+    },
+    "permalink": {
+      "type": "string",
+      "description": "Link do post"
+    },
+    "thumbnail_url": {
+      "type": "string",
+      "description": "URL da thumbnail"
+    },
+    "published_at": {
+      "type": "string",
+      "description": "Data/hora de publica\u00e7\u00e3o (ISO)"
+    },
+    "likes": {
+      "type": "number",
+      "default": 0
+    },
+    "comments": {
+      "type": "number",
+      "default": 0
+    },
+    "shares": {
+      "type": "number",
+      "default": 0
+    },
+    "saves": {
+      "type": "number",
+      "default": 0
+    },
+    "reach": {
+      "type": "number",
+      "default": 0
+    },
+    "impressions": {
+      "type": "number",
+      "default": 0
+    },
+    "video_views": {
+      "type": "number",
+      "default": 0
+    },
+    "engagement": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de intera\u00e7\u00f5es (likes+comments+shares+saves)"
+    },
+    "engagement_rate": {
+      "type": "number",
+      "default": 0,
+      "description": "Taxa de engajamento por alcance (%)"
+    },
+    "is_excluded": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "client_id",
+    "post_id"
+  ]
+}

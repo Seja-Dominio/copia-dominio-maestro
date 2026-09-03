@@ -1,0 +1,73 @@
+{
+  "name": "MasterRequest",
+  "type": "object",
+  "properties": {
+    "requester_id": {
+      "type": "string",
+      "description": "ID do colaborador que solicitou"
+    },
+    "requester_name": {
+      "type": "string"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "delete_client",
+        "delete_project",
+        "delete_collaborator",
+        "download_report",
+        "download_blueprint",
+        "other"
+      ],
+      "description": "Tipo de a\u00e7\u00e3o solicitada"
+    },
+    "entity_type": {
+      "type": "string",
+      "description": "Tipo da entidade alvo (client, project, collaborator, etc)"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID da entidade alvo"
+    },
+    "entity_name": {
+      "type": "string",
+      "description": "Nome/t\u00edtulo da entidade para exibi\u00e7\u00e3o"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o livre da requisi\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "resolved_by": {
+      "type": "string",
+      "description": "ID do master que aprovou/recusou"
+    },
+    "resolved_by_name": {
+      "type": "string"
+    },
+    "resolved_at": {
+      "type": "string",
+      "description": "Timestamp ISO da resolu\u00e7\u00e3o"
+    }
+  },
+  "required": [
+    "requester_id",
+    "requester_name",
+    "action_type",
+    "status"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}

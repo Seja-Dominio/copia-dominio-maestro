@@ -1,0 +1,24 @@
+{
+  "name": "AppConfig",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Identificador \u00fanico da configura\u00e7\u00e3o"
+    },
+    "value": {
+      "type": "object",
+      "description": "Valor da configura\u00e7\u00e3o (JSON livre)",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "key"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}

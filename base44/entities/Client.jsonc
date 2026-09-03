@@ -1,0 +1,156 @@
+{
+  "name": "Client",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome fantasia"
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Raz\u00e3o social"
+    },
+    "cnpj": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "responsible": {
+      "type": "string",
+      "description": "Respons\u00e1vel comercial na ag\u00eancia"
+    },
+    "birthday": {
+      "type": "string",
+      "format": "date"
+    },
+    "contacts": {
+      "type": "array",
+      "description": "Contatos do cliente com anivers\u00e1rios",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "birthday": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Servi\u00e7os prestados ao cliente",
+      "default": []
+    },
+    "monthly_deliveries": {
+      "type": "number",
+      "description": "Total de entregas mensais contratadas"
+    },
+    "contracted_cards": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de Cards"
+    },
+    "contracted_reels": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de Reels"
+    },
+    "contracted_promocoes": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de Promo\u00e7\u00f5es"
+    },
+    "contracted_vt": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de VT"
+    },
+    "contracted_foto": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de Fotos"
+    },
+    "contracted_stories": {
+      "type": "number",
+      "default": 0,
+      "description": "Qtd contratada de Stories"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "elite",
+        "performance",
+        "trafego",
+        ""
+      ],
+      "default": "",
+      "description": "Tarja do cliente: elite, performance ou trafego"
+    },
+    "nps_score": {
+      "type": "number",
+      "default": 100,
+      "description": "Nota NPS geral (0-100)"
+    },
+    "nps_justification": {
+      "type": "string",
+      "description": "Justificativa da \u00faltima altera\u00e7\u00e3o manual do NPS"
+    },
+    "nps_manual_override": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se a nota foi alterada manualmente"
+    },
+    "whatsapp_group_id": {
+      "type": "string",
+      "description": "ID do grupo WhatsApp do cliente (ex: 120363xxxxxx@g.us)"
+    },
+    "instagram_account_id": {
+      "type": "string",
+      "description": "ID da conta Instagram Business (Meta Graph API)"
+    },
+    "instagram_username": {
+      "type": "string",
+      "description": "Username do Instagram do cliente (ex: @dominio)"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}

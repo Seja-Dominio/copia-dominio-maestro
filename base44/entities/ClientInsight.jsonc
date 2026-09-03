@@ -1,0 +1,57 @@
+{
+  "name": "ClientInsight",
+  "type": "object",
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "ID do cliente"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data do registro di\u00e1rio"
+    },
+    "followers_count": {
+      "type": "number",
+      "default": 0
+    },
+    "followers_change": {
+      "type": "number",
+      "default": 0,
+      "description": "Varia\u00e7\u00e3o de seguidores no dia"
+    },
+    "engagement_rate": {
+      "type": "number",
+      "default": 0,
+      "description": "Taxa de engajamento (%)"
+    },
+    "profile_reach": {
+      "type": "number",
+      "default": 0,
+      "description": "Alcance do perfil"
+    },
+    "profile_impressions": {
+      "type": "number",
+      "default": 0,
+      "description": "Impress\u00f5es do perfil"
+    },
+    "profile_views": {
+      "type": "number",
+      "default": 0,
+      "description": "Visitas ao perfil"
+    },
+    "website_clicks": {
+      "type": "number",
+      "default": 0,
+      "description": "Cliques no link do perfil"
+    },
+    "is_excluded": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "client_id",
+    "date"
+  ]
+}

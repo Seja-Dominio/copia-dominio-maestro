@@ -1,0 +1,102 @@
+{
+  "name": "Proposal",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "number"
+    },
+    "title": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "responsible_id": {
+      "type": "string"
+    },
+    "proposal_type": {
+      "type": "string",
+      "enum": [
+        "contrato_mensal",
+        "job_pontual"
+      ],
+      "default": "job_pontual",
+      "description": "Tipo da proposta"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "approved",
+        "rejected",
+        "expired"
+      ],
+      "default": "sent"
+    },
+    "total_amount": {
+      "type": "number"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date"
+    },
+    "sent_at": {
+      "type": "string"
+    },
+    "approved_at": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_price": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "client_id"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

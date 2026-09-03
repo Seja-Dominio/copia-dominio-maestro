@@ -1,0 +1,125 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "number",
+      "description": "N\u00famero sequencial do projeto"
+    },
+    "name": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "no_status",
+        "in_progress",
+        "completed",
+        "archived"
+      ],
+      "default": "no_status"
+    },
+    "responsible_id": {
+      "type": "string"
+    },
+    "responsible_name": {
+      "type": "string"
+    },
+    "team": {
+      "type": "string",
+      "description": "Equipe respons\u00e1vel (legado)"
+    },
+    "teams": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Lista de equipes respons\u00e1veis pelo projeto"
+    },
+    "reference_month": {
+      "type": "string",
+      "description": "M\u00eas/ano de refer\u00eancia do projeto (formato yyyy-MM, ex: 2026-06)"
+    },
+    "desired_deadline": {
+      "type": "string",
+      "format": "date"
+    },
+    "estimated_deadline": {
+      "type": "string",
+      "format": "date"
+    },
+    "budget": {
+      "type": "number"
+    },
+    "estimated_hours": {
+      "type": "number"
+    },
+    "logged_hours": {
+      "type": "number",
+      "default": 0
+    },
+    "briefing": {
+      "type": "string"
+    },
+    "contract_id": {
+      "type": "string"
+    },
+    "template_id": {
+      "type": "string"
+    },
+    "is_favorite": {
+      "type": "boolean",
+      "default": false
+    },
+    "involved": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schedule_data": {
+      "type": "object",
+      "description": "Dados do cronograma de postagens (chave: yyyy-MM-dd, valor: array de posts)"
+    },
+    "service_type": {
+      "type": "string",
+      "description": "Tipo de servi\u00e7o contratado"
+    },
+    "service_color": {
+      "type": "string",
+      "description": "Cor do servi\u00e7o (hex)"
+    },
+    "doc_link_1": {
+      "type": "string",
+      "description": "Link de documento 1 (roteiro/planilha) exibido no cronograma PDF"
+    },
+    "doc_label_1": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o/r\u00f3tulo do documento 1"
+    },
+    "doc_link_2": {
+      "type": "string",
+      "description": "Link de documento 2 (roteiro/planilha) exibido no cronograma PDF"
+    },
+    "doc_label_2": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o/r\u00f3tulo do documento 2"
+    }
+  },
+  "required": [
+    "name",
+    "client_id"
+  ]
+}

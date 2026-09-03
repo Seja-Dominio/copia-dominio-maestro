@@ -1,0 +1,159 @@
+{
+  "name": "Collaborator",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "login": {
+      "type": "string",
+      "description": "Username para login"
+    },
+    "password_hash": {
+      "type": "string",
+      "description": "Senha hasheada (gerenciada pelo ADM)"
+    },
+    "access_level": {
+      "type": "string",
+      "enum": [
+        "master",
+        "gestor",
+        "collaborator"
+      ],
+      "default": "collaborator",
+      "description": "N\u00edvel de acesso: master (admin total), gestor (admin sem financeiro/exclus\u00f5es/exports), collaborator (padr\u00e3o)"
+    },
+    "role": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor \u00fanica do colaborador (hex)"
+    },
+    "hourly_rate": {
+      "type": "number",
+      "description": "Sal\u00e1rio/hora (R$)"
+    },
+    "monthly_salary": {
+      "type": "number",
+      "description": "Sal\u00e1rio mensal (R$)"
+    },
+    "birthday": {
+      "type": "string",
+      "format": "date"
+    },
+    "contract_end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Prazo final do contrato"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "projects": {
+          "type": "string",
+          "enum": [
+            "none",
+            "view",
+            "edit",
+            "full"
+          ],
+          "default": "full"
+        },
+        "jobs": {
+          "type": "string",
+          "enum": [
+            "none",
+            "view",
+            "edit",
+            "full"
+          ],
+          "default": "full"
+        },
+        "financial": {
+          "type": "string",
+          "enum": [
+            "none",
+            "view",
+            "edit",
+            "full"
+          ],
+          "default": "none"
+        },
+        "reports": {
+          "type": "string",
+          "enum": [
+            "none",
+            "view",
+            "full"
+          ],
+          "default": "view"
+        }
+      }
+    },
+    "rain_sound_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "rain_sound_volume": {
+      "type": "number",
+      "default": 0.3
+    },
+    "dashboard_widgets": {
+      "type": "object",
+      "description": "Prefer\u00eancias de visibilidade dos indicadores do dashboard (chave=widget_id, valor=boolean)"
+    },
+    "dashboard_layout": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordem personalizada dos widgets do dashboard (array de widget_ids)"
+    },
+    "financial_widgets": {
+      "type": "object",
+      "description": "Prefer\u00eancias de visibilidade dos pain\u00e9is do financeiro (chave=widget_id, valor=boolean)"
+    },
+    "financial_layout": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordem personalizada dos pain\u00e9is do financeiro (array de widget_ids)"
+    },
+    "last_seen_page": {
+      "type": "string",
+      "description": "\u00daltima p\u00e1gina visitada pelo colaborador"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "description": "Timestamp ISO da \u00faltima atividade"
+    }
+  },
+  "required": [
+    "name",
+    "email"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}

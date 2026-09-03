@@ -1,0 +1,57 @@
+{
+  "name": "JobHistory",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "opened",
+        "created",
+        "change",
+        "subtask",
+        "subtask_add",
+        "subtask_del",
+        "timer_session",
+        "comment",
+        "attachment_add",
+        "attachment_del"
+      ],
+      "description": "Tipo do evento"
+    },
+    "text": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do evento"
+    },
+    "user": {
+      "type": "string",
+      "description": "Nome do colaborador"
+    },
+    "collaborator_id": {
+      "type": "string"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Dura\u00e7\u00e3o em minutos (para timer_session)"
+    },
+    "field": {
+      "type": "string",
+      "description": "Campo alterado (para type=change)"
+    },
+    "old_value": {
+      "type": "string",
+      "description": "Valor anterior"
+    },
+    "new_value": {
+      "type": "string",
+      "description": "Novo valor"
+    }
+  },
+  "required": [
+    "job_id",
+    "type",
+    "text"
+  ]
+}

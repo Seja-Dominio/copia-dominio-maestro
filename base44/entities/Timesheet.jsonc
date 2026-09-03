@@ -1,0 +1,63 @@
+{
+  "name": "Timesheet",
+  "type": "object",
+  "properties": {
+    "collaborator_id": {
+      "type": "string"
+    },
+    "collaborator_name": {
+      "type": "string"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "job_title": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "project_name": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "is_running": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_rework": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "collaborator_id"
+  ]
+}

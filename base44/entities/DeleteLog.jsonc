@@ -1,0 +1,72 @@
+{
+  "name": "DeleteLog",
+  "type": "object",
+  "properties": {
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "job",
+        "subtask",
+        "project",
+        "client",
+        "collaborator",
+        "timesheet",
+        "financial_entry",
+        "proposal",
+        "fee_contract",
+        "agenda_event",
+        "notification",
+        "mini_task",
+        "supplier"
+      ],
+      "description": "Tipo de entidade deletada"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "ID da entidade deletada"
+    },
+    "entity_data": {
+      "type": "object",
+      "description": "Snapshot completo dos dados deletados"
+    },
+    "deleted_by": {
+      "type": "string",
+      "description": "ID do colaborador que deletou"
+    },
+    "deleted_by_name": {
+      "type": "string",
+      "description": "Nome do colaborador que deletou"
+    },
+    "deleted_at": {
+      "type": "string",
+      "description": "Data/hora da exclus\u00e3o (ISO)"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Motivo da exclus\u00e3o (opcional)"
+    },
+    "is_restored": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se foi restaurado"
+    },
+    "restored_at": {
+      "type": "string",
+      "description": "Data/hora da restaura\u00e7\u00e3o (ISO)"
+    }
+  },
+  "required": [
+    "entity_type",
+    "entity_id",
+    "entity_data",
+    "deleted_by",
+    "deleted_by_name",
+    "deleted_at"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}
