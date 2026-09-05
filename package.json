@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:test": "vite --mode test --host 127.0.0.1 --port 4174",
     "build": "vite build",
+    "build:test": "vite build --mode test",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
+    "preview:test": "vite preview --mode test --host 127.0.0.1 --port 4174",
     "migration:import-base44": "node scripts/import-base44-export.mjs"
   },
   "dependencies": {
