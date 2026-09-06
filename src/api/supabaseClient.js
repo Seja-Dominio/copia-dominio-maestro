@@ -2,10 +2,20 @@ import { createClient } from '@supabase/supabase-js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const appEnvironment = import.meta.env.VITE_MAESTRO_ENV || 'production';
+const productionUrl = 'https://tqmfuskvllpqmvayjuqu.supabase.co';
+const unsafeTestTarget = appEnvironment === 'test' && url === productionUrl;
+
+function assertSafeTarget() {
+  if (unsafeTestTarget) {
+    throw new Error('Ambiente de teste apontado para a base de produção. Configure um projeto ou conjunto de dados de homologação antes de continuar.');
+  }
+}
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 
 export async function invokeSupabaseFunction(name, body = {}) {
+  assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
   const sessionToken = sessionStorage.getItem('collaborator_session_token');
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
@@ -24,7 +34,16 @@ export async function invokeSupabaseFunction(name, body = {}) {
   return data;
 }
 
+export function invokeAdminTimesheetFunction(action, payload = {}) {
+  return invokeSupabaseFunction('admin-timesheets', { action, ...payload });
+}
+
+export function invokeSystemReportFunction(action) {
+  return invokeSupabaseFunction('system-reports', { action });
+}
+
 export async function invokePublicSupabaseFunction(name, body = {}) {
+  assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
 
   const response = await fetch(`${url}/functions/v1/${name}`, {
@@ -40,17 +59,52 @@ export async function invokePublicSupabaseFunction(name, body = {}) {
   return data;
 }
 
+export async function uploadFileToSupabase(file) {
+  assertSafeTarget();
+  if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
+  const sessionToken = sessionStorage.getItem('collaborator_session_token');
+  if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
+
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${url}/functions/v1/upload-file`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: form,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Erro ao enviar arquivo.');
+  return data;
+}
+
 export async function loginCollaboratorWithSupabase({ login, password }) {
+  assertSafeTarget();
   if (!supabase) throw new Error('Supabase não está configurado neste ambiente.');
 
   const { data, error } = await supabase.functions.invoke('collaborator-login', {
     body: { login, password },
   });
-  if (error) throw error;
+  if (error) {
+    // The Supabase SDK keeps the Edge Function response in `context`; expose
+    // its safe user-facing error instead of collapsing every failure to 500.
+    let message = error.message;
+    try {
+      const response = error.context;
+      const body = response?.json ? await response.json() : null;
+      if (body?.error) message = body.error;
+    } catch {
+      // Keep the SDK message when the response body is unavailable.
+    }
+    throw new Error(message || 'Erro ao autenticar.');
+  }
   return { data };
 }
 
 async function callMaestroData(body) {
+  assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
   const sessionToken = sessionStorage.getItem('collaborator_session_token');
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');

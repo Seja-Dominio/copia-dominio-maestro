@@ -9,6 +9,7 @@ Separar o ciclo de testes do ambiente real. A equipe continua usando `https://do
 - Branch local: `codex/homologacao`.
 - Produção: domínio externo no KVM2, usando o projeto Supabase atual.
 - Homologação local: preparada para usar o modo Vite `test` na porta `4174`.
+- Proteção: o modo `test` bloqueia automaticamente a URL do projeto de produção.
 - O repositório remoto atual aponta para `producao-dev/Dominio-Performance-Maestro-app`; nenhum push será feito para esse remoto sem confirmação.
 
 ## Criar o projeto Supabase de homologação
@@ -29,6 +30,8 @@ cp config/env.test.example .env.test
 ```
 
 Antes de iniciar, confirme que `VITE_SUPABASE_URL` não é a URL de produção. O arquivo `.env.test` é ignorado pelo Git.
+
+O frontend também interrompe as chamadas se `VITE_MAESTRO_ENV=test` estiver apontando para o projeto de produção. Isso evita gravações acidentais no ambiente real.
 
 ## Rodar e testar
 
