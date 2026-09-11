@@ -9,7 +9,7 @@ function fmt(v) {
   return `R$${v.toFixed(0)}`;
 }
 
-export default function FinancialSection({ totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries }) {
+export default function FinancialSection({ totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries, cashFlowPeriod }) {
   const [collapsed, setCollapsed] = useState(false);
   const netResult = totalRevenue - totalExpense;
 
@@ -82,7 +82,11 @@ export default function FinancialSection({ totalRevenue, totalExpense, profitabi
           {/* Cash Flow Chart */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Fluxo de Caixa</p>
-            <CashFlowChart entries={entries} monthsBack={6} />
+            <CashFlowChart
+              entries={entries}
+              period={cashFlowPeriod}
+              summaryLabel="Saldo realizado (últimos 30 dias)"
+            />
           </div>
         </div>
       )}

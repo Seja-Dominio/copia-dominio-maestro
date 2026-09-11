@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { maestro } from "@/api/maestroClient";
+import { maestro, uploadMaestroFile } from "@/api/maestroClient";
 import { Upload, Trash2, Download, FileText, Image, Film, Archive, File, X, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
 import ImageAnnotations from "./ImageAnnotations";
 import { Button } from "@/components/ui/button";
@@ -193,8 +193,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
       setUploadProgress(`${i + 1}/${total} — ${file.name}`);
 
       try {
-        // Upload via plataforma (sempre funciona)
-        const { file_url } = await maestro.integrations.Core.UploadFile({ file });
+        const { file_url } = await uploadMaestroFile(file);
         if (!file_url) throw new Error("URL não retornada");
 
         uploaded.push({

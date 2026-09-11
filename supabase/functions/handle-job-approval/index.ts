@@ -4,11 +4,19 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+const allowedOrigins = new Set(["http://127.0.0.1:4173", "http://localhost:4173", "https://dominiomaestro.com.br"]);
+function corsHeaders(origin = "") {
+  return {
+  "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://dominiomaestro.com.br",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
-function json(body: Record<string, unknown>, status = 200) {
+function json(body: Record<string, unknown>, status = 200, origin = "") {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
   });
 }
 
@@ -90,30 +98,32 @@ async function createRecord(entity: string, payload: Record<string, unknown>) {
 }
 
 Deno.serve(async (request) => {
+  const origin = request.headers.get("Origin") || "";
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
   try {
-    if (request.method !== "POST") return json({ error: "Método não permitido" }, 405);
+    if (request.method !== "POST") return json({ error: "Método não permitido" }, 405, origin);
 
     const { jobId, token, action, feedback } = await request.json();
     if (!jobId || !token || !action) {
-      return json({ error: "jobId, token e action são obrigatórios" }, 400);
+      return json({ error: "jobId, token e action são obrigatórios" }, 400, origin);
     }
 
     const secret = Deno.env.get("APPROVAL_TOKEN_SECRET");
-    if (!secret) return json({ error: "Server misconfigured" }, 500);
+    if (!secret) return json({ error: "Server misconfigured" }, 500, origin);
 
     const tokenData = await verifyApprovalToken(String(token), secret);
-    if (!tokenData) return json({ error: "Token inválido ou adulterado" }, 400);
-    if (tokenData.jobId !== jobId) return json({ error: "Token não corresponde ao job" }, 400);
+    if (!tokenData) return json({ error: "Token inválido ou adulterado" }, 400, origin);
+    if (tokenData.jobId !== jobId) return json({ error: "Token não corresponde ao job" }, 400, origin);
     if (!Number.isFinite(tokenData.ts) || Date.now() - tokenData.ts > 30 * 24 * 60 * 60 * 1000) {
-      return json({ error: "Link expirado. Solicite um novo link de aprovação." }, 400);
+      return json({ error: "Link expirado. Solicite um novo link de aprovação." }, 400, origin);
     }
 
     const job = await readRecord("Job", String(jobId));
-    if (!job) return json({ error: "Job não encontrado" }, 404);
+    if (!job) return json({ error: "Job não encontrado" }, 404, origin);
 
-    if (action === "load") return json({ job });
+    if (action === "load") return json({ job }, 200, origin);
     if (job.status !== "internal_approval" && job.status !== "client_approval") {
-      return json({ error: "Este job não está mais aguardando aprovação", currentStatus: job.status }, 400);
+      return json({ error: "Este job não está mais aguardando aprovação", currentStatus: job.status }, 400, origin);
     }
 
     let newStatus: string;
@@ -125,7 +135,7 @@ Deno.serve(async (request) => {
       newStatus = "pending_design";
       historyText = `🔄 Cliente solicitou alterações: ${feedback || "sem detalhes"}`;
     } else {
-      return json({ error: "Ação inválida. Use 'approve' ou 'request_changes'" }, 400);
+      return json({ error: "Ação inválida. Use 'approve' ou 'request_changes'" }, 400, origin);
     }
 
     await updateRecord("Job", String(jobId), { ...job, status: newStatus });
@@ -166,9 +176,9 @@ Deno.serve(async (request) => {
       });
     }
 
-    return json({ success: true, newStatus, action });
+    return json({ success: true, newStatus, action }, 200, origin);
   } catch (error) {
     console.error("handle-job-approval error:", error);
-    return json({ error: "Erro ao processar aprovação" }, 500);
+    return json({ error: "Erro ao processar aprovação" }, 500, origin);
   }
 });

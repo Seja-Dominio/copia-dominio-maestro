@@ -61,13 +61,13 @@ export default function NextPostsPanel({ dayGroups, scheduledCount, notScheduled
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-foreground truncate">{j.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{j.client_name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{j.client_name}{j.stage_title ? ` · ${j.stage_title}` : ""}{j.stage_responsible_name ? ` · ${j.stage_responsible_name}` : ""}</p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${sc.color}`}>{sc.label}</span>
-                          {j.responsible_name && (
+                          {(j.stage_responsible_name || j.responsible_name) && (
                             <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white text-[9px] font-bold">
-                              {j.responsible_name[0]?.toUpperCase()}
+                              {(j.stage_responsible_name || j.responsible_name)[0]?.toUpperCase()}
                             </div>
                           )}
                         </div>

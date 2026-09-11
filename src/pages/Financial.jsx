@@ -23,6 +23,7 @@ import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import { safeDelete } from "@/lib/safeDelete";
 import CashFlowChart from "@/components/dashboard/CashFlowChart";
 import FinancialPieCharts from "@/components/financial/FinancialPieCharts";
+import FinancialForecastChart from "@/components/financial/FinancialForecastChart";
 import AccountBalancesTab from "@/components/financial/AccountBalancesTab";
 import { useFinancialDragDrop, FinancialEditBar, FinancialDragGrid } from "@/components/financial/FinancialWidgetGrid";
 
@@ -76,7 +77,7 @@ export default function Financial() {
   const [activeTab, setActiveTab] = useState("lancamentos");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState(null);
-  const [mainView, setMainView] = useState("tabela"); // "tabela" | "acompanhamento"
+  const [mainView, setMainView] = useState("acompanhamento"); // "tabela" | "acompanhamento"
 
   const dnd = useFinancialDragDrop();
 
@@ -93,12 +94,13 @@ export default function Financial() {
       maestro.entities.Job.list("-created_date", 200),
       maestro.entities.Client.list("name", 100),
     ]);
-    setEntries(e);
-    setAccounts(a);
-    setSavingsBoxes(sb);
-    setTimesheets(ts.filter(t => !t.is_running));
-    setJobs(j);
-    setClients(cl);
+    const rows = value => Array.isArray(value) ? value : (Array.isArray(value?.data) ? value.data : []);
+    setEntries(rows(e));
+    setAccounts(rows(a));
+    setSavingsBoxes(rows(sb));
+    setTimesheets(rows(ts).filter(t => !t.is_running));
+    setJobs(rows(j));
+    setClients(rows(cl));
     setLoading(false);
   }, []);
 
@@ -224,6 +226,10 @@ export default function Financial() {
 
   const clientStats = Object.values(clientStatsMap);
 
+  const lastAccountEntry = entries.find(e => e.bank_account_id || e.bank_account_name);
+  const lastAccount = accounts.find(a => a.id === lastAccountEntry?.bank_account_id || a.name === lastAccountEntry?.bank_account_name);
+  const lastCategoryEntry = entries.find(e => e.type === createType && e.category);
+
   const topByRevenue = [...clientStats].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
   const topByHours = [...clientStats].sort((a, b) => (b.hours || 0) - (a.hours || 0)).slice(0, 5);
   const topByExpense = [...clientStats].sort((a, b) => b.expense - a.expense).slice(0, 5);
@@ -274,6 +280,7 @@ export default function Financial() {
                  bank_accounts: "Contas",
                  top_clients: "Top Clientes",
                  cash_flow: "Fluxo de Caixa",
+                 forecast: "Projeção Financeira",
                }}
              />
            )}
@@ -567,6 +574,16 @@ export default function Financial() {
                 </div>
               ),
             },
+            forecast: {
+              label: "Projeção Financeira",
+              render: () => (
+                <div className="glass-card p-5 mb-2">
+                  <h2 className="text-sm font-bold text-foreground mb-1">Projeção financeira</h2>
+                  <p className="text-xs text-muted-foreground mb-4">Receitas, custos e saldo acumulado dos próximos 6 meses</p>
+                  <FinancialForecastChart entries={entries} />
+                </div>
+              ),
+            },
           }}
         />
       )}
@@ -607,6 +624,9 @@ export default function Financial() {
         <CreateEntryModal
           type={createType}
           entry={editingEntry}
+          defaultBankAccountId={lastAccount?.id || lastAccountEntry?.bank_account_id || ""}
+          defaultBankAccountName={lastAccount?.name || lastAccountEntry?.bank_account_name || ""}
+          defaultCategory={lastCategoryEntry?.category || ""}
           onClose={() => {
             setShowCreate(false);
             setEditingEntry(null);

@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { createPageUrl } from "@/utils";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getDashboardData } from "@/api/maestroClient";
+import { maestro } from "@/api/maestroClient";
 import {
   Briefcase, AlertCircle, Users, AlertTriangle, XCircle, GripVertical, Lock, Unlock, EyeOff, Eye
 } from "lucide-react";
-import { format, addDays, parseISO } from "date-fns";
+import { format, addDays, subDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { nowManaus, todayStr as getTodayStr, currentMonthStr } from "@/lib/dateUtils";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
@@ -25,12 +26,13 @@ import StatCard from "@/components/dashboard/StatCard";
 import AlertBanner from "@/components/dashboard/AlertBanner";
 import NpsAlertPanel from "@/components/dashboard/NpsAlertPanel";
 import TopClientsWidget from "@/components/dashboard/TopClientsWidget";
-import OverdueJobsPanel from "@/components/dashboard/OverdueJobsPanel";
-import NextPostsPanel from "@/components/dashboard/NextPostsPanel";
-import MyOverduePanel from "@/components/dashboard/MyOverduePanel";
+import MyWorkQueue from "@/components/dashboard/MyWorkQueue";
 import JobDetailModal from "@/components/jobs/JobDetailModal";
 import ClientAttentionWidget from "@/components/dashboard/ClientAttentionWidget";
 import ScheduleTrustWidget from "@/components/dashboard/ScheduleTrustWidget";
+import DeliveryMetricsWidget from "@/components/dashboard/DeliveryMetricsWidget";
+import { isClosedJob, isJobOverdue, isSubtaskOverdue } from "@/lib/jobWorkflow";
+import { getCurrentStageSubtask } from "@/lib/deliveryMetrics";
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
@@ -46,7 +48,6 @@ export default function Dashboard() {
   const [overdueFilter, setOverdueFilter] = useState("all");
   const [visibleWidgets, setVisibleWidgets] = useState({});
   const [widgetOrder, setWidgetOrder] = useState([]);
-  const [overdueTeamFilter, setOverdueTeamFilter] = useState("all");
   const [editMode, setEditMode] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedJobSubtasks, setSelectedJobSubtasks] = useState([]);
@@ -104,6 +105,10 @@ export default function Dashboard() {
   const todayStr = getTodayStr();
   const in5DaysStr = format(addDays(today, 5), "yyyy-MM-dd");
   const currentMonth = currentMonthStr();
+  const cashFlowPeriod = {
+    start: format(subDays(today, 30), "yyyy-MM-dd"),
+    end: format(addDays(today, 30), "yyyy-MM-dd"),
+  };
 
   // Financial KPIs
   const thisMonthEntries = entries.filter(e => {
@@ -159,11 +164,9 @@ export default function Dashboard() {
   const clientsAtRisk = useMemo(() => {
     if (!isAdmin) return [];
     const todayDate = getTodayStr();
-    const finishedJobStatuses = ["completed", "scheduled", "cancelled"];
-
     // Only consider jobs that are not finished AND not from completed/archived projects
     const relevantJobs = jobs.filter(j => {
-      if (finishedJobStatuses.includes(j.status)) return false;
+      if (isClosedJob(j)) return false;
       if (j.project_id && excludedProjectIds.has(j.project_id)) return false;
       return true;
     });
@@ -205,12 +208,12 @@ export default function Dashboard() {
       let hasCaptacaoPending = false;
 
       cJobs.forEach(j => {
-        if (j.post_date && j.post_date <= todayDate) {
+        if (isJobOverdue(j, todayDate)) {
           overdueJobsCount++;
         }
         const jSubs = subtasksByJob[j.id] || [];
         jSubs.forEach(s => {
-          if (!s.is_completed && s.deadline && s.deadline <= todayDate) overdueSubtasksCount++;
+          if (isSubtaskOverdue(s, todayDate)) overdueSubtasksCount++;
           if (!s.is_completed && normalize(s.title).includes("captacao")) hasCaptacaoPending = true;
         });
       });
@@ -244,34 +247,34 @@ export default function Dashboard() {
     return jobs.filter(j => j.responsible_id === myCollabId || ids.has(j.id));
   }, [jobs, mySubtasks, myCollabId]);
 
+  const teamOverdueSubtasks = useMemo(() => {
+    const activeJobIds = new Set(jobs.filter(j => !isClosedJob(j) && (!j.project_id || !excludedProjectIds.has(j.project_id))).map(j => j.id));
+    return subtasks.filter(s => activeJobIds.has(s.job_id) && isSubtaskOverdue(s, todayStr));
+  }, [jobs, subtasks, todayStr, excludedProjectIds]);
+
   const myOverdueJobs = useMemo(() => {
     if (!myCollabId) return [];
-    const overdueByPost = myJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed", "scheduled", "cancelled"].includes(j.status));
-    const subtaskJobIds = new Set(mySubtasks.filter(s => !s.is_completed && s.deadline && s.deadline <= todayStr).map(s => s.job_id).filter(Boolean));
-    const overdueBySubtask = jobs.filter(j => subtaskJobIds.has(j.id) && !["completed", "scheduled", "cancelled"].includes(j.status));
+    const overdueByPost = myJobs.filter(j => isJobOverdue(j, todayStr));
+    const subtaskJobIds = new Set(mySubtasks.filter(s => isSubtaskOverdue(s, todayStr)).map(s => s.job_id).filter(Boolean));
+    const overdueBySubtask = jobs.filter(j => subtaskJobIds.has(j.id) && !isClosedJob(j));
     const allIds = new Set([...overdueByPost.map(j => j.id), ...overdueBySubtask.map(j => j.id)]);
     const jobMap = new Map(jobs.map(j => [j.id, j]));
     return Array.from(allIds).map(id => jobMap.get(id)).filter(Boolean).sort((a, b) => (a.post_date || "9999").localeCompare(b.post_date || "9999"));
   }, [myJobs, mySubtasks, jobs, myCollabId, todayStr]);
-
-  const myNext5NotScheduled = useMemo(() =>
-    myJobs.filter(j => j.post_date && j.post_date >= todayStr && j.post_date <= in5DaysStr && !["scheduled", "completed", "cancelled"].includes(j.status))
-      .sort((a, b) => (a.post_date || "").localeCompare(b.post_date || ""))
-  , [myJobs, todayStr, in5DaysStr]);
 
   const allOverdueJobs = useMemo(() => {
     if (!isAdmin) return myOverdueJobs;
     const jobMap = new Map(jobs.map(j => [j.id, j]));
     const ids = new Set();
     jobs.forEach(j => {
-      if (["completed", "scheduled", "cancelled"].includes(j.status)) return;
+      if (isClosedJob(j)) return;
       if (j.project_id && excludedProjectIds.has(j.project_id)) return;
-      if (j.post_date && j.post_date <= todayStr) ids.add(j.id);
+      if (isJobOverdue(j, todayStr)) ids.add(j.id);
     });
     subtasks.forEach(s => {
-      if (!s.is_completed && s.deadline && s.deadline <= todayStr && s.job_id) {
+      if (isSubtaskOverdue(s, todayStr) && s.job_id) {
         const j = jobMap.get(s.job_id);
-        if (!j || ["completed", "scheduled", "cancelled"].includes(j.status)) return;
+        if (!j || isClosedJob(j)) return;
         if (j.project_id && excludedProjectIds.has(j.project_id)) return;
         ids.add(s.job_id);
       }
@@ -279,11 +282,7 @@ export default function Dashboard() {
     return Array.from(ids).map(id => jobMap.get(id)).filter(Boolean).sort((a, b) => (a.post_date || "9999").localeCompare(b.post_date || "9999"));
   }, [jobs, myOverdueJobs, isAdmin, todayStr, subtasks, excludedProjectIds]);
 
-  const [allTeams, setAllTeams] = useState([]);
   useEffect(() => {
-    maestro.entities.Squad.filter({ is_active: true }, "name", 100).then(squads => {
-      setAllTeams(squads.map(s => s.name).sort());
-    });
     if (isAdmin) {
       maestro.entities.JobHistory.filter({ type: "change" }, "-created_date", 1000)
         .then(h => setJobHistory(h)).catch(() => {});
@@ -337,17 +336,11 @@ export default function Dashboard() {
     return results;
   }, [jobHistory, jobs, clients, projects]);
 
-  const projectTeamsMap = useMemo(() => {
-    const map = {};
-    projects.forEach(p => { map[p.id] = p.teams?.length ? p.teams : p.team ? [p.team] : []; });
-    return map;
-  }, [projects]);
-
   // Map: jobId → Set of collaborator IDs with overdue subtasks on that job
   const overdueSubtaskOwnersByJob = useMemo(() => {
     const map = {};
     subtasks.forEach(s => {
-      if (!s.is_completed && s.deadline && s.deadline <= todayStr && s.job_id && s.responsible_id) {
+      if (isSubtaskOverdue(s, todayStr) && s.job_id && s.responsible_id) {
         if (!map[s.job_id]) map[s.job_id] = new Set();
         map[s.job_id].add(s.responsible_id);
       }
@@ -370,17 +363,12 @@ export default function Dashboard() {
         (overdueSubtaskOwnersByJob[j.id] && overdueSubtaskOwnersByJob[j.id].has(overdueFilter))
       );
     }
-    if (overdueTeamFilter !== "all") {
-      combined = overdueTeamFilter === "none"
-        ? combined.filter(j => !j.project_id || !(projectTeamsMap[j.project_id] || []).length)
-        : combined.filter(j => (projectTeamsMap[j.project_id] || []).includes(overdueTeamFilter));
-    }
     return combined;
-  }, [allOverdueJobs, jobs, myJobs, isAdmin, overdueFilter, overdueTeamFilter, projectTeamsMap, todayStr, in5DaysStr, overdueSubtaskOwnersByJob]);
+  }, [allOverdueJobs, jobs, myJobs, isAdmin, overdueFilter, todayStr, in5DaysStr, overdueSubtaskOwnersByJob]);
 
   const next5Jobs = useMemo(() => {
     const source = isAdmin ? jobs : myJobs;
-    return source.filter(j => j.post_date && j.post_date >= todayStr && j.post_date <= in5DaysStr).sort((a, b) => (a.post_date || "").localeCompare(b.post_date || ""));
+    return source.filter(j => j.post_date && j.post_date > todayStr && j.post_date <= in5DaysStr).sort((a, b) => (a.post_date || "").localeCompare(b.post_date || ""));
   }, [jobs, myJobs, isAdmin, todayStr, in5DaysStr]);
 
   const notScheduledNext5 = next5Jobs.filter(j => !["scheduled", "completed", "cancelled"].includes(j.status));
@@ -392,25 +380,52 @@ export default function Dashboard() {
     for (let i = 0; i <= 5; i++) {
       const d = addDays(today, i);
       const dStr = format(d, "yyyy-MM-dd");
-      const dJobs = postageJobs.filter(j => j.post_date === dStr && j.status !== "cancelled");
+      const dJobs = postageJobs
+        .filter(j => j.post_date === dStr && j.status !== "cancelled")
+        .map(job => {
+          const stage = getCurrentStageSubtask(job.id, subtasks);
+          const collaborator = stage?.responsible_id ? collaborators.find(c => c.id === stage.responsible_id) : null;
+          return {
+            ...job,
+            stage_title: stage?.title || "",
+            stage_responsible_name: stage?.responsible_name || collaborator?.name || job.responsible_name || "",
+          };
+        });
       if (dJobs.length > 0) groups.push({ date: d, dateStr: dStr, jobs: dJobs });
     }
     return groups;
-  }, [postageJobs, today]);
+  }, [postageJobs, subtasks, collaborators, today]);
 
   // ── Widget Registry ──
   const widgetRegistry = useMemo(() => ({
     my_alerts: {
       render: () => myCollabId ? (
-        <div className="flex flex-wrap gap-3">
-          <AlertBanner count={myOverdueJobs.length} label={`entrega${myOverdueJobs.length !== 1 ? "s" : ""} atrasada${myOverdueJobs.length !== 1 ? "s" : ""} (meus)`} color={myOverdueJobs.length > 0 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-900/20 dark:border-red-800" : "border-border bg-muted/40 text-muted-foreground"} icon={XCircle} />
-          <AlertBanner count={myNext5NotScheduled.length} label={`postage${myNext5NotScheduled.length !== 1 ? "ns" : "m"} nos próximos 5 dias não agendada${myNext5NotScheduled.length !== 1 ? "s" : ""}`} color={myNext5NotScheduled.length > 0 ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
-        </div>
+        <MyWorkQueue
+          subtasks={mySubtasks}
+          jobs={myJobs}
+          collaborators={collaborators}
+          todayStr={todayStr}
+          upcomingPosts={{
+            dayGroups,
+            scheduledCount: scheduledNext5.length,
+            notScheduledCount: notScheduledNext5.length,
+            todayStr,
+          }}
+          onJobClick={handleJobClick}
+        />
       ) : null,
       adminOnly: false,
     },
-    my_overdue: {
-      render: () => myCollabId ? <MyOverduePanel myOverdueJobs={myOverdueJobs} onJobClick={handleJobClick} /> : null,
+    delivery_metrics: {
+      render: () => (
+        <DeliveryMetricsWidget
+          jobs={isAdmin ? jobs : myJobs}
+          subtasks={isAdmin ? subtasks : mySubtasks}
+          collaborators={collaborators}
+          clients={clients}
+          todayStr={todayStr}
+        />
+      ),
       adminOnly: false,
     },
     kpi_cards: {
@@ -428,7 +443,7 @@ export default function Dashboard() {
                   <p className="text-2xl font-black text-foreground">{overdueJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed","scheduled","cancelled"].includes(j.status)).length}</p>
                   <span className="text-[10px] text-muted-foreground font-medium">jobs</span>
                   <span className="text-muted-foreground">|</span>
-                  <p className="text-2xl font-black text-foreground">{(() => { const postIds = new Set(overdueJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed","scheduled","cancelled"].includes(j.status)).map(j => j.id)); return overdueJobs.filter(j => !postIds.has(j.id) && !["completed","scheduled","cancelled"].includes(j.status)).length; })()}</p>
+                  <p className="text-2xl font-black text-foreground">{teamOverdueSubtasks.length}</p>
                   <span className="text-[10px] text-muted-foreground font-medium">tarefas</span>
                 </div>
               </div>
@@ -448,14 +463,12 @@ export default function Dashboard() {
     alert_banners_team: {
       render: () => {
         const postOverdue = overdueJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed","scheduled","cancelled"].includes(j.status));
-        const subtaskOverdueIds = new Set(subtasks.filter(s => !s.is_completed && s.deadline && s.deadline <= todayStr).map(s => s.job_id).filter(Boolean));
-        const postOverdueIds = new Set(postOverdue.map(j => j.id));
-        const taskOverdue = overdueJobs.filter(j => !postOverdueIds.has(j.id) && subtaskOverdueIds.has(j.id) && !["completed","scheduled","cancelled"].includes(j.status));
+        const taskOverdue = teamOverdueSubtasks.length;
         const next5NS = overdueJobs.filter(j => j.post_date && j.post_date > todayStr && j.post_date <= in5DaysStr && !["scheduled","completed","cancelled"].includes(j.status));
         return (
           <div className="flex flex-wrap gap-3">
             <AlertBanner count={postOverdue.length} label={`post${postOverdue.length !== 1 ? "s" : ""} com data atrasada`} color={postOverdue.length > 0 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-900/20 dark:border-red-800" : "border-border bg-muted/40 text-muted-foreground"} icon={XCircle} />
-            <AlertBanner count={taskOverdue.length} label={`post${taskOverdue.length !== 1 ? "s" : ""} com tarefa${taskOverdue.length !== 1 ? "s" : ""} atrasada${taskOverdue.length !== 1 ? "s" : ""}`} color={taskOverdue.length > 0 ? "border-orange-200 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
+            <AlertBanner count={taskOverdue} label={`tarefa${taskOverdue !== 1 ? "s" : ""} atrasada${taskOverdue !== 1 ? "s" : ""}`} color={taskOverdue > 0 ? "border-orange-200 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
             <AlertBanner count={next5NS.length} label={`post${next5NS.length !== 1 ? "s" : ""} próx. 5 dias não agendado${next5NS.length !== 1 ? "s" : ""}`} color={next5NS.length > 0 ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
           </div>
         );
@@ -470,18 +483,11 @@ export default function Dashboard() {
           profitability={profitability}
           monthlyRevenueForecast={monthlyRevenueForecast}
           entries={entries}
+          cashFlowPeriod={cashFlowPeriod}
         />
       ),
       adminOnly: true,
       masterOnly: true,
-    },
-    next_posts: {
-      render: () => <NextPostsPanel dayGroups={dayGroups} scheduledCount={scheduledNext5.length} notScheduledCount={notScheduledNext5.length} todayStr={todayStr} onJobClick={handleJobClick} />,
-      adminOnly: false,
-    },
-    overdue_jobs_team: {
-      render: () => <OverdueJobsPanel overdueJobs={overdueJobs} allTeams={allTeams} overdueTeamFilter={overdueTeamFilter} onTeamFilterChange={setOverdueTeamFilter} subtasks={subtasks} todayStr={todayStr} in5DaysStr={in5DaysStr} onJobClick={handleJobClick} />,
-      adminOnly: true,
     },
     nps_panel: {
       render: () => <NpsAlertPanel clients={clients} />,
@@ -523,7 +529,7 @@ export default function Dashboard() {
       render: () => <ScheduleTrustWidget scheduleBreaches={scheduleBreaches} />,
       adminOnly: true,
     },
-  }), [myCollabId, myOverdueJobs, myNext5NotScheduled, clients, allOverdueJobs, overdueJobs, overdueFilter, collaborators, isAdmin, totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries, dayGroups, scheduledNext5, notScheduledNext5, todayStr, allTeams, overdueTeamFilter, topClients, agendaEvents, currentMonth, timesheetByCollab, resolvedCollaborator, clientsAtRisk, scheduleBreaches]);
+  }), [myCollabId, mySubtasks, myJobs, myOverdueJobs, jobs, subtasks, clients, allOverdueJobs, overdueJobs, overdueFilter, collaborators, isAdmin, totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries, dayGroups, scheduledNext5, notScheduledNext5, todayStr, topClients, agendaEvents, currentMonth, timesheetByCollab, resolvedCollaborator, clientsAtRisk, scheduleBreaches, teamOverdueSubtasks]);
 
   const isMasterUser = sessionCollaborator?.access_level === "admin" || sessionCollaborator?.access_level === "master";
 

@@ -26,7 +26,12 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-export default function CashFlowChart({ entries, period }) {
+function getEntryDate(entry) {
+  if (entry.status === "paid") return entry.payment_date || entry.due_date || entry.competence_date;
+  return entry.due_date || entry.competence_date || entry.payment_date;
+}
+
+export default function CashFlowChart({ entries, period, summaryLabel }) {
   const [RC, setRC] = useState(null);
   useEffect(() => {
     import("recharts").then(setRC);
@@ -48,7 +53,7 @@ export default function CashFlowChart({ entries, period }) {
       const lbl = format(day, "dd/MM", { locale: ptBR });
 
       const dayEntries = entries.filter(function(e) {
-        var date = e.due_date || e.competence_date;
+        var date = getEntryDate(e);
         return date === dateStr;
       });
 
@@ -87,7 +92,7 @@ export default function CashFlowChart({ entries, period }) {
       <div className="space-y-4">
         <div className={"rounded-xl p-4 border " + (isPositive ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800")}>
           <p className={"text-xs font-semibold uppercase tracking-wide " + (isPositive ? "text-emerald-600" : "text-red-600")}>
-            {"Saldo Realizado " + (period ? "(" + period.start + " → " + period.end + ")" : "(ultimos 7 dias)")}
+            {summaryLabel || "Saldo Realizado " + (period ? "(" + period.start + " → " + period.end + ")" : "(ultimos 7 dias)")}
           </p>
           <p className={"text-3xl font-black mt-1 " + (isPositive ? "text-emerald-600" : "text-red-600")}>
             {formatBRL(weekBalance)}
@@ -106,7 +111,7 @@ export default function CashFlowChart({ entries, period }) {
     <div className="space-y-4">
       <div className={"rounded-xl p-4 border " + (isPositive ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800")}>
         <p className={"text-xs font-semibold uppercase tracking-wide " + (isPositive ? "text-emerald-600" : "text-red-600")}>
-          {"Saldo Realizado " + (period ? "(" + period.start + " → " + period.end + ")" : "(ultimos 7 dias)")}
+          {summaryLabel || "Saldo Realizado " + (period ? "(" + period.start + " → " + period.end + ")" : "(ultimos 7 dias)")}
         </p>
         <p className={"text-3xl font-black mt-1 " + (isPositive ? "text-emerald-600" : "text-red-600")}>
           {formatBRL(weekBalance)}

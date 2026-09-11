@@ -77,7 +77,7 @@ function SelectField({ value, onChange, options, placeholder }) {
   );
 }
 
-export default function CreateEntryModal({ type: initialType, entry: editingEntry, onClose, onCreate }) {
+export default function CreateEntryModal({ type: initialType, entry: editingEntry, onClose, onCreate, defaultBankAccountId = "", defaultBankAccountName = "", defaultCategory = "" }) {
   const [clients, setClients] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [costCenters, setCostCenters] = useState([]);
@@ -92,14 +92,14 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
     competence_date: editingEntry?.competence_date || "",
     payment_date: editingEntry?.payment_date || "",
     status: editingEntry?.status || "pending",
-    category: editingEntry?.category || "",
+    category: editingEntry?.category || defaultCategory,
     subcategory_id: editingEntry?.subcategory_id || "",
     subcategory_name: editingEntry?.subcategory_name || "",
     expense_type: editingEntry?.expense_type || "",
     client_id: editingEntry?.client_id || "",
     client_name: editingEntry?.client_name || "",
-    bank_account_id: editingEntry?.bank_account_id || "",
-    bank_account_name: editingEntry?.bank_account_name || "",
+    bank_account_id: editingEntry?.bank_account_id || defaultBankAccountId,
+    bank_account_name: editingEntry?.bank_account_name || defaultBankAccountName,
     cost_center: editingEntry?.cost_center || "",
     document_number: editingEntry?.document_number || "",
     has_invoice: editingEntry?.has_invoice || false,
@@ -125,8 +125,12 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
       setAccounts(a);
       setCostCenters(cc);
       setSubcategories(sc);
+      if (!editingEntry && defaultBankAccountName && !defaultBankAccountId) {
+        const account = a.find(item => item.name === defaultBankAccountName);
+        if (account) setForm(current => ({ ...current, bank_account_id: account.id, bank_account_name: account.name }));
+      }
     });
-  }, []);
+  }, [defaultBankAccountId, defaultBankAccountName, editingEntry]);
 
   // Show advanced if editing and any advanced field has data
   useEffect(() => {

@@ -6,12 +6,16 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { createSupabaseEntities, invokePublicSupabaseFunction, invokeSupabaseFunction, loginCollaboratorWithSupabase } from '@/api/supabaseClient';
+import { createSupabaseEntities, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase } from '@/api/supabaseClient';
 
 const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
 
+// Do not spread the SDK client here: it contains an enumerable `asServiceRole`
+// getter that is intentionally unavailable in the browser and causes a blank
+// screen before React can render. Keep only the client modules still used by
+// compatibility routes while the data/auth paths run through Supabase.
 export const maestro = dataProvider === 'supabase'
-  ? { ...base44, entities: createSupabaseEntities() }
+  ? { auth: base44.auth, functions: base44.functions, integrations: base44.integrations, entities: createSupabaseEntities() }
   : base44;
 export { getPublicSettings };
 
@@ -80,9 +84,40 @@ export async function handleJobApproval(payload) {
   return maestro.functions.invoke('handleJobApproval', payload);
 }
 
+export async function uploadMaestroFile(file) {
+  if (dataProvider === 'supabase') {
+    return uploadFileToSupabase(file);
+  }
+  return maestro.integrations.Core.UploadFile({ file });
+}
+
+export async function transferSubtasks(payload) {
+  if (dataProvider === 'supabase') return transferSubtasksSupabase(payload);
+  return maestro.functions.invoke('transferSubtasks', payload);
+}
+
 // Temporary compatibility boundary for functions that have not been ported yet.
 // Keeping this call here lets each function switch providers independently.
 export function invokeMaestroFunction(name, payload) {
+  if (dataProvider === 'supabase') {
+    if (name === 'sendWhatsapp') return invokeWhatsapp(payload);
+    if (name === 'sendWhatsappFile') return invokeWhatsapp(payload);
+    if (name === 'listWhatsappGroups') return invokeWhatsapp({ action: 'listGroups' });
+    if (name === 'listWhatsappContacts') return invokeWhatsapp({ action: 'listContacts' });
+    if (name === 'syncWhatsappDirectory') return invokeWhatsapp({ action: 'syncDirectory' });
+    if (name === 'listWhatsappDirectory') return invokeWhatsapp({ action: 'listDirectory' });
+    if (name === 'linkWhatsappClient') return invokeWhatsapp({ action: 'linkClient', ...payload });
+    if (name === 'whatsappConnect') return invokeWhatsapp({ action: 'connect' });
+    if (name === 'whatsappStatus') return invokeWhatsapp({ action: 'status' });
+    if (name === 'listWhatsappAutomations') return invokeWhatsapp({ action: 'listAutomations' });
+    if (name === 'saveWhatsappAutomation') return invokeWhatsapp({ action: 'saveAutomation', automation: payload });
+    if (name === 'deleteWhatsappAutomation') return invokeWhatsapp({ action: 'deleteAutomation', ...payload });
+    if (name === 'deleteTimesheet') return invokeAdminTimesheetFunction('delete', { timesheetId: payload?.timesheetId });
+    if (name === 'clearAllTimesheets') return invokeAdminTimesheetFunction('clear');
+    if (name === 'resetAllTimesheets') return invokeAdminTimesheetFunction('reset');
+    if (name === 'generateSystemReport') return invokeSystemReportFunction('report').then((data) => ({ data }));
+    if (name === 'exportSystemBlueprint') return invokeSystemReportFunction('blueprint').then((data) => ({ data }));
+  }
   return maestro.functions.invoke(name, payload);
 }
 

@@ -26,6 +26,7 @@ import JobDetailModal from "../jobs/JobDetailModal";
 import CreateJobModal from "../jobs/CreateJobModal";
 import ScheduleCalendar from "./ScheduleCalendar";
 import ProjectTimesheetModal from "./ProjectTimesheetModal";
+import { isJobOverdue } from "@/lib/jobWorkflow";
 
 const CONTENT_ICONS = {
   feed_card: Image,
@@ -505,7 +506,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
           const renderJob = (j) => {
             const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
             const ContentIcon = CONTENT_ICONS[j.content_type] || Briefcase;
-            const isLate = j.post_date && j.post_date < today && j.status !== "completed" && j.status !== "scheduled";
+            const isLate = isJobOverdue(j, today);
             const jobSubtasks = getSubtasksForJob(j.id);
             const completedSubs = jobSubtasks.filter(s => s.is_completed).length;
             const isCompleted = j.status === "completed";

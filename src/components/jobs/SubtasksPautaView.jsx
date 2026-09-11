@@ -1,16 +1,8 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { CheckCircle2, Circle, Clock, AlertCircle, Users, User, ChevronRight, Check } from "lucide-react";
+import { CheckCircle2, Circle, AlertCircle, Users, User, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const SUBTASK_STATUS = {
-  pending: { label: "Pendente", color: "bg-slate-100 text-slate-600 border-slate-200" },
-  in_progress: { label: "Em andamento", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  in_review: { label: "Em revisão", color: "bg-purple-100 text-purple-700 border-purple-200" },
-  completed: { label: "Concluída", color: "bg-green-100 text-green-700 border-green-200" },
-  blocked: { label: "Bloqueada", color: "bg-red-100 text-red-700 border-red-200" },
-};
+import { isOpenSubtask } from "@/lib/jobWorkflow";
 
 export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, onSelectJob, onSubtaskComplete }) {
   const [completingId, setCompletingId] = useState(null);
@@ -32,11 +24,11 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
     return m;
   }, [jobs]);
 
-  // Filter subtasks: only non-completed, non-blocked, belonging to active jobs
+  // Filter subtasks: only open subtasks belonging to active jobs
   const pautaItems = useMemo(() => {
     return subtasks
       .filter(s => {
-        if (s.is_completed || s.status === "completed" || s.status === "blocked") return false;
+        if (!isOpenSubtask(s)) return false;
         const job = jobsMap[s.job_id];
         if (!job || job.status === "completed" || job.status === "cancelled") return false;
         // "Minhas Pautas" mode: only show subtasks assigned to the current user
@@ -104,7 +96,6 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
                   {showAll && isAdmin && (
                     <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Responsável</th>
                   )}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Prazo</th>
                   <th className="w-10"></th>
                 </tr>
@@ -114,7 +105,6 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
                   const job = s._job;
                   const deadline = s.deadline || job?.post_date;
                   const late = isLate(deadline);
-                  const st = SUBTASK_STATUS[s.status] || SUBTASK_STATUS.pending;
                   return (
                     <tr
                       key={s.id}
@@ -136,11 +126,6 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
                           ) : <span className="text-xs text-muted-foreground">—</span>}
                         </td>
                       )}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${st.color}`}>
-                          {st.label}
-                        </span>
-                      </td>
                       <td className={`px-4 py-3 text-xs font-medium ${late ? "text-destructive" : "text-muted-foreground"}`}>
                         {deadline ? format(new Date(deadline + "T12:00:00"), "dd/MM/yyyy") : "—"}
                         {late && <AlertCircle className="w-3 h-3 inline ml-1" />}
@@ -174,7 +159,6 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
               const job = s._job;
               const deadline = s.deadline || job?.post_date;
               const late = isLate(deadline);
-              const st = SUBTASK_STATUS[s.status] || SUBTASK_STATUS.pending;
               return (
                 <div
                   key={s.id}
@@ -195,9 +179,6 @@ export default function SubtasksPautaView({ subtasks, jobs, collabId, isAdmin, o
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <div className="flex flex-col items-end gap-1">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold border ${st.color}`}>
-                          {st.label}
-                        </span>
                         <span className={`text-[10px] font-medium ${late ? "text-destructive" : "text-muted-foreground"}`}>
                           {deadline ? format(new Date(deadline + "T12:00:00"), "dd/MM") : "—"}
                           {late && " ⚠️"}

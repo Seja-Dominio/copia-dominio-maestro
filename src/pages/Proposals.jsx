@@ -3,9 +3,10 @@ import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, Send, CheckCircle2, XCircle, Clock, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Calendar, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Repeat, Zap } from "lucide-react";
+import { Plus, Search, FileText, Send, CheckCircle2, XCircle, Clock, Eye, Pencil, Trash2, Download, Loader2, ChevronLeft, ChevronRight, Calendar, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, Repeat, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
+import jsPDF from "jspdf";
 
 import ProposalFormModal from "@/components/proposals/ProposalFormModal";
 import ProposalStatsCards from "@/components/proposals/ProposalStatsCards";
@@ -38,6 +39,8 @@ export default function Proposals() {
   const [sortField, setSortField] = useState("created_date");
   const [sortDir, setSortDir] = useState("desc");
   const [confirmModal, setConfirmModal] = useState(null); // { type: "delete"|"approve"|"reject", proposal }
+  const [generatingPdfId, setGeneratingPdfId] = useState(null);
+  const [pdfError, setPdfError] = useState("");
   const navigate = useNavigate();
 
   function toggleSort(field) {
@@ -51,7 +54,17 @@ export default function Proposals() {
 
   async function loadProposals() {
     setLoading(true);
-    const data = await maestro.entities.Proposal.list("-created_date", 200);
+    const rawData = await maestro.entities.Proposal.list("-created_date", 200);
+    const fallbackDate = new Date().toISOString();
+    const data = await Promise.all(rawData.map(async proposal => {
+      if (proposal.created_date) return proposal;
+      const created_date = proposal.updated_date || proposal.created_at || fallbackDate;
+      try {
+        return await maestro.entities.Proposal.update(proposal.id, { created_date });
+      } catch {
+        return { ...proposal, created_date };
+      }
+    }));
     const today = new Date().toISOString().split("T")[0];
     const expirePromises = data.filter(p =>
       p.status === "sent" && p.valid_until && p.valid_until < today
@@ -64,6 +77,73 @@ export default function Proposals() {
       setProposals(data);
     }
     setLoading(false);
+  }
+
+  async function generateProposalPdf(proposal) {
+    setGeneratingPdfId(proposal.id);
+    setPdfError("");
+    try {
+      const created_date = proposal.created_date || new Date().toISOString();
+      const { id, ...proposalData } = proposal;
+      const saved = await maestro.entities.Proposal.update(id, { ...proposalData, created_date, updated_date: new Date().toISOString() });
+      const current = { ...proposal, ...saved, created_date };
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const margin = 18;
+      const pageWidth = 210;
+      let y = 20;
+      const blue = [30, 90, 153];
+      const text = (value, size = 10, bold = false) => {
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        doc.setFontSize(size);
+        doc.setTextColor(35, 45, 58);
+        const lines = doc.splitTextToSize(String(value || "-"), pageWidth - margin * 2);
+        doc.text(lines, margin, y);
+        y += lines.length * (size * 0.45) + 4;
+      };
+      doc.setFillColor(...blue);
+      doc.rect(0, 0, pageWidth, 13, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("DOMÍNIO PERFORMANCE", margin, 9);
+      y = 27;
+      text("PROPOSTA COMERCIAL", 18, true);
+      doc.setDrawColor(...blue);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 8;
+      text(`Título: ${current.title || "Sem título"}`, 12, true);
+      text(`Número: ${current.number || "-"}`);
+      text(`Cliente: ${current.client_name || "-"}`);
+      text(`Tipo: ${TYPE_CONFIG[current.proposal_type]?.label || current.proposal_type || "-"}`);
+      text(`Data de criação: ${current.created_date ? format(new Date(current.created_date), "dd/MM/yyyy") : "-"}`);
+      text(`Validade: ${current.valid_until ? format(new Date(`${current.valid_until}T12:00:00`), "dd/MM/yyyy") : "Sem validade"}`);
+      y += 3;
+      text("ITENS / SERVIÇOS", 12, true);
+      (current.items || []).filter(item => item.description).forEach(item => {
+        text(`${item.description} - ${item.quantity || 1}x - R$ ${Number(item.total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`);
+      });
+      text(`TOTAL: R$ ${Number(current.total_amount || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, 12, true);
+      if (current.notes) {
+        y += 3;
+        text("OBSERVAÇÕES", 12, true);
+        text(current.notes);
+      }
+      y += 12;
+      doc.setDrawColor(150, 160, 170);
+      doc.line(margin, y, 82, y);
+      doc.line(128, y, pageWidth - margin, y);
+      y += 5;
+      text("Domínio Performance", 9);
+      doc.setFontSize(9);
+      doc.setTextColor(90, 100, 115);
+      doc.text("Cliente", 128, y - 9);
+      doc.save(`Proposta_${String(current.client_name || current.title || "comercial").replace(/[^a-z0-9áéíóúãõç ]/gi, "").trim().replace(/\s+/g, "_")}.pdf`);
+      setProposals(prev => prev.map(item => item.id === id ? current : item));
+    } catch (error) {
+      setPdfError(error?.message || "Não foi possível salvar e gerar o PDF.");
+    } finally {
+      setGeneratingPdfId(null);
+    }
   }
 
   useEffect(() => { loadProposals(); }, []);
@@ -198,6 +278,8 @@ export default function Proposals() {
       {/* Stats */}
       <ProposalStatsCards proposals={filtered} />
 
+      {pdfError && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{pdfError}</div>}
+
       {/* Chart */}
       <ProposalsChart proposals={filtered} />
 
@@ -321,6 +403,9 @@ export default function Proposals() {
                           <Button variant="ghost" size="icon" className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEdit(p)} title="Editar">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
+                          <Button variant="outline" size="sm" className="h-7 px-2.5 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 text-xs font-medium" onClick={() => generateProposalPdf(p)} disabled={generatingPdfId === p.id} title="Salvar e gerar PDF">
+                            {generatingPdfId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Gerar PDF
+                          </Button>
                           <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive/60 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => requestDelete(p)} title="Excluir">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -357,6 +442,9 @@ export default function Proposals() {
                       {p.total_amount ? `R$ ${p.total_amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
                     </span>
                   </div>
+                  <Button variant="outline" size="sm" className="mt-3 w-full text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 text-xs" onClick={(event) => { event.stopPropagation(); generateProposalPdf(p); }} disabled={generatingPdfId === p.id}>
+                    {generatingPdfId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Gerar PDF
+                  </Button>
                 </div>
               );
             })}

@@ -6,6 +6,7 @@ import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
 
 const TYPE_CONFIG = {
+  job_created: { icon: Briefcase, color: "text-blue-500", bg: "bg-blue-50" },
   subtask_unlocked: { icon: CheckSquare, color: "text-blue-500", bg: "bg-blue-50" },
   deadline_approaching: { icon: Clock, color: "text-amber-500", bg: "bg-amber-50" },
   job_overdue: { icon: AlertCircle, color: "text-red-500", bg: "bg-red-50" },

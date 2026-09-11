@@ -11,18 +11,16 @@ import {
   LayoutDashboard, FolderKanban, Briefcase, FileText,
   TrendingUp, MessageSquare, Users, BarChart3, Calendar, Instagram,
   HelpCircle, ChevronDown, ChevronLeft,
-  Sun, Moon, Settings, FileCheck } from "lucide-react";
+  Sun, Moon, Settings, FileCheck, Brain } from "lucide-react";
 
 import { getCurrentCollaborator, logoutCollaborator, maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 
 const ALL_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
@@ -36,6 +34,7 @@ const ALL_NAV_ITEMS = [
   { label: "Conversas", icon: MessageSquare,    page: "Conversations" },
   { label: "Insights",  icon: Instagram,        page: "Instagram" },
   { label: "Relatórios",icon: BarChart3,        page: "Reports" },
+  { label: "Ads Brain", icon: Brain,             page: "AdsBrain" },
 ];
 
 const COLLABORATOR_NAV_ITEMS = [
@@ -44,6 +43,7 @@ const COLLABORATOR_NAV_ITEMS = [
   { label: "Jobs",      icon: Briefcase,       page: "Jobs" },
   { label: "Agenda",    icon: Calendar,        page: "Agenda" },
   { label: "Carteira",  icon: Users,           page: "ClientPortfolio" },
+  { label: "Ads Brain", icon: Brain,            page: "AdsBrain" },
 ];
 
 const getNavItems = (accessLevel) =>
@@ -101,8 +101,9 @@ export default function Layout({ children, currentPageName }) {
     Records:         "Cadastros",
     Reports:         "Relatórios",
     Templates:       "Configurações / Templates",
-    Settings:        "Recuperação / Settings",
-    Configuracoes:   "Configurações",
+      Settings:        "Recuperação / Settings",
+      Configuracoes:   "Configurações",
+      AdsBrain:        "Ads Brain",
   };
 
   const pageTitle = breadcrumbMap[currentPageName] || currentPageName;

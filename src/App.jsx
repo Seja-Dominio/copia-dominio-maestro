@@ -46,6 +46,7 @@ const Documentos = lazyWithRetry(() => import('./pages/Documentos.jsx'));
 const Recovery = lazyWithRetry(() => import('./pages/Recovery.jsx'));
 const JobApproval = lazyWithRetry(() => import('./pages/JobApproval.jsx'));
 const InstagramPage = lazyWithRetry(() => import('./pages/Instagram.jsx'));
+const AdsBrain = lazyWithRetry(() => import('./pages/AdsBrain.jsx'));
 
 
 
@@ -161,6 +162,7 @@ const AuthenticatedApp = () => {
         <Route path="/Documentos" element={<P name="Documentos"><Documentos /></P>} />
         <Route path="/Recovery" element={<P name="Recovery"><Recovery /></P>} />
         <Route path="/Instagram" element={<P name="Instagram"><InstagramPage /></P>} />
+        <Route path="/AdsBrain" element={<P name="AdsBrain"><AdsBrain /></P>} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </>

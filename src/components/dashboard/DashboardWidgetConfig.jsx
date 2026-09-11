@@ -6,13 +6,11 @@ import { maestro } from "@/api/maestroClient";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 export const WIDGET_OPTIONS = [
-  { id: "my_alerts", label: "Meus Alertas", adminOnly: false },
-  { id: "my_overdue", label: "Minhas Entregas Atrasadas", adminOnly: false },
+  { id: "my_alerts", label: "Minha fila de trabalho", adminOnly: false },
+  { id: "delivery_metrics", label: "Gestão de Entregas", adminOnly: false },
   { id: "kpi_cards", label: "KPIs (Clientes, Atrasados, NPS)", adminOnly: false },
   { id: "alert_banners_team", label: "Alertas da Equipe", adminOnly: true },
   { id: "financial_section", label: "Financeiro", adminOnly: true },
-  { id: "next_posts", label: "Próximas Postagens — 5 dias", adminOnly: false },
-  { id: "overdue_jobs_team", label: "Entregas Atrasadas (equipe)", adminOnly: true },
   { id: "nps_panel", label: "NPS Mais Baixos", adminOnly: false },
   { id: "contract_expiry", label: "Vencimentos de Contrato", adminOnly: false },
   { id: "birthdays", label: "Aniversários", adminOnly: false },

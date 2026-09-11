@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
-import * as XLSX from "xlsx";
 
 function flattenData(data) {
   if (!data || data.length === 0) return [];
@@ -88,19 +87,25 @@ export default function ExportButton({ getData, filename = "relatorio", period }
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  async function exportXLSX() {
+  async function exportCSV() {
     setExporting(true);
     setOpen(false);
     const sheets = getData();
-    const wb = XLSX.utils.book_new();
-
     const allSheets = Array.isArray(sheets) && sheets[0]?.name ? sheets : [{ name: "Relatório", rows: flattenData(sheets) }];
-    allSheets.forEach(sheet => {
-      const ws = XLSX.utils.json_to_sheet(sheet.rows || []);
-      XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
-    });
-
-    XLSX.writeFile(wb, `${filename}.xlsx`);
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const csv = allSheets.map((sheet) => {
+      const rows = sheet.rows || [];
+      if (!rows.length) return `"${sheet.name}"`;
+      const columns = Object.keys(rows[0]);
+      return [`"${sheet.name}"`, columns.map(escape).join(","), ...rows.map((row) => columns.map((column) => escape(row[column])).join(","))].join("\n");
+    }).join("\n\n");
+    const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
     setExporting(false);
   }
 
@@ -126,11 +131,11 @@ export default function ExportButton({ getData, filename = "relatorio", period }
       {open && (
         <div className="absolute top-full mt-1 right-0 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden w-44">
           <button
-            onClick={exportXLSX}
+            onClick={exportCSV}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
           >
             <FileSpreadsheet className="w-4 h-4 text-green-600" />
-            Exportar XLSX
+            Exportar CSV
           </button>
           <button
             onClick={exportPDF}

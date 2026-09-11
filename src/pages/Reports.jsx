@@ -21,6 +21,8 @@ import BillingReport from "@/components/reports/BillingReport";
 import ClientProfitabilityReport from "@/components/reports/ClientProfitabilityReport";
 import ClientCostReport from "@/components/reports/ClientCostReport";
 import ProductivityDailyReport from "@/components/reports/ProductivityDailyReport";
+import DeliveryReport from "@/components/reports/DeliveryReport";
+import { calculateDeliveryMetrics } from "@/lib/deliveryMetrics";
 import ActivityVolumeChart from "@/components/agenda/ActivityVolumeChart";
 import ClientKeyActivities from "@/components/agenda/ClientKeyActivities";
 import { DEFAULT_ACTIVITY_CONFIG } from "@/pages/Agenda";
@@ -63,6 +65,7 @@ const REPORTS = {
     { id: "board", name: "Pauta de Projetos", description: "Todos os documentos do projeto com informações principais" },
   ],
   jobs: [
+    { id: "delivery", name: "Gestão de Entregas", description: "Atrasos por postagem, etapa, responsável e entregas dentro do prazo" },
     { id: "board", name: "Pauta de Jobs", description: "Volume de jobs com status, subtarefas e envolvidos" },
   ],
   proposals: [
@@ -127,8 +130,9 @@ export default function Reports() {
   const isAdmin = sessionCollaborator?.access_level === "admin";
   const initialSection = searchParams.get("section") || "productivity";
   const [section, setSection] = useState(initialSection);
+  const requestedReport = searchParams.get("report");
   const [activeReport, setActiveReport] = useState(
-    initialSection === "timesheet" ? "by_user" : initialSection === "productivity" ? "daily" : "cashflow"
+    requestedReport || (initialSection === "timesheet" ? "by_user" : initialSection === "productivity" ? "daily" : initialSection === "jobs" ? "delivery" : "cashflow")
   );
   const [period, setPeriod] = useState(null);
   const selectedUserId = searchParams.get("user");
@@ -136,6 +140,7 @@ export default function Reports() {
   const [entries, setEntries] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [subtasks, setSubtasks] = useState([]);
   const [timesheets, setTimesheets] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [clients, setClients] = useState([]);
@@ -173,7 +178,10 @@ export default function Reports() {
     }
     if (section === "jobs") {
       fetches.push(
-        maestro.entities.Job.list("-created_date", 200).then(j => setJobs(j)),
+        maestro.entities.Job.list("-created_date", 5000).then(j => setJobs(j)),
+        maestro.entities.Subtask.list("-created_date", 5000).then(s => setSubtasks(s)),
+        collaborators.length === 0 ? maestro.entities.Collaborator.list("name", 200).then(col => setCollaborators(col)) : Promise.resolve(),
+        clients.length === 0 ? maestro.entities.Client.filter({ status: "active" }, "name", 200).then(cl => setClients(cl)) : Promise.resolve(),
       );
     }
     if (section === "agenda") {
@@ -234,6 +242,17 @@ export default function Reports() {
 
   // Export data builders
   function getExportData() {
+    if (section === "jobs" && activeReport === "delivery") {
+      const metrics = calculateDeliveryMetrics({ jobs, subtasks, collaborators, clients, period });
+      return [{ name: "Gestão de Entregas", rows: metrics.responsibleRows.map(row => ({
+        "Responsável": row.name,
+        "Jobs atrasados": row.overdueJobs,
+        "Tarefas atrasadas": row.overdueTasks,
+        "Tarefas entregues": row.completedTasks,
+        "Tarefas no prazo": row.onTimeTasks,
+        "Índice no prazo": row.onTimeRate == null ? "—" : `${row.onTimeRate}%`,
+      })) }];
+    }
     if (section === "timesheet") {
       const rows = filteredTimesheets.map(t => ({
         "Data": t.started_at ? t.started_at.slice(0, 10) : "",
@@ -413,7 +432,10 @@ export default function Reports() {
             )}
 
             {/* JOBS */}
-            {section === "jobs" && (
+            {section === "jobs" && activeReport === "delivery" && (
+              <DeliveryReport jobs={jobs} subtasks={subtasks} collaborators={collaborators} clients={clients} period={period} />
+            )}
+            {section === "jobs" && activeReport === "board" && (
               <div className="glass-card p-6">
                 <h3 className="font-semibold text-foreground mb-4">Jobs por Status</h3>
                 <div className="flex flex-col lg:flex-row items-center gap-8">

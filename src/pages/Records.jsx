@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus, Search, Users, Briefcase, Building2,
-  Phone, Mail, Calendar, Edit2, Globe, Tag, Lock, Trash2, Shield
+  Phone, Mail, Calendar, Edit2, Globe, Tag, Lock, Trash2, Shield, MessageCircle
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import CollaboratorFormModal from "../components/collaborators/CollaboratorFormModal";
 import AccessCredentialsModal from "../components/collaborators/AccessCredentialsModal";
 import ClientFormModal from "../components/clients/ClientFormModal";
@@ -21,6 +21,13 @@ const TABS = [
   { id: "suppliers", label: "Fornecedores", icon: Briefcase },
   { id: "squads", label: "Squads", icon: Shield },
 ];
+
+function safeFormatDate(value, pattern) {
+  if (!value) return "—";
+  const raw = String(value);
+  const date = new Date(/T|Z/.test(raw) ? raw : `${raw}T12:00:00`);
+  return isValid(date) ? format(date, pattern) : "—";
+}
 
 export default function Records() {
   const [tab, setTab] = useState("clients");
@@ -219,7 +226,7 @@ export default function Records() {
                     {c.birthday && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Calendar className="w-3 h-3" />
-                        <span>{format(new Date(c.birthday), "dd/MM")}</span>
+                        <span>{safeFormatDate(c.birthday, "dd/MM")}</span>
                       </div>
                     )}
                   </div>
@@ -252,15 +259,15 @@ export default function Records() {
                         <p className="text-xs text-muted-foreground">{c.role || "—"}</p>
                       </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditingCollab(c); setShowCollabForm(true); }} className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground" title="Editar dados">
-                          <Edit2 className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => { setEditingCollab(c); setShowCollabForm(true); }} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" title="Editar dados">
+                          <Edit2 className="w-3.5 h-3.5" /> Editar
                         </button>
-                        <button onClick={() => { setSelectedCollabForAccess(c); setShowAccessModal(true); }} className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground" title="Gerenciar credenciais de acesso">
-                           <Lock className="w-3.5 h-3.5" />
+                        <button onClick={() => { setSelectedCollabForAccess(c); setShowAccessModal(true); }} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" title="Gerenciar credenciais de acesso">
+                           <Lock className="w-3.5 h-3.5" /> Acesso
                          </button>
                         {isAdmin && (
-                          <button onClick={() => { if(window.confirm(`Excluir colaborador "${c.name}"?`)) deleteCollab(c.id); }} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center text-red-500" title="Excluir colaborador">
+                          <button onClick={() => { if(window.confirm(`Excluir colaborador "${c.name}"?`)) deleteCollab(c.id); }} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50" title="Excluir colaborador" aria-label="Excluir colaborador">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -277,15 +284,20 @@ export default function Records() {
                         <Phone className="w-3 h-3" /> {c.phone}
                       </div>
                     )}
+                    {c.whatsapp_phone && (
+                      <div className="flex items-center gap-2 text-xs text-emerald-600">
+                        <MessageCircle className="w-3 h-3" /> WhatsApp: {c.whatsapp_phone}
+                      </div>
+                    )}
                     {c.birthday && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="w-3 h-3" /> Aniv: {format(new Date(c.birthday + "T12:00:00"), "dd/MM")}
+                        <Calendar className="w-3 h-3" /> Aniv: {safeFormatDate(c.birthday, "dd/MM")}
                       </div>
                     )}
 
                     {c.contract_end_date && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        Contrato até: <span className="font-semibold">{format(new Date(c.contract_end_date + "T12:00:00"), "dd/MM/yyyy")}</span>
+                        Contrato até: <span className="font-semibold">{safeFormatDate(c.contract_end_date, "dd/MM/yyyy")}</span>
                       </div>
                     )}
                   </div>

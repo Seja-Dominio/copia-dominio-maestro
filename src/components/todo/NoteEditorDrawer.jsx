@@ -1,17 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { maestro } from "@/api/maestroClient";
 import { ArrowLeft, Trash2, Loader2 } from "lucide-react";
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
-
-const QUILL_MODULES = {
-  toolbar: [
-    ["bold", "italic", "underline", "strike"],
-    [{ list: "ordered" }, { list: "bullet" }],
-    [{ header: [1, 2, 3, false] }],
-    ["clean"],
-  ],
-};
 
 export default function NoteEditorDrawer({ note, onClose, onUpdate, onDelete }) {
   const [title, setTitle] = useState(note.title || "");
@@ -65,15 +54,13 @@ export default function NoteEditorDrawer({ note, onClose, onUpdate, onDelete }) 
         </button>
       </div>
 
-      {/* Editor — fills remaining space */}
-      <div className="flex-1 overflow-hidden note-fullscreen-editor">
-        <ReactQuill
-          theme="snow"
+      {/* Plain text editor avoids the unmaintained Quill 1.x XSS surface. */}
+      <div className="flex-1 overflow-hidden p-4">
+        <textarea
+          className="w-full h-full resize-none bg-transparent text-sm text-foreground outline-none"
           value={content}
-          onChange={val => { setContent(val); saveField("content", val); }}
-          modules={QUILL_MODULES}
+          onChange={e => { setContent(e.target.value); saveField("content", e.target.value); }}
           placeholder="Escreva sua anotação..."
-          style={{ height: "100%", display: "flex", flexDirection: "column" }}
         />
       </div>
     </div>

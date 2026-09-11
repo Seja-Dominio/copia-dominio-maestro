@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { loginCollaborator } from "@/api/maestroClient";
+import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, User, AlertCircle, Zap, ArrowRight } from "lucide-react";
@@ -16,6 +17,22 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
     setLoading(true);
 
     try {
+      // Native Supabase Auth accounts can sign in with an email address.
+      // Keep the collaborator endpoint for the existing username-based users.
+      if (supabase && login.includes("@")) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: login.trim(),
+          password,
+        });
+        if (!error && data.user) {
+          onLoginSuccess?.(data.user);
+          return;
+        }
+        if (error?.message?.toLowerCase().includes("email not confirmed")) {
+          setError("Confirme seu e-mail antes de entrar.");
+          return;
+        }
+      }
       const response = await loginCollaborator({ login, password });
       const data = response.data;
 
@@ -34,7 +51,7 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
 
       onLoginSuccess?.(collaborator);
     } catch (err) {
-      const msg = err?.response?.data?.error || "Erro ao autenticar. Tente novamente.";
+      const msg = err?.message || err?.response?.data?.error || "Erro ao autenticar. Tente novamente.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -65,7 +82,7 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
           </p>
 
           {error && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl flex items-start gap-2.5">
+            <div role="alert" className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
               <p className="text-sm text-destructive">{error}</p>
             </div>
@@ -74,12 +91,13 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Login */}
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wide">
+              <label htmlFor="collaborator-login" className="block text-xs font-semibold text-foreground mb-1 uppercase tracking-wide">
                 Usuário
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  id="collaborator-login"
                   type="text"
                   placeholder="Digite seu usuário"
                   value={login}
@@ -93,12 +111,13 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
 
             {/* Senha */}
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wide">
+              <label htmlFor="collaborator-password" className="block text-xs font-semibold text-foreground mb-1 uppercase tracking-wide">
                 Senha
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  id="collaborator-password"
                   type="password"
                   placeholder="Digite sua senha"
                   value={password}

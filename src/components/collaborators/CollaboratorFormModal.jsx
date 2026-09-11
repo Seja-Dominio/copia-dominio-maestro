@@ -14,6 +14,7 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
     role: collaborator?.role || "",
     department: collaborator?.department || "",
     phone: collaborator?.phone || "",
+    whatsapp_phone: collaborator?.whatsapp_phone || "",
     birthday: collaborator?.birthday || "",
     hourly_rate: collaborator?.hourly_rate || "",
     monthly_salary: collaborator?.monthly_salary || "",
@@ -82,6 +83,11 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Telefone</label>
               <Input placeholder="(11) 99999-0000" value={form.phone} onChange={set("phone")} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">WhatsApp para notificações</label>
+              <Input type="tel" placeholder="(11) 99999-0000" value={form.whatsapp_phone} onChange={set("whatsapp_phone")} />
+              <p className="mt-1 text-[11px] text-muted-foreground">Usado para novas demandas e resumo diário de tarefas atrasadas.</p>
             </div>
           </div>
 

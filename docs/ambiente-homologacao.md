@@ -1,52 +1,52 @@
-# Ambiente de homologacao - Dominio Maestro
+# Ambientes Dev e produção — Domínio Maestro
 
 ## Objetivo
 
-Separar o ciclo de testes do ambiente real. A equipe continua usando `https://dominiomaestro.com.br` e o Base44 permanece ativo como fallback. A homologacao deve usar outro projeto Supabase, com dados de teste.
+Separar o ciclo de desenvolvimento do ambiente real. O trabalho diário acontece no projeto Dev e a produção permanece protegida. O Base44 continua disponível como fallback enquanto a migração não for encerrada.
 
 ## Estado configurado
 
-- Branch local: `codex/homologacao`.
-- Produção: domínio externo no KVM2, usando o projeto Supabase atual.
-- Homologação local: preparada para usar o modo Vite `test` na porta `4174`.
-- Proteção: o modo `test` bloqueia automaticamente a URL do projeto de produção.
+- Branch local de trabalho: `codex/homologacao`.
+- Dev: `tqmfuskvllpqmvayjuqu` (projeto `Dominio Maestro`).
+- Produção: `fwpisypiiezjhtqxlmqv` (projeto `Maestro BD producao`, São Paulo).
+- Ambiente local padrão: usa o projeto Dev em `http://127.0.0.1:4173`.
+- O modo Vite `test`, quando usado, também aponta para o Dev; não é um terceiro banco.
+- Proteção: o frontend recusa URLs incompatíveis com o ambiente selecionado.
 - O repositório remoto atual aponta para `producao-dev/Dominio-Performance-Maestro-app`; nenhum push será feito para esse remoto sem confirmação.
 
-## Criar o projeto Supabase de homologação
+## Configuração dos dois projetos Supabase
 
-1. No painel Supabase, crie um novo projeto com nome como `maestro-homologacao`.
-2. Guarde a URL e a chave publicável desse novo projeto.
-3. Replique o schema/migrations do repositório.
-4. Publique as Edge Functions necessárias no projeto de homologação.
-5. Crie somente usuários e dados de teste.
-6. Configure os segredos das Functions no projeto de homologação; não copie segredos para o Git.
+1. O projeto `tqmf...` é usado exclusivamente para desenvolvimento e testes.
+2. O projeto `fwpis...` é usado exclusivamente pela aplicação publicada.
+3. Migrations e Edge Functions novas devem ser aplicadas primeiro no Dev.
+4. Segredos do Dev e da produção devem ser configurados separadamente no painel Supabase.
+5. Dados de teste não devem ser gravados no projeto de produção.
 
 ## Configurar a máquina local
 
-Copie `config/env.test.example` para `.env.test` e preencha apenas com os valores do projeto de homologação:
+O `.env.local` já deve conter a URL e a chave publicável do projeto Dev:
 
 ```text
-cp config/env.test.example .env.test
+VITE_MAESTRO_ENV=development
+VITE_SUPABASE_URL=https://tqmfuskvllpqmvayjuqu.supabase.co
 ```
 
-Antes de iniciar, confirme que `VITE_SUPABASE_URL` não é a URL de produção. O arquivo `.env.test` é ignorado pelo Git.
-
-O frontend também interrompe as chamadas se `VITE_MAESTRO_ENV=test` estiver apontando para o projeto de produção. Isso evita gravações acidentais no ambiente real.
+Antes de iniciar, confirme que `VITE_SUPABASE_URL` é a URL do Dev. Os arquivos `.env*` preenchidos são ignorados pelo Git.
 
 ## Rodar e testar
 
 ```text
 npm install
-npm run dev:test
+npm run dev
 ```
 
-Abra `http://127.0.0.1:4174`.
+Abra `http://127.0.0.1:4173`.
 
-Para validar o build de homologação:
+Para validar o build Dev:
 
 ```text
-npm run build:test
-npm run preview:test
+npm run build:dev
+npm run preview:dev
 ```
 
 ## Fluxo por lote funcional
@@ -87,6 +87,6 @@ Esperado: container `maestro-web` ativo e resposta HTTP 200.
 
 Se a homologação falhar, corrija a branch sem publicar. Se a produção já tiver sido publicada, recompile e reenvie a última `dist` conhecida como boa. Mudanças de banco devem ter migração reversível ou plano explícito de restauração.
 
-## Pendência necessária para ativar a homologação real
+## Regra de sincronização
 
-Ainda falta a URL/chave publicável do projeto Supabase separado. Sem esse projeto, o modo `test` está preparado, mas não deve ser executado apontando para a base de produção.
+Dev é a fonte de validação. Após cada lote aprovado no Dev, sincronize migrations e Edge Functions com produção em uma janela separada. Nunca use o `.env.local` do Dev para publicar e nunca publique uma alteração que não tenha sido validada no Dev.

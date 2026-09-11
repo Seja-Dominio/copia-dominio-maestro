@@ -1,11 +1,15 @@
 import { GripVertical, EyeOff } from "lucide-react";
 
-export default function DraggableWidget({ children, dragHandleProps, isEditMode, onHide, label }) {
+export default function DraggableWidget({ children, dragHandleProps, isEditMode, onHide, label, fullDragHandle = false }) {
   return (
-    <div className="relative group">
+    <div
+      {...(isEditMode && fullDragHandle ? dragHandleProps : {})}
+      className={`relative group ${isEditMode && fullDragHandle ? "cursor-grab active:cursor-grabbing select-none touch-none" : ""}`}
+      aria-label={isEditMode && fullDragHandle ? `${label}. Arraste para reorganizar` : undefined}
+    >
       {isEditMode && (
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-card border border-border rounded-full px-2 py-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
-          <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground">
+        <div className={`${fullDragHandle ? "pointer-events-none" : ""} absolute -top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-card border border-border rounded-full px-2 py-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity`}>
+          <div {...(!fullDragHandle ? dragHandleProps : {})} className="p-1 text-muted-foreground">
             <GripVertical className="w-3.5 h-3.5" />
           </div>
           <span className="text-[10px] text-muted-foreground font-medium max-w-[120px] truncate">{label}</span>

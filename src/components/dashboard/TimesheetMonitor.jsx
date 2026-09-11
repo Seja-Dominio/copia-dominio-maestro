@@ -39,7 +39,7 @@ export default function TimesheetMonitor({ collaborators }) {
   }, []);
 
   // All active collaborators, merge with running timesheets
-  const activeCollabs = collaborators.filter(c => c.is_active !== false);
+  const activeCollabs = collaborators.filter(c => c.is_active === true);
 
   const withStatus = activeCollabs.map(c => {
     const ts = runningTimesheets.find(t => t.collaborator_id === c.id);

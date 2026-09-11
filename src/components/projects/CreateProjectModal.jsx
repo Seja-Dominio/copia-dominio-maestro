@@ -3,20 +3,15 @@ import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StandardDrawer from "@/components/ui/StandardDrawer";
-import { format, addMonths } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-const MONTH_OPTIONS = (() => {
-  const now = new Date();
-  const options = [];
-  for (let i = -2; i <= 12; i++) {
-    const d = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), i);
-    const value = format(d, "yyyy-MM");
-    const label = format(d, "MMMM yyyy", { locale: ptBR });
-    options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
-  }
-  return options;
-})();
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => {
+  const date = new Date(2026, index, 1);
+  const label = format(date, "MMMM", { locale: ptBR });
+  return { value: String(index + 1).padStart(2, "0"), label: label.charAt(0).toUpperCase() + label.slice(1) };
+});
+const YEAR_OPTIONS = ["2026", "2027", "2028", "2029", "2030"];
 
 export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
   const [clients, setClients] = useState([]);
@@ -26,7 +21,8 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
     client_id: "",
     client_name: "",
     team: "",
-    reference_month: format(new Date(), "yyyy-MM"),
+    reference_month: format(new Date(), "MM"),
+    reference_year: format(new Date(), "yyyy"),
   });
   const [saving, setSaving] = useState(false);
 
@@ -46,13 +42,13 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
   }
 
   // Nome é obrigatório apenas se não tiver cliente + mês selecionados
-  const hasClientAndMonth = form.client_id && form.reference_month;
+  const hasClientAndMonth = form.client_id && form.reference_month && form.reference_year;
   const nameRequired = !hasClientAndMonth;
 
   function buildAutoName() {
-    if (!form.reference_month) return "";
+    if (!form.reference_month || !form.reference_year) return "";
     const monthLabel = MONTH_OPTIONS.find(m => m.value === form.reference_month)?.label || form.reference_month;
-    return `${form.client_name} - ${monthLabel}`;
+    return `${form.client_name} - ${monthLabel} ${form.reference_year}`;
   }
 
   async function handleSubmit(e) {
@@ -66,7 +62,9 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
       client_name: form.client_name,
       team: form.team,
       teams: form.team ? [form.team] : [],
-      reference_month: form.reference_month || undefined,
+      reference_month: form.reference_month && form.reference_year
+        ? `${form.reference_year}-${form.reference_month}`
+        : undefined,
       status: "no_status",
     });
     onCreate(created);
@@ -100,18 +98,29 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
             </select>
           </div>
 
-          {/* Mês de Referência */}
+          {/* Mês e ano de referência */}
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Mês de Referência *</label>
-            <select
-              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              value={form.reference_month}
-              onChange={e => setForm(f => ({ ...f, reference_month: e.target.value }))}
-            >
-              {MONTH_OPTIONS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                aria-label="Mês de referência"
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={form.reference_month}
+                onChange={e => setForm(f => ({ ...f, reference_month: e.target.value }))}
+              >
+                {MONTH_OPTIONS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Ano de referência"
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={form.reference_year}
+                onChange={e => setForm(f => ({ ...f, reference_year: e.target.value }))}
+              >
+                {YEAR_OPTIONS.map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </div>
             <p className="text-[10px] text-muted-foreground mt-1">Define o mês do cronograma e dos jobs</p>
           </div>
 

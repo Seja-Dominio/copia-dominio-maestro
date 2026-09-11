@@ -45,6 +45,9 @@ function SavingsBoxCard({ box, onDelete }) {
 }
 
 export default function BankAccountsIndicator({ accounts, entries, savingsBoxes, onRefresh }) {
+  accounts = Array.isArray(accounts) ? accounts : [];
+  entries = Array.isArray(entries) ? entries : [];
+  savingsBoxes = Array.isArray(savingsBoxes) ? savingsBoxes : [];
   const [expandedAccount, setExpandedAccount] = useState(null);
   const [showCreateBox, setShowCreateBox] = useState(null); // account object
   const [showTransfer, setShowTransfer] = useState(null); // account object

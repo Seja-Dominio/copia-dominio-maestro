@@ -22,6 +22,7 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showGenerateDoc, setShowGenerateDoc] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -73,34 +74,40 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
   async function handleSave() {
     if (!form.title || (!form.client_id && !form.client_name)) return;
     setSaving(true);
-    const data = {
-      ...form,
-      total_amount: totalAmount,
-      items: form.items.filter(it => it.description),
-    };
-    if (!data.number && !proposal) {
-      // auto-number
-      const all = await maestro.entities.Proposal.list("-number", 1);
-      data.number = (all[0]?.number || 0) + 1;
+    setSaveError("");
+    try {
+      const data = {
+        ...form,
+        total_amount: totalAmount,
+        items: form.items.filter(it => it.description),
+      };
+      if (!data.number && !proposal) {
+        // auto-number
+        const all = await maestro.entities.Proposal.list("-number", 1);
+        data.number = (all[0]?.number || 0) + 1;
+      }
+      if (proposal) {
+        await maestro.entities.Proposal.update(proposal.id, data);
+      } else {
+        await maestro.entities.Proposal.create(data);
+      }
+      onSaved();
+    } catch (error) {
+      setSaveError(error?.message || "Não foi possível salvar a proposta.");
+    } finally {
+      setSaving(false);
     }
-    if (proposal) {
-      await maestro.entities.Proposal.update(proposal.id, data);
-    } else {
-      await maestro.entities.Proposal.create(data);
-    }
-    setSaving(false);
-    onSaved();
   }
 
   const drawerFooter = (
     <div className="flex gap-2">
       <Button variant="outline" className="flex-1 h-9 text-sm" onClick={onClose}>Cancelar</Button>
-      <Button className="flex-1 h-9 text-sm" onClick={handleSave} disabled={saving || !form.title || (!form.client_id && !form.client_name)}>
+      <Button type="button" className="flex-1 h-9 text-sm" onClick={handleSave} disabled={saving || !form.title || (!form.client_id && !form.client_name)}>
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         {saving ? "Salvando..." : "Salvar"}
       </Button>
-      <Button variant="outline" className="flex-1 h-9 text-sm gap-1 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setShowGenerateDoc(true)}>
-        <FileText className="w-4 h-4" /> PDF
+      <Button type="button" variant="outline" className="flex-1 h-9 text-sm gap-1 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setShowGenerateDoc(true)}>
+        <FileText className="w-4 h-4" /> Gerar PDF
       </Button>
     </div>
   );
@@ -108,6 +115,7 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
   const modal = (
     <StandardDrawer open={true} onClose={onClose} title={proposal ? "Editar Proposta" : "Nova Proposta"} footer={drawerFooter}>
         <div className="px-5 py-4" style={{ display: "flex", flexDirection: "column", gap: "26px" }}>
+          {saveError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</div>}
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block no-touch-min" style={{ marginBottom: "6px" }}>Título *</label>
             <Input
@@ -135,12 +143,12 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block no-touch-min" style={{ marginBottom: "6px" }}>Validade</label>
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full h-9 justify-start text-left font-normal text-sm">
+                  <Button type="button" variant="outline" className="w-full h-9 justify-start text-left font-normal text-sm">
                     <CalendarIcon className="w-4 h-4 mr-2 text-muted-foreground" />
                     {form.valid_until ? format(new Date(form.valid_until + "T12:00:00"), "dd/MM/yyyy") : <span className="text-muted-foreground">Selecione a data</span>}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[200]" align="start">
+                <PopoverContent className="w-auto p-0 z-[10050]" align="start">
                   <Calendar
                     mode="single"
                     locale={ptBR}
@@ -239,7 +247,7 @@ export default function ProposalFormModal({ proposal, onClose, onSaved }) {
                   className="h-8 text-sm"
                 />
               </div>
-              <Button size="sm" variant="outline" className="h-8 text-xs gap-1 flex-shrink-0" onClick={() => {
+              <Button type="button" size="sm" variant="outline" className="h-8 text-xs gap-1 flex-shrink-0" onClick={() => {
                 const qty = Number(form.newItemQty) || 1;
                 const price = Number(form.newItemPrice) || 0;
                 if (!form.newItemDesc) return;

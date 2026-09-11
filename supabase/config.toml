@@ -9,3 +9,21 @@ verify_jwt = false
 
 [functions.handle-job-approval]
 verify_jwt = false
+
+[functions.upload-file]
+verify_jwt = false
+
+[functions.admin-timesheets]
+verify_jwt = false
+
+[functions.system-reports]
+verify_jwt = false
+
+[functions.whatsapp-send]
+verify_jwt = false
+
+[functions.maestro-ai]
+verify_jwt = false
+
+[functions.meta-ads-oauth]
+verify_jwt = false

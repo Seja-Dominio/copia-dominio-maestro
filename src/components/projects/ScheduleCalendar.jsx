@@ -961,7 +961,7 @@ export default function ScheduleCalendar({ project, onClose }) {
          });
        }));
        // Notificar responsáveis cujas subtarefas têm notify_on_status = status inicial
-       fireJobCreatedNotifications(created, createdSubs);
+       void fireJobCreatedNotifications(created, createdSubs).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
      }
     return created;
   }
@@ -1011,7 +1011,7 @@ export default function ScheduleCalendar({ project, onClose }) {
           is_completed: false,
         });
       }));
-      fireJobCreatedNotifications(created, wTemplSubs);
+      void fireJobCreatedNotifications(created, wTemplSubs).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
     }
     return created;
   }

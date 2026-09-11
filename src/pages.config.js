@@ -12,6 +12,7 @@ import Proposals from './pages/Proposals';
 import Records from './pages/Records';
 import Reports from './pages/Reports';
 import Templates from './pages/Templates';
+import AdsBrain from './pages/AdsBrain';
 
 export const PAGES = {
     "Agenda": Agenda,
@@ -26,6 +27,7 @@ export const PAGES = {
     "Records": Records,
     "Reports": Reports,
     "Templates": Templates,
+    "AdsBrain": AdsBrain,
 }
 
 export const pagesConfig = {

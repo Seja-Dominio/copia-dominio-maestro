@@ -2,13 +2,21 @@ import { createClient } from '@supabase/supabase-js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const appEnvironment = import.meta.env.VITE_MAESTRO_ENV || 'production';
-const productionUrl = 'https://tqmfuskvllpqmvayjuqu.supabase.co';
-const unsafeTestTarget = appEnvironment === 'test' && url === productionUrl;
+const appEnvironment = import.meta.env.VITE_MAESTRO_ENV || (
+  import.meta.env.MODE === 'production' ? 'production' :
+    import.meta.env.MODE === 'test' ? 'test' : 'development'
+);
+const environmentUrls = {
+  development: 'https://tqmfuskvllpqmvayjuqu.supabase.co',
+  test: 'https://tqmfuskvllpqmvayjuqu.supabase.co',
+  production: 'https://fwpisypiiezjhtqxlmqv.supabase.co',
+};
+const expectedUrl = environmentUrls[appEnvironment];
+const unsafeTarget = expectedUrl && url !== expectedUrl;
 
 function assertSafeTarget() {
-  if (unsafeTestTarget) {
-    throw new Error('Ambiente de teste apontado para a base de produção. Configure um projeto ou conjunto de dados de homologação antes de continuar.');
+  if (unsafeTarget) {
+    throw new Error(`Ambiente ${appEnvironment} apontado para o projeto Supabase incorreto. Dev usa tqmf... e produção usa fwpis... Configure a URL correspondente antes de continuar.`);
   }
 }
 
@@ -17,7 +25,7 @@ export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 export async function invokeSupabaseFunction(name, body = {}) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
-  const sessionToken = sessionStorage.getItem('collaborator_session_token');
+  const sessionToken = sessionStorage.getItem('collaborator_session_token') || (await supabase?.auth.getSession())?.data?.session?.access_token;
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
   const response = await fetch(`${url}/functions/v1/${name}`, {
@@ -30,8 +38,21 @@ export async function invokeSupabaseFunction(name, body = {}) {
     body: JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Erro ao executar ${name}.`);
+  if (!response.ok) {
+    const error = new Error(data.error || `Erro ao executar ${name}.`);
+    error.details = data;
+    throw error;
+  }
   return data;
+}
+
+export async function askMaestroAI({ message, history = [], context = {} }) {
+  try {
+    const data = await invokeSupabaseFunction('maestro-ai', { message, history, context });
+    return data.output || '';
+  } catch (error) {
+    return error?.message || 'Não foi possível consultar o ChatGPT agora.';
+  }
 }
 
 export function invokeAdminTimesheetFunction(action, payload = {}) {
@@ -40,6 +61,18 @@ export function invokeAdminTimesheetFunction(action, payload = {}) {
 
 export function invokeSystemReportFunction(action) {
   return invokeSupabaseFunction('system-reports', { action });
+}
+
+export function invokeWhatsapp(payload) {
+  return invokeSupabaseFunction('whatsapp-send', payload).then((data) => ({ data }));
+}
+
+export function transferSubtasks(payload = {}) {
+  return invokeSupabaseFunction('maestro-data', {
+    operation: 'transferSubtasks',
+    entity: 'Subtask',
+    ...payload,
+  });
 }
 
 export async function invokePublicSupabaseFunction(name, body = {}) {
@@ -125,8 +158,16 @@ async function callMaestroData(body) {
 
 function createEntityApi(entity) {
   return {
-    list: (sort, limit) => callMaestroData({ operation: 'list', entity, sort, limit }),
-    filter: (filters, sort, limit) => callMaestroData({ operation: 'filter', entity, filters, sort, limit }),
+    // Keep list reads resilient while older deployed functions may wrap rows
+    // as { data: [...] } instead of returning the array directly.
+    list: async (sort, limit) => {
+      const result = await callMaestroData({ operation: 'list', entity, sort, limit });
+      return Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
+    },
+    filter: async (filters, sort, limit) => {
+      const result = await callMaestroData({ operation: 'filter', entity, filters, sort, limit });
+      return Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
+    },
     create: (data) => callMaestroData({ operation: 'create', entity, data }),
     update: (id, data) => callMaestroData({ operation: 'update', entity, id, data }),
     delete: (id) => callMaestroData({ operation: 'delete', entity, id }),

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { maestro } from "@/api/maestroClient";
+import { maestro, uploadMaestroFile } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,7 +9,7 @@ import {
   Calendar, Save, Trash2, Timer, Send, Paperclip,
   History, MessageSquare, ChevronRight, MoreVertical,
   Share2, CheckSquare, User, Play, Square, Copy, ChevronDown,
-  RotateCcw, ChevronLeft, Check, GripVertical, Ban, Upload
+  RotateCcw, ChevronLeft, Check, GripVertical, Ban, Upload, FileText, Printer
 } from "lucide-react";
 import JobAttachmentsTab from "./JobAttachmentsTab";
 import SendJobToWhatsAppModal from "./SendJobToWhatsAppModal";
@@ -19,21 +19,14 @@ import { format, differenceInSeconds, addMonths, subMonths, startOfMonth, endOfM
 import { ptBR } from "date-fns/locale";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { autoCompleteSubtasks, deriveJobStatusFromSubtasks } from "./subtaskAutoComplete";
-import { fireJobStatusNotifications } from "@/lib/jobNotifications";
+import { fireJobCreatedNotifications, fireJobStatusNotifications, fireNewSubtaskNotification } from "@/lib/jobNotifications";
+import { isJobOverdue, isOpenSubtask } from "@/lib/jobWorkflow";
 import SpellCheckTextarea from "@/components/SpellCheckTextarea";
 import { safeDelete } from "@/lib/safeDelete";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { Link2 } from "lucide-react";
 
 // STATUSES computed dynamically inside components via useStatusConfig()
-
-const SUBTASK_STATUS_OPTIONS = [
-  { value: "pending", label: "Pendente", color: "bg-amber-100 text-amber-700 border-amber-200" },
-  { value: "in_progress", label: "Fazendo", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { value: "in_review", label: "Revisão", color: "bg-purple-100 text-purple-700 border-purple-200" },
-  { value: "completed", label: "Feito", color: "bg-green-100 text-green-700 border-green-200" },
-  { value: "blocked", label: "Bloqueado", color: "bg-red-100 text-red-700 border-red-200" },
-];
 
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -261,24 +254,14 @@ function PostDateDropdown({ value, onChange, onRepeat }) {
 function SubtaskRow({ subtask, collaborators, onUpdate, onDelete, dragHandleProps }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState(subtask.title);
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showDeadlineCal, setShowDeadlineCal] = useState(false);
-  const statusRef = useRef(null);
   const deadlineRef = useRef(null);
-
-  useEffect(() => {
-    function handleClick(e) { if (statusRef.current && !statusRef.current.contains(e.target)) setShowStatusMenu(false); }
-    if (showStatusMenu) document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showStatusMenu]);
 
   useEffect(() => {
     function handleClick(e) { if (deadlineRef.current && !deadlineRef.current.contains(e.target)) setShowDeadlineCal(false); }
     if (showDeadlineCal) document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showDeadlineCal]);
-
-  const statusOpt = SUBTASK_STATUS_OPTIONS.find(s => s.value === subtask.status) || SUBTASK_STATUS_OPTIONS[0];
 
   async function saveTitle() {
     if (title.trim() && title !== subtask.title) await onUpdate(subtask.id, { title: title.trim() });
@@ -287,7 +270,7 @@ function SubtaskRow({ subtask, collaborators, onUpdate, onDelete, dragHandleProp
 
   return (
     <div className={`grid items-center gap-1.5 py-2 border-b border-border/50 group ${subtask.is_completed ? "opacity-60" : ""}`}
-      style={{ gridTemplateColumns: "28px 32px 1fr 80px 90px 70px 22px" }}>
+      style={{ gridTemplateColumns: "28px 32px 1fr 90px 70px 22px" }}>
 
       {/* Drag handle */}
       <div {...dragHandleProps} className="flex items-center justify-center cursor-grab active:cursor-grabbing opacity-40 md:opacity-0 md:group-hover:opacity-100 transition-opacity w-7 h-10">
@@ -318,25 +301,6 @@ function SubtaskRow({ subtask, collaborators, onUpdate, onDelete, dragHandleProp
         <span className={`text-xs font-medium cursor-text truncate ${subtask.is_completed ? "line-through text-muted-foreground" : "text-foreground"}`}
           onClick={() => setEditingTitle(true)}>{subtask.title}</span>
       )}
-
-      {/* Status */}
-      <div className="relative" ref={statusRef}>
-        <button onClick={() => setShowStatusMenu(v => !v)}
-          className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold w-full truncate ${statusOpt.color}`}>
-          {statusOpt.label}
-        </button>
-        {showStatusMenu && (
-          <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg overflow-hidden w-24">
-            {SUBTASK_STATUS_OPTIONS.map(s => (
-              <button key={s.value}
-                onClick={() => { onUpdate(subtask.id, { status: s.value, is_completed: s.value === "completed", completed_at: s.value === "completed" ? new Date().toISOString() : null }); setShowStatusMenu(false); }}
-                className={`w-full text-left px-2 py-1.5 text-[9px] font-semibold hover:bg-muted ${s.color.split(" ").slice(1).join(" ")}`}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Responsible */}
       <select className="h-8 rounded border border-input bg-background text-[10px] px-1 focus:outline-none w-full"
@@ -396,7 +360,6 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     }
   }, []);
   const [newSubtask, setNewSubtask] = useState("");
-  const [newSubtaskStatus, setNewSubtaskStatus] = useState("pending");
   const [newSubtaskResponsible, setNewSubtaskResponsible] = useState("");
   const [newSubtaskDeadline, setNewSubtaskDeadline] = useState("");
   const [showNewSubtaskCal, setShowNewSubtaskCal] = useState(false);
@@ -427,6 +390,49 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   const [cancelJobConfirm, setCancelJobConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [timesheetModal, setTimesheetModal] = useState(null); // null | {timesheet} | {newFor: job}
+  const [showScriptsDocument, setShowScriptsDocument] = useState(false);
+  const [scriptsDocument, setScriptsDocument] = useState("");
+
+  async function openScriptsDocument() {
+    const jobs = await maestro.entities.Job.list("-created_date", 500);
+    const projects = await maestro.entities.Project.list("-created_date", 500);
+    const project = projects.find(item => item.id === job.project_id);
+    const reels = jobs
+      .filter(item => item.project_id === job.project_id && item.briefing && /\breels?\b/i.test(`${item.title || ""} ${item.format || ""} ${item.type || ""}`))
+      .sort((a, b) => String(a.post_date || "9999").localeCompare(String(b.post_date || "9999")));
+    const generatedDocument = reels.map(item => {
+      const postDate = item.post_date ? format(new Date(`${item.post_date}T12:00:00`), "dd/MM/yyyy") : "A definir";
+      return `ROTEIRO DE REEL\n${item.title || "Roteiro"}\nData de postagem: ${postDate}\nCliente: ${item.client_name || "A definir"}\nProjeto: ${item.project_name || "A definir"}\n\nROTEIRO / BRIEFING\n${item.briefing}\n\nLEGENDA\n${item.caption || "A definir"}`;
+    }).join("\n\n${" + "=".repeat(70) + "}\n\n");
+    setScriptsDocument(project?.scripts_document || generatedDocument);
+    setShowScriptsDocument(true);
+  }
+
+  function printScriptsDocument() {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    const escape = value => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const blocks = scriptsDocument.split(/\n\n\$\{=+\}\n\n/);
+    const sections = blocks.map(block => {
+      const lines = block.split("\n");
+      const tableLines = lines.filter(line => line.trim().startsWith("|") && !/^\s*\|?\s*:?-+/.test(line));
+      const table = tableLines.length >= 2
+        ? `<table>${tableLines.map((line, index) => `<tr>${line.split("|").slice(1, -1).map(cell => `<${index === 0 ? "th" : "td"}>${escape(cell.trim())}</${index === 0 ? "th" : "td"}>`).join("")}</tr>`).join("")}</table>`
+        : `<div class="text">${escape(block).replace(/\n/g, "<br>")}</div>`;
+      return `<section><h2>${escape(lines[1] || "Roteiro")}</h2>${table}</section>`;
+    }).join("");
+    win.document.write(`<html><head><title>Roteiros de Reels - Maestro</title><style>body{font-family:Arial;line-height:1.5;margin:40px;color:#172033}h1{color:#1859ad}h2{border-bottom:2px solid #1859ad;padding-bottom:8px}section{page-break-after:always}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #b8c2d1;padding:12px;vertical-align:top;text-align:left;white-space:pre-wrap}th{background:#eaf1fb;color:#1859ad}.text{white-space:pre-wrap}</style></head><body><h1>Roteiros de Reels</h1>${sections}</body></html>`);
+    win.document.close(); win.focus(); win.print();
+  }
+
+  useEffect(() => {
+    window.__maestroActiveJob = job;
+    window.dispatchEvent(new CustomEvent("maestro:active-job", { detail: job }));
+    return () => {
+      if (window.__maestroActiveJob?.id === job.id) window.__maestroActiveJob = null;
+      window.dispatchEvent(new CustomEvent("maestro:active-job", { detail: null }));
+    };
+  }, [job]);
 
   // Get session collaborator (custom auth)
   const sessionCollaborator = (() => {
@@ -724,13 +730,16 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   }
 
   async function updateSubtask(subtaskId, data) {
-    await maestro.entities.Subtask.update(subtaskId, data);
-    const updatedSubtasks = subtasks.map(s => s.id === subtaskId ? { ...s, ...data } : s);
+    const currentSubtask = subtasks.find(s => s.id === subtaskId);
+    const nextCompleted = data.is_completed !== undefined ? data.is_completed : currentSubtask?.is_completed;
+    const persistedData = { ...data, status: nextCompleted ? "completed" : "pending" };
+    await maestro.entities.Subtask.update(subtaskId, persistedData);
+    const updatedSubtasks = subtasks.map(s => s.id === subtaskId ? { ...s, ...persistedData } : s);
     setSubtasks(updatedSubtasks);
     const sub = subtasks.find(s => s.id === subtaskId);
     // Build history label
     let label = `Tarefa "${sub?.title || subtaskId}" alterada`;
-    if (data.status) label = `Tarefa "${sub?.title}" → status ${data.status}`;
+    if (data.is_completed !== undefined) label = `Tarefa "${sub?.title}" → ${data.is_completed ? "concluída" : "reaberta"}`;
     if (data.responsible_id) {
       const c = collaborators.find(c => c.id === data.responsible_id);
       label = `Tarefa "${sub?.title}" → responsável ${c?.name || data.responsible_id}`;
@@ -771,7 +780,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     const collab = collaborators.find(c => c.id === newSubtaskResponsible);
     const created = await maestro.entities.Subtask.create({
       job_id: job.id, title: newSubtask.trim(),
-      status: newSubtaskStatus || "pending",
+      status: "pending",
       responsible_id: newSubtaskResponsible || undefined,
       responsible_name: collab?.name || undefined,
       deadline: newSubtaskDeadline || undefined,
@@ -780,10 +789,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     setSubtasks(prev => [...prev, created]);
     addHistory("subtask_add", `Tarefa adicionada: "${newSubtask.trim()}"`);
     setNewSubtask("");
-    setNewSubtaskStatus("pending");
     setNewSubtaskResponsible("");
     setNewSubtaskDeadline("");
     onSubtasksChange?.();
+    void fireNewSubtaskNotification(job, created).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
   }
 
   async function deleteSubtask(subtaskId) {
@@ -821,7 +830,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   async function handleImageAttach(file) {
     if (!file || !file.type.startsWith("image/")) return;
     try {
-      const { file_url } = await maestro.integrations.Core.UploadFile({ file });
+      const { file_url } = await uploadMaestroFile(file);
       if (file_url) setCommentImages(prev => [...prev, file_url]);
     } catch (err) {
       console.error("Erro no upload de imagem:", err);
@@ -848,13 +857,14 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         briefing: job.briefing, estimated_hours: job.estimated_hours,
       });
       if (subtasks.length > 0) {
-        await Promise.all(subtasks.map(s =>
+        const createdSubtasks = await Promise.all(subtasks.map(s =>
           maestro.entities.Subtask.create({
             job_id: newJob.id, title: s.title,
             responsible_id: s.responsible_id, responsible_name: s.responsible_name,
             status: "pending", order: s.order, complete_at_status: s.complete_at_status || "",
           })
         ));
+        void fireJobCreatedNotifications(newJob, createdSubtasks).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
       }
     }
     setRepeating(false);
@@ -895,7 +905,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         for (const file of files) {
           if (file.size > 50 * 1024 * 1024) continue;
           try {
-            const { file_url } = await maestro.integrations.Core.UploadFile({ file });
+            const { file_url } = await uploadMaestroFile(file);
             if (!file_url) continue;
             uploaded.push({
               name: file.name || `colagem-${Date.now()}.png`,
@@ -946,7 +956,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     for (const file of files) {
       if (file.size > 50 * 1024 * 1024) continue;
       try {
-        const { file_url } = await maestro.integrations.Core.UploadFile({ file });
+        const { file_url } = await uploadMaestroFile(file);
         if (!file_url) continue;
         uploaded.push({
           name: file.name, url: file_url,
@@ -967,10 +977,9 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     }
   }, []);
 
-  const completedCount = subtasks.filter(s => s.is_completed).length;
-  const openCount = subtasks.length - completedCount;
+  const openCount = subtasks.filter(isOpenSubtask).length;
   const today = format(new Date(), "yyyy-MM-dd");
-  const isLate = job.delivery_date && job.delivery_date < today && job.status !== "completed";
+  const isLate = isJobOverdue(job, today, "delivery_date");
   const totalTimesheetMinutes = timesheets.filter(t => !t.is_running).reduce((sum, t) => sum + (t.duration_minutes || 0), 0);
 
   const historyIcons = {
@@ -1003,7 +1012,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     <>
     <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={async () => { await stopTimer(); onClose(); }} />
     <div className="bg-card rounded-xl shadow-2xl flex flex-col overflow-visible"
-      style={{position:"fixed", top: 60, left:"50%", transform:"translateX(-50%)", width:"calc(100% - 2rem)", maxWidth:"64rem", height:"calc(100vh - 70px)", maxHeight:"calc(100vh - 70px)", zIndex: 10000, borderRadius: 12}}
+      style={{position:"fixed", top: 60, left:"calc(0.5vw + 40px)", transform:"none", width:"calc(59vw - 80px)", maxWidth:"64rem", height:"calc(100vh - 70px)", maxHeight:"calc(100vh - 70px)", zIndex: 10000, borderRadius: 12}}
       onDragEnter={handleGlobalDragEnter}
       onDragLeave={handleGlobalDragLeave}
       onDragOver={handleGlobalDragOver}
@@ -1140,8 +1149,8 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 <span className="text-xs text-muted-foreground">Abertas <span className="font-bold text-foreground">{openCount}/{subtasks.length}</span></span>
               </div>
               <div className="grid text-[9px] font-bold text-muted-foreground uppercase tracking-wide mb-1"
-                style={{ gridTemplateColumns: "28px 32px 1fr 80px 90px 70px 22px" }}>
-                <span /><span /><span>Tarefa</span><span>Status</span><span>Responsável</span><span>Prazo</span><span />
+                style={{ gridTemplateColumns: "28px 32px 1fr 90px 70px 22px" }}>
+                <span /><span /><span>Tarefa</span><span>Responsável</span><span>Prazo</span><span />
               </div>
             </div>
 
@@ -1252,6 +1261,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 <span className="text-sm font-bold text-foreground flex items-center gap-2">
                   Briefing {job.briefing && <div className="w-2 h-2 rounded-full bg-amber-500" />}
                 </span>
+                {/\breels?\b/i.test(`${job.title || ""} ${job.format || ""} ${job.type || ""}`) && (
+                  <button onClick={openScriptsDocument} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors">
+                    <FileText className="w-3 h-3" /> Roteiros do projeto
+                  </button>
+                )}
               </div>
               {editingBriefing ? (
                 <SpellCheckTextarea
@@ -1275,6 +1289,18 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 </div>
               )}
             </div>
+
+            {showScriptsDocument && (
+              <div className="fixed inset-0 z-[10080] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowScriptsDocument(false)}>
+                <div className="bg-card w-full max-w-3xl h-[85vh] rounded-2xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                    <div><h2 className="font-bold text-foreground">Roteiros do projeto</h2><p className="text-xs text-muted-foreground">Edite o documento e baixe em PDF quando quiser.</p></div>
+                    <div className="flex items-center gap-2"><Button size="sm" onClick={printScriptsDocument}><Printer className="w-3.5 h-3.5 mr-1" /> Baixar PDF</Button><button onClick={() => setShowScriptsDocument(false)} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button></div>
+                  </div>
+                  <textarea value={scriptsDocument} onChange={e => setScriptsDocument(e.target.value)} className="flex-1 resize-none m-5 p-4 rounded-xl border border-input bg-background text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+              </div>
+            )}
 
             {/* Legenda */}
             <div className="px-5 py-3 border-t border-border">

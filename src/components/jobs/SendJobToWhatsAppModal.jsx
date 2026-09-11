@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
-import { X, Send, MessageSquare, Check, AlertCircle, Image, FileText, RefreshCw, CheckSquare, Square } from "lucide-react";
+import { X, Send, MessageSquare, Check, AlertCircle, FileText, RefreshCw, CheckSquare, Square } from "lucide-react";
 
 export default function SendJobToWhatsAppModal({ job, onClose }) {
   const [client, setClient] = useState(null);
@@ -62,10 +63,8 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
         const allAtts = [...jobAtts, ...commentImages];
         setAttachments(allAtts);
         
-        // Pre-select all
-        if (allAtts.length > 0) {
-          setSelectedAttachments(allAtts.map((_, i) => i));
-        }
+        // Anexos ficam desmarcados para evitar envios acidentais.
+        setSelectedAttachments([]);
       } catch (e) {
         setAttachments(job.attachments || []);
       } finally {
@@ -75,7 +74,14 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     loadData();
   }, [job.id, job.client_id]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("maestro:drawer-state", { detail: { source: "whatsapp-send", open: true } }));
+    return () => window.dispatchEvent(new CustomEvent("maestro:drawer-state", { detail: { source: "whatsapp-send", open: false } }));
+  }, []);
+
   const groupId = client?.whatsapp_group_id;
+  const contactIds = Array.isArray(client?.whatsapp_contact_ids) ? client.whatsapp_contact_ids : [];
+  const destinations = [...new Set([groupId, ...contactIds].filter(Boolean))];
 
   function toggleAttachment(index) {
     setSelectedAttachments(prev => {
@@ -98,12 +104,17 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
   }
 
   async function handleSend() {
-    if (!groupId) {
-      setStatus({ type: "error", text: "Este cliente não tem grupo WhatsApp configurado." });
+    if (destinations.length === 0) {
+      setStatus({ type: "error", text: "Este cliente não tem grupo ou contatos WhatsApp configurados." });
       return;
     }
 
     const toSend = sendTextOnly ? [] : selectedAttachments.map(i => attachments[i]).filter(Boolean);
+
+    if (attachments.length > 0 && toSend.length === 0 && !sendTextOnly) {
+      setStatus({ type: "error", text: "Selecione pelo menos um anexo ou escolha 'Enviar só texto'." });
+      return;
+    }
 
     if (toSend.length === 0 && !caption.trim()) {
       setStatus({ type: "error", text: "Selecione pelo menos um anexo ou escreva uma mensagem." });
@@ -115,48 +126,35 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     setStep("sending");
 
     try {
-      // If text only or no attachments selected, send text
+      // Mensagem textual é enviada para todos os destinos vinculados.
       if (toSend.length === 0 && caption.trim()) {
-        const result = await invokeMaestroFunction("sendWhatsapp", {
-          phone: groupId,
-          message: caption,
-        });
-        console.log("WhatsApp text result:", result);
-        if (!result?.data?.success && !result?.data?.data?.zaapId) {
-          throw new Error(result?.data?.error || "Erro ao enviar texto.");
+        for (const destination of destinations) {
+          const result = await invokeMaestroFunction("sendWhatsapp", { phone: destination, message: caption });
+          if (!result?.data?.success) throw new Error(result?.data?.error || "Erro ao enviar texto.");
         }
       } else {
-        // Send each attachment
-        const total = toSend.length;
+        // Cada anexo selecionado é enviado para cada grupo/contato vinculado.
+        const total = toSend.length * destinations.length;
         setSendProgress({ current: 0, total });
 
-        for (let i = 0; i < total; i++) {
-          const att = toSend[i];
-          console.log(`=== SENDING FILE ${i+1}/${total} ===`);
-          console.log("att.url:", att.url);
-          console.log("att.name:", att.name);
-          console.log("att.type:", att.type);
-          console.log("phone/groupId:", groupId);
-          setSendProgress({ current: i + 1, total });
+        let current = 0;
+        for (const destination of destinations) {
+          for (let i = 0; i < toSend.length; i++) {
+            const att = toSend[i];
+            const result = await invokeMaestroFunction("sendWhatsappFile", {
+              phone: destination,
+              fileUrl: att.url,
+              caption: i === 0 ? caption : "",
+              fileName: att.name,
+              fileType: att.type,
+            });
+            if (!result?.data?.success) throw new Error(result?.data?.error || `Erro ao enviar ${att.name}`);
+            current += 1;
+            setSendProgress({ current, total });
 
-          const result = await invokeMaestroFunction("sendWhatsappFile", {
-            phone: groupId,
-            fileUrl: att.url,
-            caption: i === 0 ? caption : "", // Caption only on first file
-            fileName: att.name,
-            fileType: att.type,
-          });
-
-          console.log("WhatsApp file result:", result);
-
-          // result.data contains the function's Response.json() output
-          if (!result?.data?.success && !result?.data?.data?.zaapId) {
-            throw new Error(result?.data?.error || `Erro ao enviar ${att.name}`);
-          }
-
-          // Small delay between files to avoid rate limiting
-          if (i < total - 1) {
-            await new Promise(r => setTimeout(r, 1000));
+            if (current < total) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
           }
         }
       }
@@ -170,8 +168,8 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+  return createPortal(
+    <div className="fixed inset-0 bg-black/60 z-[10100] flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
@@ -214,10 +212,13 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
             <div className="bg-muted/40 rounded-xl p-3">
               <p className="text-xs font-semibold text-muted-foreground mb-1">Destino</p>
               <p className="text-sm font-bold text-foreground">{client?.name || job.client_name}</p>
-              {groupId ? (
-                <p className="text-xs font-mono text-green-600 mt-0.5">{groupId}</p>
+              {destinations.length > 0 ? (
+                <div className="mt-1 space-y-0.5 text-xs font-mono text-green-600">
+                  {groupId && <p>Grupo: {groupId}</p>}
+                  {contactIds.map(id => <p key={id}>Contato: {id}</p>)}
+                </div>
               ) : (
-                <p className="text-xs text-red-500 mt-0.5">⚠️ Grupo WhatsApp não configurado no cadastro do cliente</p>
+                <p className="text-xs text-red-500 mt-0.5">⚠️ Nenhum grupo ou contato WhatsApp configurado no cadastro do cliente</p>
               )}
             </div>
 
@@ -298,7 +299,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
 
             <div className="flex gap-2 pt-1">
               <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
-              <Button onClick={handleSend} disabled={sending || !groupId} className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white">
+              <Button onClick={handleSend} disabled={sending || destinations.length === 0} className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white">
                 <Send className="w-4 h-4" />
                 {selectedAttachments.length > 0 ? `Enviar ${selectedAttachments.length}` : "Enviar"}
               </Button>
@@ -306,6 +307,7 @@ export default function SendJobToWhatsAppModal({ job, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

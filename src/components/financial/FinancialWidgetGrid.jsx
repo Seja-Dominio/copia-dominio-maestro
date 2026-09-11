@@ -6,17 +6,21 @@ import { Button } from "@/components/ui/button";
 import { GripVertical, Eye, EyeOff, Settings2 } from "lucide-react";
 
 const DEFAULT_FINANCIAL_WIDGETS = [
-  "revenue_forecast",
   "summary_cards",
   "pie_charts",
   "bank_accounts",
   "top_clients",
   "cash_flow",
+  "forecast",
   "entries_section",
 ];
 
 export function getFinancialLayout(collaborator) {
-  if (collaborator?.financial_layout?.length) return collaborator.financial_layout;
+  if (Array.isArray(collaborator?.financial_layout) && collaborator.financial_layout.length) {
+    return collaborator.financial_layout.includes("forecast")
+      ? collaborator.financial_layout
+      : [...collaborator.financial_layout, "forecast"];
+  }
   return DEFAULT_FINANCIAL_WIDGETS;
 }
 
@@ -88,7 +92,7 @@ export function FinancialEditBar({ isEditMode, setIsEditMode, widgetOrder, visib
     <div className="glass-card p-3 mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
       <div className="flex items-center gap-2">
         <GripVertical className="w-4 h-4 text-primary" />
-        <span className="text-xs font-semibold text-foreground">Modo edição — arraste para reorganizar</span>
+        <span className="text-xs font-semibold text-foreground">Modo edição — arraste qualquer quadro para reorganizar</span>
       </div>
       <div className="flex flex-wrap gap-1.5 flex-1">
         {widgetOrder.map(id => (
@@ -145,6 +149,7 @@ export function FinancialDragGrid({ isEditMode, widgetOrder, visibleWidgets, han
                       <DraggableWidget
                         dragHandleProps={provided.dragHandleProps}
                         isEditMode={true}
+                        fullDragHandle
                         onHide={() => {}}
                         label={w.label}
                       >

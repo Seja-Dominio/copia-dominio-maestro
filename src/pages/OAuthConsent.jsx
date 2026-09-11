@@ -20,6 +20,23 @@ export default function OAuthConsent() {
   const [error, setError] = useState("");
   const [reconnect, setReconnect] = useState("");
 
+  const safeLoginPath = (value) =>
+    typeof value === "string" && value.startsWith("/") && !value.startsWith("//")
+      ? value
+      : "/login";
+
+  const safeRedirectUrl = (value) => {
+    if (typeof value !== "string" || !value) return null;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+      try {
+        const url = new URL(value);
+        if (["http:", "https:"].includes(url.protocol)) return url.href;
+      } catch (_) { return null; }
+      return null;
+    }
+    return /^[a-z][a-z0-9+.-]*:[^/]/i.test(value) ? value : null;
+  };
+
   useEffect(() => {
     (async () => {
       let redirecting = false;
@@ -66,8 +83,8 @@ export default function OAuthConsent() {
             window.location.pathname + "?ctx=" + encodeURIComponent(ctx);
           const encoded = encodeURIComponent(returnTo);
           redirecting = true; // keep the spinner while the browser navigates
-          window.location.href =
-            (data.login_path || "/login") + "?returnTo=" + encoded + "&from_url=" + encoded;
+          // semgrep:ignore javascript.browser.security.open-redirect.js-open-redirect -- safeLoginPath only permits same-origin relative paths.
+          window.location.href = safeLoginPath(data.login_path) + "?returnTo=" + encoded + "&from_url=" + encoded; // nosemgrep: javascript.browser.security.open-redirect.js-open-redirect
           return;
         }
         setInfo(data);
@@ -102,8 +119,8 @@ export default function OAuthConsent() {
         if (res.status === 401) {
           const returnTo = window.location.pathname + "?ctx=" + encodeURIComponent(ctx);
           const encoded = encodeURIComponent(returnTo);
-          window.location.href =
-            ((info && info.login_path) || "/login") + "?returnTo=" + encoded + "&from_url=" + encoded;
+          // semgrep:ignore javascript.browser.security.open-redirect.js-open-redirect -- safeLoginPath only permits same-origin relative paths.
+          window.location.href = safeLoginPath(info && info.login_path) + "?returnTo=" + encoded + "&from_url=" + encoded; // nosemgrep: javascript.browser.security.open-redirect.js-open-redirect
           return;
         }
         // These all come AFTER the single-use handle is atomically consumed
@@ -120,8 +137,11 @@ export default function OAuthConsent() {
         throw new Error("Could not complete authorization. Please try again.");
       }
       const data = await res.json();
-      window.location.href = data.redirect_url;
-      if (!/^https?:/i.test(data.redirect_url)) {
+      const redirectUrl = safeRedirectUrl(data.redirect_url);
+      if (!redirectUrl) throw new Error("Invalid authorization redirect.");
+      // semgrep:ignore javascript.browser.security.open-redirect.js-open-redirect -- safeRedirectUrl validates the authorization server response.
+      window.location.href = redirectUrl; // nosemgrep: javascript.browser.security.open-redirect.js-open-redirect
+      if (!/^https?:/i.test(redirectUrl)) {
         // Custom-scheme redirect (native AI clients, e.g. cursor://): browsers
         // may block or not visibly navigate, so show a terminal state instead
         // of an eternal spinner.

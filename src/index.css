@@ -103,11 +103,18 @@
     @apply bg-background text-foreground font-inter;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-  button, a, [role="button"], label, select {
+  button, a, [role="button"], select {
     user-select: none;
     -webkit-user-select: none;
     min-height: 44px;
     min-width: 44px;
+  }
+  /* Text labels should stay close to the field they describe. The field or
+     control itself remains the touch target; expanding every label creates
+     excessive vertical gaps in forms, especially on mobile. */
+  label {
+    user-select: none;
+    -webkit-user-select: none;
   }
   input, textarea, select {
     color: hsl(var(--foreground));

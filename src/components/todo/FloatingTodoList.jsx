@@ -3,7 +3,7 @@ import { maestro } from "@/api/maestroClient";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  ListTodo, X, Plus, Search, Loader2, History, ArrowLeft, Check, Users, FileText
+  ListTodo, X, Plus, Search, Loader2, History, Check, Users, FileText
 } from "lucide-react";
 import TodoItem from "./TodoItem";
 import TodoCompletedGroup from "./TodoCompletedGroup";
@@ -177,15 +177,43 @@ export default function FloatingTodoList() {
   }, [historyFiltered]);
 
   const pendingCount = tasks.filter(t => !t.is_completed).length;
+  const [chatgptOpen, setChatgptOpen] = useState(false);
+  const [externalDrawerOpen, setExternalDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const handleDrawer = event => {
+      const source = event.detail?.source;
+      if (source === "chatgpt") {
+        setOpen(false);
+        setChatgptOpen(Boolean(event.detail.open));
+        setExternalDrawerOpen(Boolean(event.detail.open));
+      } else if (source !== "tasks") {
+        setOpen(false);
+        sessionStorage.setItem("todoListOpen", "false");
+        setExternalDrawerOpen(Boolean(event.detail?.open));
+      }
+    };
+    window.addEventListener("maestro:drawer-state", handleDrawer);
+    return () => window.removeEventListener("maestro:drawer-state", handleDrawer);
+  }, []);
+
+  function toggleTodoList() {
+    setOpen(v => {
+      const next = !v;
+      sessionStorage.setItem("todoListOpen", next);
+      window.dispatchEvent(new CustomEvent("maestro:drawer-state", { detail: { source: "tasks", open: next } }));
+      return next;
+    });
+  }
 
   if (!collabId) return null;
 
   return (
     <>
       {/* FAB button */}
-      <button
-        onClick={() => setOpen(v => { const next = !v; sessionStorage.setItem("todoListOpen", next); return next; })}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[60] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+      {!chatgptOpen && !externalDrawerOpen && <button
+        onClick={toggleTodoList}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[10070] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
         aria-label="To-Do List"
       >
         <ListTodo className="w-5 h-5" />
@@ -194,11 +222,11 @@ export default function FloatingTodoList() {
             {pendingCount > 99 ? "99+" : pendingCount}
           </span>
         )}
-      </button>
+      </button>}
 
       {/* Panel — fixed height from header (56px) to FAB */}
       {open && (
-        <div className="fixed right-4 md:right-6 z-[61] w-[340px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-slide-up overflow-hidden"
+        <div className="fixed right-[40px] z-[10070] w-[min(41vw,720px)] min-w-[360px] max-sm:min-w-0 max-sm:w-[92vw] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-slide-up overflow-hidden"
           style={{ top: "calc(56px + env(safe-area-inset-top, 0px) + 8px)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}
         >
           {/* Header */}

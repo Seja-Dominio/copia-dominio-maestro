@@ -3,6 +3,7 @@ import { getCurrentCollaborator, invokeMaestroFunction, logoutCollaborator } fro
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import SubtaskTransferPanel from "@/components/settings/SubtaskTransferPanel";
 
 export default function Settings() {
   const [user, setUser] = useState(null);
@@ -58,6 +59,8 @@ export default function Settings() {
           </CardContent>
         </Card>
       )}
+
+      {(user?.access_level === "admin" || user?.access_level === "master") && <SubtaskTransferPanel />}
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

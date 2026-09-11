@@ -98,6 +98,8 @@ function MiniPie({ title, data, colors, emptyMsg }) {
 }
 
 export default function FinancialPieCharts({ entries, accounts }) {
+  entries = Array.isArray(entries) ? entries : [];
+  accounts = Array.isArray(accounts) ? accounts : [];
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();

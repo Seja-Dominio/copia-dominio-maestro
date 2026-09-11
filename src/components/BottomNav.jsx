@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderKanban, Briefcase, Calendar, Users } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Briefcase, Calendar, Users, Brain } from "lucide-react";
 import { useEffect } from "react";
 
 const NAV_ITEMS = [
@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { label: "Jobs",      icon: Briefcase,        page: "Jobs" },
   { label: "Agenda",    icon: Calendar,         page: "Agenda" },
   { label: "Carteira",  icon: Users,            page: "ClientPortfolio" },
+  { label: "Ads Brain", icon: Brain,             page: "AdsBrain" },
 ];
 
 // Save scroll position for the current page before navigating away

@@ -20,6 +20,7 @@ import CreateJobModal from "../components/jobs/CreateJobModal";
 import KanbanView from "../components/jobs/KanbanView";
 import JobsListView from "@/components/jobs/JobsListView";
 import SubtasksPautaView from "@/components/jobs/SubtasksPautaView";
+import { isJobOverdue } from "@/lib/jobWorkflow";
 
 export { DEFAULT_STATUS_CONFIG as STATUS_CONFIG } from "@/lib/AppConfigContext";
 // Re-export for backward compat with components that still import from here
@@ -71,19 +72,12 @@ export default function Jobs() {
       maestro.entities.Subtask.list("-created_date", 5000),
       maestro.entities.Project.list("-created_date", 5000),
     ]);
-    // Only keep jobs from active projects (not completed/archived, and current or future reference_month)
-    const currentMonth = format(new Date(), "yyyy-MM");
-    const activeProjectIds = new Set(
-      p.filter(pr => {
-        if (pr.status === "completed" || pr.status === "archived") return false;
-        if (pr.reference_month && pr.reference_month < currentMonth) return false;
-        return true;
-      }).map(pr => pr.id)
-    );
-    const activeJobs = j.filter(job => job.status !== "cancelled" && activeProjectIds.has(job.project_id));
-    const activeJobIds = new Set(activeJobs.map(job => job.id));
-    setJobs(activeJobs);
-    setSubtasks(s.filter(sub => activeJobIds.has(sub.job_id)));
+    // Keep completed jobs visible so the external app preserves the historical
+    // pauta from Base44. Only cancelled jobs stay out of the main job views.
+    const visibleJobs = j.filter(job => job.status !== "cancelled");
+    const visibleJobIds = new Set(visibleJobs.map(job => job.id));
+    setJobs(visibleJobs);
+    setSubtasks(s.filter(sub => visibleJobIds.has(sub.job_id)));
     setProjects(p);
     setLoading(false);
   }, []);
@@ -341,7 +335,7 @@ export default function Jobs() {
                    <tbody>
                      {filtered.map(j => {
                        const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
-                       const isLate = j.delivery_date && j.delivery_date < today && j.status !== "completed";
+                       const isLate = isJobOverdue(j, today, "delivery_date");
                        return (
                          <tr
                            key={j.id}

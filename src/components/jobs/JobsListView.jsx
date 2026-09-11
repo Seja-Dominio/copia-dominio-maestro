@@ -2,6 +2,7 @@ import { useStatusConfig } from "@/lib/AppConfigContext";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertCircle } from "lucide-react";
+import { isJobOverdue } from "@/lib/jobWorkflow";
 
 export default function JobsListView({ jobs, getSubtasksForJob, onSelectJob, today }) {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
@@ -34,7 +35,7 @@ export default function JobsListView({ jobs, getSubtasksForJob, onSelectJob, tod
         const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
         const subtasks = getSubtasksForJob(j.id);
         const openSubtasks = subtasks.filter(s => !s.is_completed).length;
-        const isLate = j.post_date && j.post_date < today && j.status !== "completed" && j.status !== "cancelled";
+        const isLate = isJobOverdue(j, today);
 
         return (
           <div

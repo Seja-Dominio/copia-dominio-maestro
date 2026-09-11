@@ -6,7 +6,6 @@ import path from "node:path";
 import process from "node:process";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import XLSX from "xlsx";
 
 const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
@@ -51,9 +50,10 @@ function comparableDate(value) {
 }
 
 function readExportRows(filePath) {
-  const workbook = XLSX.readFile(filePath, { raw: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+  const text = require("node:fs").readFileSync(filePath, "utf8").replace(/^\ufeff/, "");
+  const rows = text.split(/\r?\n/).filter(Boolean).map((line) => line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((value) => value.replace(/^"|"$/g, "").replaceAll('""', '"')));
+  const headers = rows.shift() || [];
+  return rows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? null])));
 }
 
 async function extractZip(zipPath) {

@@ -4,6 +4,7 @@ import { XCircle, AlertTriangle, Calendar, Briefcase, ChevronDown, ChevronRight 
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { STATUS_CONFIG, CONTENT_ICONS } from "./dashboardConstants";
+import { isClosedJob, isSubtaskOverdue } from "@/lib/jobWorkflow";
 
 function JobRow({ job, onJobClick }) {
   const sc = STATUS_CONFIG[job.status] || STATUS_CONFIG.pending_briefing;
@@ -58,7 +59,7 @@ function Section({ title, icon: Icon, color, borderColor, bgColor, jobs, default
   );
 }
 
-export default function OverdueJobsPanel({ overdueJobs, allTeams, overdueTeamFilter, onTeamFilterChange, subtasks = [], todayStr, in5DaysStr, onJobClick }) {
+export default function OverdueJobsPanel({ overdueJobs, allTeams, overdueTeamFilter, onTeamFilterChange, subtasks = [], overdueTaskCount = 0, todayStr, in5DaysStr, onJobClick }) {
   // 1. Post date atrasada
   const overdueByPost = overdueJobs.filter(j =>
     j.post_date && j.post_date <= todayStr && !["completed", "scheduled", "cancelled"].includes(j.status)
@@ -68,12 +69,12 @@ export default function OverdueJobsPanel({ overdueJobs, allTeams, overdueTeamFil
   const overduePostIds = new Set(overdueByPost.map(j => j.id));
   const subtaskOverdueJobIds = new Set(
     subtasks
-      .filter(s => !s.is_completed && s.deadline && s.deadline <= todayStr)
+      .filter(s => isSubtaskOverdue(s, todayStr))
       .map(s => s.job_id)
       .filter(Boolean)
   );
   const overdueBySubtask = overdueJobs.filter(j =>
-    !overduePostIds.has(j.id) && subtaskOverdueJobIds.has(j.id) && !["completed", "scheduled", "cancelled"].includes(j.status)
+    !overduePostIds.has(j.id) && subtaskOverdueJobIds.has(j.id) && !isClosedJob(j)
   );
 
   // 3. Próximos 5 dias não agendados
@@ -115,7 +116,7 @@ export default function OverdueJobsPanel({ overdueJobs, allTeams, overdueTeamFil
             onJobClick={onJobClick}
           />
           <Section
-            title="Tarefas atrasadas"
+            title={`Tarefas atrasadas — ${overdueTaskCount} tarefa${overdueTaskCount === 1 ? "" : "s"}`}
             icon={AlertTriangle}
             color="text-orange-600 dark:text-orange-400"
             borderColor="border-orange-100 dark:border-orange-800"

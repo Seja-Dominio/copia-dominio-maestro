@@ -1,4 +1,35 @@
-import { maestro } from "@/api/maestroClient";
+import { invokeMaestroFunction, maestro } from "@/api/maestroClient";
+
+function collaboratorPhone(collaborator) {
+  return collaborator?.whatsapp_phone || collaborator?.phone || collaborator?.phone_number || collaborator?.whatsapp || "";
+}
+
+async function notifyNewDemand(job, subtask, collaborator) {
+  const recipientId = subtask.responsible_id;
+  if (!recipientId) return;
+  const taskTitle = subtask.title || "Tarefa atribuída";
+  const clientName = job.client_name || "Cliente não identificado";
+  const message = `Uma nova demanda foi atribuída a você.\n\nCliente: ${clientName}\nJob: ${job.title || "Job sem título"}\nTarefa: ${taskTitle}${subtask.deadline ? `\nPrazo: ${subtask.deadline.split("-").reverse().join("/")}` : ""}`;
+
+  await maestro.entities.Notification.create({
+    user_id: recipientId,
+    type: "job_created",
+    title: "Nova demanda atribuída",
+    message,
+    entity_type: "job",
+    entity_id: job.id,
+    is_read: false,
+  });
+
+  const phone = collaboratorPhone(collaborator);
+  if (!phone) return;
+  try {
+    await invokeMaestroFunction("sendWhatsapp", { phone, message });
+  } catch (error) {
+    // A falha no WhatsApp não pode impedir a notificação no sistema.
+    console.warn("WhatsApp indisponível para notificação de nova demanda", error);
+  }
+}
 
 /**
  * Dispara notificações para colaboradores com notify_on_status na subtarefa
@@ -89,5 +120,18 @@ export async function fireJobStatusNotifications(job, newStatus, subtasks = [], 
  * @param {object} statusConfig - configuração de status (opcional)
  */
 export async function fireJobCreatedNotifications(job, subtasks = [], statusConfig = null) {
-  return fireJobStatusNotifications(job, job.status, subtasks, statusConfig);
+  const assigned = subtasks.filter((subtask) => subtask.responsible_id);
+  const uniqueRecipients = [...new Set(assigned.map((subtask) => subtask.responsible_id))];
+  await Promise.all(uniqueRecipients.map(async (recipientId) => {
+    const subtask = assigned.find((item) => item.responsible_id === recipientId);
+    const collaborators = await maestro.entities.Collaborator.filter({ id: recipientId }, "name", 1);
+    return notifyNewDemand(job, subtask, collaborators[0]);
+  }));
+  return fireJobStatusNotifications(job, job.status, [], statusConfig);
+}
+
+export async function fireNewSubtaskNotification(job, subtask) {
+  if (!subtask?.responsible_id) return;
+  const collaborators = await maestro.entities.Collaborator.filter({ id: subtask.responsible_id }, "name", 1);
+  return notifyNewDemand(job, subtask, collaborators[0]);
 }

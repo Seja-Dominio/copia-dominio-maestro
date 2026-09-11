@@ -1,21 +1,22 @@
 import React, { useState } from "react";
-import { maestro } from "@/api/maestroClient";
+import { loginCollaborator } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Mail, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Mail, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await maestro.auth.loginViaEmailPassword(email, password);
+      await loginCollaborator({ login: email, password });
       window.location.href = "/";
     } catch (err) {
       setError(err.message || "E-mail ou senha incorretos");
@@ -46,19 +47,20 @@ export default function Login() {
           </p>
 
           {error && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl flex items-start gap-2.5">
+            <div role="alert" className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-xl flex items-start gap-2.5">
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wide">
+              <label htmlFor="login-email" className="block text-xs font-semibold text-foreground mb-1 uppercase tracking-wide">
                 E-mail
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  id="login-email"
                   type="email"
                   autoComplete="email"
                   autoFocus
@@ -71,20 +73,30 @@ export default function Login() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5 uppercase tracking-wide">
+              <label htmlFor="login-password" className="block text-xs font-semibold text-foreground mb-1 uppercase tracking-wide">
                 Senha
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  type="password"
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="Digite sua senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   required
                 />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
             <Button

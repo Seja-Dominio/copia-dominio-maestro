@@ -134,7 +134,7 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
         });
         const createdSubtasks = await Promise.all(subtaskPromises);
         // Notifica responsáveis cujas subtarefas têm notify_on_status = status inicial do job
-        fireJobCreatedNotifications(created, createdSubtasks);
+        void fireJobCreatedNotifications(created, createdSubtasks).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
       }
     }
 

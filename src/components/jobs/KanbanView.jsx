@@ -4,12 +4,13 @@ import { AlertCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { maestro } from "@/api/maestroClient";
 import { autoCompleteSubtasks } from "./subtaskAutoComplete";
+import { isJobOverdue } from "@/lib/jobWorkflow";
 
 // Statuses are dynamic — loaded from AppConfigContext
 
 const KanbanCard = memo(function KanbanCard({ job, subtasks, onClick, today, isDragging, statusConfig }) {
   const sc = statusConfig[job.status] || statusConfig.pending_briefing || {};
-  const isLate = job.delivery_date && job.delivery_date < today && job.status !== "completed";
+  const isLate = isJobOverdue(job, today, "delivery_date");
   const completedSubs = subtasks.filter(s => s.is_completed).length;
 
   return (
