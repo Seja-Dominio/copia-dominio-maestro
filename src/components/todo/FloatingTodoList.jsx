@@ -12,6 +12,7 @@ import SendTaskForm from "./SendTaskForm";
 import TeamTasksTab from "./TeamTasksTab";
 import NotesTab from "./NotesTab";
 import { isAdminLevel } from "@/lib/accessControl";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default function FloatingTodoList() {
   const [open, setOpen] = useState(() => sessionStorage.getItem("todoListOpen") === "true");
@@ -19,6 +20,7 @@ export default function FloatingTodoList() {
   const [loading, setLoading] = useState(true);
   const [newText, setNewText] = useState("");
   const [adding, setAdding] = useState(false);
+  const [taskError, setTaskError] = useState("");
   const [tab, setTab] = useState("tasks"); // "tasks" | "history" | "team" | "notes"
   const [expandedDay, setExpandedDay] = useState(null);
   const [historySearch, setHistorySearch] = useState("");
@@ -44,17 +46,24 @@ export default function FloatingTodoList() {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
+    setTaskError("");
     try {
       // Carregar tarefas próprias + tarefas enviadas para outros que ainda estão pendentes
-      const [own, sent] = await Promise.all([
-        maestro.entities.MiniTask.filter({ collaborator_id: collabId }, "created_date", 200),
-        maestro.entities.MiniTask.filter({ sender_id: collabId, is_completed: false }, "created_date", 100),
-      ]);
+      const [own, sent] = await withTimeout(
+        Promise.all([
+          maestro.entities.MiniTask.filter({ collaborator_id: collabId }, "created_date", 200),
+          maestro.entities.MiniTask.filter({ sender_id: collabId, is_completed: false }, "created_date", 100),
+        ]),
+        15000,
+        "Não foi possível carregar suas tarefas. Tente novamente."
+      );
       // Mesclar sem duplicatas (tarefas enviadas para si mesmo já estão em own)
       const ownIds = new Set(own.map(t => t.id));
       const sentPending = sent.filter(t => !ownIds.has(t.id));
       setTasks([...own, ...sentPending]);
       hasLoadedRef.current = true;
+    } catch (err) {
+      setTaskError(err?.message || "Não foi possível carregar suas tarefas. Tente novamente.");
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -63,18 +72,28 @@ export default function FloatingTodoList() {
 
   async function addTask(e) {
     e.preventDefault();
-    if (!newText.trim() || !collabId) return;
+    if (!newText.trim() || !collabId || adding) return;
     setAdding(true);
-    const created = await maestro.entities.MiniTask.create({
-      title: newText.trim(),
-      collaborator_id: collabId,
-      collaborator_name: collab?.name || "",
-      is_completed: false,
-    });
-    setTasks(prev => [created, ...prev]);
-    setNewText("");
-    setAdding(false);
-    inputRef.current?.focus();
+    setTaskError("");
+    try {
+      const created = await withTimeout(
+        maestro.entities.MiniTask.create({
+          title: newText.trim(),
+          collaborator_id: collabId,
+          collaborator_name: collab?.name || "",
+          is_completed: false,
+        }),
+        15000,
+        "Não foi possível adicionar a tarefa. Tente novamente."
+      );
+      setTasks(prev => [created, ...prev]);
+      setNewText("");
+      inputRef.current?.focus();
+    } catch (err) {
+      setTaskError(err?.message || "Não foi possível adicionar a tarefa. Tente novamente.");
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function toggleComplete(task) {
@@ -329,6 +348,11 @@ export default function FloatingTodoList() {
                   {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 </button>
               </form>
+              {taskError && (
+                <p role="alert" className="px-3 pb-2 text-[10px] text-destructive">
+                  {taskError}
+                </p>
+              )}
 
               {/* Send task to another collaborator */}
               <SendTaskForm currentCollab={collab} onTaskSent={loadTasks} />

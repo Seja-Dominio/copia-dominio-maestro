@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { maestro } from "@/api/maestroClient";
 import { Send, Loader2, ChevronDown, X } from "lucide-react";
 import { isAdminLevel } from "@/lib/accessControl";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default function SendTaskForm({ currentCollab, onTaskSent }) {
   const [collaborators, setCollaborators] = useState([]);
@@ -10,10 +11,24 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
   const [sending, setSending] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    maestro.entities.Collaborator.filter({ is_active: true }, "name", 200)
-      .then(list => setCollaborators(list.filter(c => c.id !== currentCollab?.id)));
+    let active = true;
+    setError("");
+    withTimeout(
+      maestro.entities.Collaborator.filter({ is_active: true }, "name", 200),
+      12000,
+      "Não foi possível carregar os colaboradores. Tente novamente."
+    )
+      .then(list => {
+        if (active) setCollaborators(list.filter(c => c.id !== currentCollab?.id));
+      })
+      .catch(err => {
+        if (active) setError(err?.message || "Não foi possível carregar os colaboradores.");
+      });
+
+    return () => { active = false; };
   }, [currentCollab?.id]);
 
   const filtered = collaborators.filter(c =>
@@ -24,19 +39,29 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
     e.preventDefault();
     if (!text.trim() || !selectedCollab) return;
     setSending(true);
-    await maestro.entities.MiniTask.create({
-      title: text.trim(),
-      collaborator_id: selectedCollab.id,
-      collaborator_name: selectedCollab.name,
-      sender_id: currentCollab.id,
-      sender_name: currentCollab.name,
-      sender_access_level: currentCollab.access_level || "collaborator",
-      is_completed: false,
-    });
-    onTaskSent?.();
-    setText("");
-    setSelectedCollab(null);
-    setSending(false);
+    setError("");
+    try {
+      await withTimeout(
+        maestro.entities.MiniTask.create({
+          title: text.trim(),
+          collaborator_id: selectedCollab.id,
+          collaborator_name: selectedCollab.name,
+          sender_id: currentCollab.id,
+          sender_name: currentCollab.name,
+          sender_access_level: currentCollab.access_level || "collaborator",
+          is_completed: false,
+        }),
+        15000,
+        "Não foi possível enviar a tarefa. Tente novamente."
+      );
+      onTaskSent?.();
+      setText("");
+      setSelectedCollab(null);
+    } catch (err) {
+      setError(err?.message || "Não foi possível enviar a tarefa. Tente novamente.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -126,6 +151,11 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           </button>
         </div>
+      )}
+      {error && (
+        <p role="alert" className="text-[10px] text-destructive px-1">
+          {error}
+        </p>
       )}
     </form>
   );

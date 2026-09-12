@@ -24,8 +24,10 @@ export default function DeliveryMetricsWidget({ jobs = [], subtasks = [], collab
   const [customPeriod, setCustomPeriod] = useState(currentPeriod);
   const period = periodType === "current" ? currentPeriod : periodType === "previous" ? previousPeriod : customPeriod;
   const metrics = useMemo(() => calculateDeliveryMetrics({ jobs, subtasks, collaborators, clients, today: todayStr, period }), [jobs, subtasks, collaborators, clients, todayStr, period]);
-  const topResponsible = metrics.responsibleRows.slice(0, 8);
-  const topStages = metrics.stageRows.slice(0, 8);
+  const activeCollaboratorIds = useMemo(() => new Set(collaborators.filter((collaborator) => collaborator.is_active === true).map((collaborator) => String(collaborator.id))), [collaborators]);
+  const isVisibleResponsible = (id) => id === "__unassigned__" || activeCollaboratorIds.has(String(id));
+  const topResponsible = metrics.responsibleRows.filter((row) => isVisibleResponsible(row.id)).slice(0, 8);
+  const topStages = metrics.stageRows.filter((row) => isVisibleResponsible(row.responsibleId)).slice(0, 8);
   const reportUrl = (params = {}) => {
     const query = new URLSearchParams({ section: "jobs", report: "delivery", start: period.start, end: period.end, ...params });
     return `${createPageUrl("Reports")}?${query.toString()}`;

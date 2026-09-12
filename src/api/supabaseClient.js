@@ -15,6 +15,56 @@ const expectedUrl = environmentUrls[appEnvironment];
 const unsafeTarget = expectedUrl && url !== expectedUrl;
 export const isDevelopmentEnvironment = appEnvironment !== 'production' && url === environmentUrls.development;
 
+const COLLABORATOR_STORAGE_KEY = 'collaborator';
+const COLLABORATOR_TOKEN_STORAGE_KEY = 'collaborator_session_token';
+
+function getStoredValue(key) {
+  return sessionStorage.getItem(key) || localStorage.getItem(key);
+}
+
+export function getStoredSessionToken() {
+  return getStoredValue(COLLABORATOR_TOKEN_STORAGE_KEY);
+}
+
+export function getStoredCollaborator() {
+  const raw = getStoredValue(COLLABORATOR_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const token = getStoredSessionToken();
+    if (token) {
+      const [body] = token.split('.');
+      if (body) {
+        const padded = body.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(body.length / 4) * 4, '=');
+        const tokenData = JSON.parse(atob(padded));
+        if (tokenData.exp && tokenData.exp < Math.floor(Date.now() / 1000)) {
+          clearStoredCollaboratorSession();
+          return null;
+        }
+      }
+    }
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function storeCollaboratorSession(collaborator, token) {
+  const collaboratorJson = JSON.stringify(collaborator);
+  sessionStorage.setItem(COLLABORATOR_STORAGE_KEY, collaboratorJson);
+  localStorage.setItem(COLLABORATOR_STORAGE_KEY, collaboratorJson);
+  if (token) {
+    sessionStorage.setItem(COLLABORATOR_TOKEN_STORAGE_KEY, token);
+    localStorage.setItem(COLLABORATOR_TOKEN_STORAGE_KEY, token);
+  }
+}
+
+export function clearStoredCollaboratorSession() {
+  sessionStorage.removeItem(COLLABORATOR_STORAGE_KEY);
+  sessionStorage.removeItem(COLLABORATOR_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(COLLABORATOR_STORAGE_KEY);
+  localStorage.removeItem(COLLABORATOR_TOKEN_STORAGE_KEY);
+}
+
 function assertSafeTarget() {
   if (unsafeTarget) {
     throw new Error(`Ambiente ${appEnvironment} apontado para o projeto Supabase incorreto. Dev usa tqmf... e produção usa fwpis... Configure a URL correspondente antes de continuar.`);
@@ -23,17 +73,16 @@ function assertSafeTarget() {
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 
-function clearStoredCollaboratorSession() {
-  sessionStorage.removeItem('collaborator');
-  sessionStorage.removeItem('collaborator_session_token');
+function clearSupabaseAuthSession() {
   // A token from another Supabase environment must not keep the UI in an
   // apparently authenticated state after switching between Dev and Prod.
   supabase?.auth.signOut().catch(() => {});
 }
 
-function throwSupabaseError(data, response, fallback) {
-  if (response.status === 401) {
+function throwSupabaseError(data, response, fallback, { clearSessionOnUnauthorized = true } = {}) {
+  if (response.status === 401 && clearSessionOnUnauthorized) {
     clearStoredCollaboratorSession();
+    clearSupabaseAuthSession();
     if (window.location.pathname !== '/') window.location.replace('/');
   }
   const error = new Error(data.error || fallback);
@@ -42,10 +91,10 @@ function throwSupabaseError(data, response, fallback) {
   throw error;
 }
 
-export async function invokeSupabaseFunction(name, body = {}) {
+export async function invokeSupabaseFunction(name, body = {}, options = {}) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
-  const sessionToken = sessionStorage.getItem('collaborator_session_token') || (await supabase?.auth.getSession())?.data?.session?.access_token;
+  const sessionToken = getStoredSessionToken() || (await supabase?.auth.getSession())?.data?.session?.access_token;
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
   const response = await fetch(`${url}/functions/v1/${name}`, {
@@ -58,7 +107,7 @@ export async function invokeSupabaseFunction(name, body = {}) {
     body: JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throwSupabaseError(data, response, `Erro ao executar ${name}.`);
+  if (!response.ok) throwSupabaseError(data, response, `Erro ao executar ${name}.`, options);
   return data;
 }
 
@@ -69,6 +118,12 @@ export async function askMaestroAI({ message, history = [], context = {} }) {
   } catch (error) {
     return error?.message || 'Não foi possível consultar o ChatGPT agora.';
   }
+}
+
+export function invokeTrafficCopilot(body = {}) {
+  // A falha do Copiloto deve aparecer no painel. Ela não pode derrubar a
+  // sessão inteira, especialmente enquanto uma versão remota é atualizada.
+  return invokeSupabaseFunction('traffic-copilot', body, { clearSessionOnUnauthorized: false });
 }
 
 export function invokeAdminTimesheetFunction(action, payload = {}) {
@@ -115,7 +170,7 @@ export async function invokePublicSupabaseFunction(name, body = {}) {
 export async function uploadFileToSupabase(file) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
-  const sessionToken = sessionStorage.getItem('collaborator_session_token');
+  const sessionToken = getStoredSessionToken();
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
   const form = new FormData();
@@ -159,7 +214,7 @@ export async function loginCollaboratorWithSupabase({ login, password }) {
 export async function callMaestroData(body) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
-  const sessionToken = sessionStorage.getItem('collaborator_session_token');
+  const sessionToken = getStoredSessionToken();
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
   const response = await fetch(`${url}/functions/v1/maestro-data`, {

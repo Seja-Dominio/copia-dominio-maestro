@@ -4,12 +4,14 @@ import {
   Facebook, Plus, RefreshCw,
   ShieldCheck, Sparkles, WalletCards, AlertCircle, Star, ChevronUp, ExternalLink,
   Pin, ArrowUp, ArrowDown,
+  LockKeyhole, UnlockKeyhole,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { invokeSupabaseFunction } from "@/api/supabaseClient";
+import { invokeSupabaseFunction, invokeTrafficCopilot } from "@/api/supabaseClient";
+import { withTimeout } from "@/lib/withTimeout";
 
 const channels = [
   { name: "Meta Ads", icon: Facebook, color: "text-blue-600", bg: "bg-blue-50", status: "Conectado", accounts: 0 },
@@ -84,14 +86,15 @@ function AccountMetrics({ account }) {
   return <div>{hasCardLimit && <div className="mb-4 rounded-lg border p-3"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Gasto no mês</span><span>{hasMonthlySpend ? format(monthlySpend, "money") : "—"} de {format(account.spendingLimit, "money")}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${limitProgress >= 100 ? "bg-red-500" : limitProgress >= 80 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${limitProgress}%` }} /></div><p className="mt-1 text-right text-[11px] text-muted-foreground">{hasMonthlySpend ? `${Math.round(limitProgress)}% do limite` : "Aguardando sincronização mensal"}</p></div>}<p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Métricas da conta</p><div className="grid grid-cols-2 gap-2">{values.map(([label, value, type]) => <div key={label} className="rounded-lg border p-2"><p className="text-[11px] text-muted-foreground">{label}</p><p className="text-sm font-semibold">{format(value, type)}</p></div>)}</div>{account.lastSyncedAt && <p className="mt-2 text-[11px] text-muted-foreground">Atualizado em {new Date(account.lastSyncedAt).toLocaleString("pt-BR")}</p>}</div>;
 }
 
-function CampaignTable({ campaigns = [], accountId }) {
+function CampaignTable({ campaigns = [], accountId, organizeOpen = false, onToggleOrganize, showToggle = true }) {
   const storageKey = `ads-brain:campaign-preferences:${accountId}`;
   const [preferences, setPreferences] = useState(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      return stored ? JSON.parse(stored) : { pinnedIds: [], order: [], sort: "manual" };
+      const parsed = stored ? JSON.parse(stored) : {};
+      return { pinnedIds: [], order: [], sort: "custom", ...parsed, sort: parsed.sort === "manual" ? "custom" : (parsed.sort || "custom") };
     } catch {
-      return { pinnedIds: [], order: [], sort: "manual" };
+      return { pinnedIds: [], order: [], sort: "custom" };
     }
   });
   const activeCampaigns = campaigns.filter((campaign) => (campaign.effective_status || campaign.status) === "ACTIVE");
@@ -108,18 +111,16 @@ function CampaignTable({ campaigns = [], accountId }) {
     updatePreferences({ pinnedIds });
   };
   const moveCampaign = (campaignId, direction) => {
-    const currentOrder = activeCampaigns
-      .map((campaign) => campaign.id)
-      .sort((left, right) => {
-        const leftIndex = preferences.order.indexOf(left);
-        const rightIndex = preferences.order.indexOf(right);
-        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
-      });
+    const currentOrder = [...activeCampaigns].sort((left, right) => {
+      const leftIndex = preferences.order.indexOf(left.id);
+      const rightIndex = preferences.order.indexOf(right.id);
+      return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+    }).map((campaign) => campaign.id);
     const index = currentOrder.indexOf(campaignId);
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= currentOrder.length) return;
     [currentOrder[index], currentOrder[nextIndex]] = [currentOrder[nextIndex], currentOrder[index]];
-    updatePreferences({ order: currentOrder, sort: "manual" });
+    updatePreferences({ order: currentOrder, sort: "custom" });
   };
   const orderedCampaigns = [...activeCampaigns].sort((left, right) => {
     const leftPinned = preferences.pinnedIds.includes(left.id) ? 0 : 1;
@@ -127,12 +128,73 @@ function CampaignTable({ campaigns = [], accountId }) {
     if (leftPinned !== rightPinned) return leftPinned - rightPinned;
     if (preferences.sort === "name") return String(left.name || "").localeCompare(String(right.name || ""), "pt-BR");
     if (preferences.sort === "spend") return Number(right.insights?.data?.[0]?.spend || 0) - Number(left.insights?.data?.[0]?.spend || 0);
+    if (preferences.sort === "spend_asc") return Number(left.insights?.data?.[0]?.spend || 0) - Number(right.insights?.data?.[0]?.spend || 0);
     if (preferences.sort === "ctr") return Number(right.insights?.data?.[0]?.ctr || 0) - Number(left.insights?.data?.[0]?.ctr || 0);
+    if (preferences.sort === "date_asc") return String(left.post_date || "9999").localeCompare(String(right.post_date || "9999"));
+    if (preferences.sort === "date_desc") return String(right.post_date || "").localeCompare(String(left.post_date || ""));
     const leftIndex = preferences.order.indexOf(left.id);
     const rightIndex = preferences.order.indexOf(right.id);
     return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
   });
-  return <div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">Fixe as campanhas importantes para mantê-las no topo.</p><label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">Organizar<select aria-label="Organizar campanhas" value={preferences.sort} onChange={(event) => updatePreferences({ sort: event.target.value })} className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"><option value="manual">Manual</option><option value="name">Nome A–Z</option><option value="spend">Maior investimento</option><option value="ctr">Maior CTR</option></select></label></div><div className="max-h-[340px] overflow-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-xs"><thead className="sticky top-0 z-10 bg-muted text-muted-foreground"><tr><th className="w-20 p-3">Fixar</th><th className="p-3">Campanha</th><th className="p-3">Investimento</th><th className="p-3">Impressões</th><th className="p-3">Cliques</th><th className="p-3">CTR</th><th className="p-3">Status</th><th className="w-20 p-3">Ordem</th></tr></thead><tbody>{orderedCampaigns.length ? orderedCampaigns.map((campaign, index) => { const insight = campaign.insights?.data?.[0] || {}; const pinned = preferences.pinnedIds.includes(campaign.id); return <tr key={campaign.id} className={`h-[60px] border-t ${pinned ? "bg-primary/5" : ""}`}><td className="p-3"><button type="button" aria-label={pinned ? `Desafixar ${campaign.name}` : `Fixar ${campaign.name}`} title={pinned ? "Desafixar campanha" : "Fixar campanha"} onClick={(event) => { event.stopPropagation(); togglePinned(campaign.id); }} className={`rounded-md p-1.5 transition-colors ${pinned ? "text-primary hover:bg-primary/10" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Pin className={`h-4 w-4 ${pinned ? "fill-current" : ""}`} /></button></td><td className="p-3 font-medium">{campaign.name}</td><td className="p-3">{insight.spend ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(insight.spend)) : "—"}</td><td className="p-3">{insight.impressions ? Number(insight.impressions).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.clicks ? Number(insight.clicks).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.ctr ? `${Number(insight.ctr).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td><td className="p-3">Ativa</td><td className="p-3"><div className="flex items-center gap-1"><button type="button" aria-label={`Mover ${campaign.name} para cima`} title="Mover para cima" disabled={index === 0} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, -1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" aria-label={`Mover ${campaign.name} para baixo`} title="Mover para baixo" disabled={index === orderedCampaigns.length - 1} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, 1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button></div></td></tr>; }) : <tr><td className="p-3 text-muted-foreground" colSpan="8">Nenhuma campanha ativa para o período.</td></tr>}</tbody></table></div></div>;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">Fixe campanhas importantes ou escolha uma ordenação.</p>
+        {showToggle && <Button type="button" size="sm" variant="outline" onClick={onToggleOrganize} className="gap-2">Organizar campanhas <ChevronDown className={`h-3.5 w-3.5 transition-transform ${organizeOpen ? "rotate-180" : ""}`} /></Button>}
+      </div>
+      {organizeOpen && <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3"><label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">Ordenar por<select aria-label="Ordenar campanhas" value={preferences.sort} onChange={(event) => updatePreferences({ sort: event.target.value })} className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"><option value="custom">Personalizado</option><option value="name">Nome A–Z</option><option value="spend">Maior investimento</option><option value="spend_asc">Menor investimento</option><option value="ctr">Maior CTR</option><option value="date_asc">Data mais antiga</option><option value="date_desc">Data mais recente</option></select></label><span className="text-xs text-muted-foreground">Personalizado usa a ordem definida pelos controles de ordem.</span></div>}
+      <div className="max-h-[340px] overflow-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-xs"><thead className="sticky top-0 z-10 bg-muted text-muted-foreground"><tr><th className="w-20 p-3">Fixar</th><th className="p-3">Campanha</th><th className="p-3">Investimento</th><th className="p-3">Impressões</th><th className="p-3">Cliques</th><th className="p-3">CTR</th><th className="p-3">Status</th><th className="w-20 p-3">Ordem</th></tr></thead><tbody>{orderedCampaigns.length ? orderedCampaigns.map((campaign, index) => { const insight = campaign.insights?.data?.[0] || {}; const pinned = preferences.pinnedIds.includes(campaign.id); return <tr key={campaign.id} className={`h-[60px] border-t ${pinned ? "bg-primary/5" : ""}`}><td className="p-3"><button type="button" aria-label={pinned ? `Desafixar ${campaign.name}` : `Fixar ${campaign.name}`} title={pinned ? "Desafixar campanha" : "Fixar campanha"} onClick={(event) => { event.stopPropagation(); togglePinned(campaign.id); }} className={`rounded-md p-1.5 transition-colors ${pinned ? "text-primary hover:bg-primary/10" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Pin className={`h-4 w-4 ${pinned ? "fill-current" : ""}`} /></button></td><td className="p-3 font-medium">{campaign.name}</td><td className="p-3">{insight.spend ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(insight.spend)) : "—"}</td><td className="p-3">{insight.impressions ? Number(insight.impressions).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.clicks ? Number(insight.clicks).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.ctr ? `${Number(insight.ctr).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td><td className="p-3">Ativa</td><td className="p-3"><div className="flex items-center gap-1"><button type="button" aria-label={`Mover ${campaign.name} para cima`} title="Mover para cima" disabled={index === 0} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, -1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" aria-label={`Mover ${campaign.name} para baixo`} title="Mover para baixo" disabled={index === orderedCampaigns.length - 1} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, 1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button></div></td></tr>; }) : <tr><td className="p-3 text-muted-foreground" colSpan="8">Nenhuma campanha ativa para o período.</td></tr>}</tbody></table></div>
+    </div>
+  );
+}
+
+const COPILOT_PERIODS = ["Hoje", "Ontem", "Últimos 7 dias", "Últimos 30 dias", "Este mês"];
+const COPILOT_SCOPES = [
+  { id: "account_metrics", label: "Métricas e saúde da conta" },
+  { id: "campaigns", label: "Campanhas e desempenho" },
+  { id: "budget_limits", label: "Orçamento e limites de gasto" },
+];
+
+function TrafficCopilot({ accounts = [] }) {
+  const [mode, setMode] = useState("daily");
+  const [period, setPeriod] = useState("Hoje");
+  const [selectedAccountIds, setSelectedAccountIds] = useState(() => accounts.map((account) => account.id));
+  const [scopes, setScopes] = useState(["account_metrics", "campaigns", "budget_limits"]);
+  const [question, setQuestion] = useState("");
+  const [output, setOutput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    setSelectedAccountIds((current) => current.length ? current.filter((id) => accounts.some((account) => account.id === id)) : accounts.map((account) => account.id));
+  }, [accounts]);
+
+  const toggleAccount = (id) => setSelectedAccountIds((current) => current.includes(id) ? current.filter((item) => item !== id) : current.concat(id));
+  const toggleScope = (id) => setScopes((current) => current.includes(id) ? current.filter((item) => item !== id) : current.concat(id));
+  const runCopilot = async () => {
+    if (!selectedAccountIds.length) return setNotice("Selecione pelo menos uma conta de anúncios.");
+    if (mode === "mcp" && !question.trim()) return setNotice("Escreva o que deseja consultar.");
+    if (!scopes.length) return setNotice("Selecione pelo menos uma permissão de dados.");
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await withTimeout(
+        invokeTrafficCopilot({ action: mode === "daily" ? "daily_analysis" : "mcp_query", account_ids: selectedAccountIds, period, scopes, question: question.trim() }),
+        60000,
+        "A análise demorou mais que o esperado. Tente novamente."
+      );
+      setOutput(response.output || "Nenhum resultado retornado.");
+    } catch (error) {
+      setNotice(error.message || "Não foi possível consultar o Copiloto de Tráfego.");
+    } finally { setBusy(false); }
+  };
+
+  return <div className="space-y-5">
+    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5"><div className="flex flex-col justify-between gap-4 md:flex-row md:items-start"><div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary"><Sparkles className="h-4 w-4" /> Inteligência aplicada à mídia</div><h2 className="mt-2 text-xl font-bold text-foreground">Copiloto de Tráfego</h2><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Analise o desempenho das contas e consulte dados do Ads Brain com permissões explícitas. Tokens e credenciais da Meta permanecem no ambiente seguro.</p></div><div className="flex items-center gap-2 rounded-lg border bg-background/80 px-3 py-2 text-xs font-medium text-emerald-700"><ShieldCheck className="h-4 w-4" /> Acesso protegido</div></div></div>
+    <div role="tablist" aria-label="Funções do Copiloto de Tráfego" className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border bg-card p-1"><button type="button" role="tab" aria-selected={mode === "daily"} onClick={() => setMode("daily")} className={`rounded-md px-3 py-2 text-xs font-semibold ${mode === "daily" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Análise diária</button><button type="button" role="tab" aria-selected={mode === "mcp"} onClick={() => setMode("mcp")} className={`rounded-md px-3 py-2 text-xs font-semibold ${mode === "mcp" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Acesso controlado via MCP</button></div>
+    <Card><CardHeader><CardTitle className="text-base">{mode === "daily" ? "Análise diária para o gestor" : "Consultar dados autorizados"}</CardTitle><p className="text-sm text-muted-foreground">{mode === "daily" ? "Gere um resumo com fatos, alertas, riscos e recomendações para validação do gestor." : "Escolha as contas e os tipos de dado que o Copiloto poderá consultar nesta pergunta."}</p></CardHeader><CardContent className="space-y-5"><div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contas incluídas</p>{accounts.length ? <div className="grid gap-2 sm:grid-cols-2">{accounts.map((account) => <label key={account.id} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${selectedAccountIds.includes(account.id) ? "border-primary bg-primary/5" : "border-border"}`}><input type="checkbox" checked={selectedAccountIds.includes(account.id)} onChange={() => toggleAccount(account.id)} className="h-4 w-4 accent-primary" /><span className="min-w-0 truncate font-medium">{account.name || account.accountName || account.id}</span></label>)}</div> : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma conta de anúncios conectada.</p>}</div><div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Permissões de dados</p><div className="grid gap-2 sm:grid-cols-3">{COPILOT_SCOPES.map((scope) => <label key={scope.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-xs font-medium ${scopes.includes(scope.id) ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground"}`}><input type="checkbox" checked={scopes.includes(scope.id)} onChange={() => toggleScope(scope.id)} className="h-4 w-4 accent-primary" />{scope.label}</label>)}</div></div>{mode === "daily" ? <label className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Período da análise<select value={period} onChange={(event) => setPeriod(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal normal-case text-foreground">{COPILOT_PERIODS.map((item) => <option key={item}>{item}</option>)}</select></label> : <label className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pergunta ao Copiloto<textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={4} placeholder="Ex.: quais campanhas têm maior gasto e CTR abaixo da meta?" className="mt-1 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal normal-case text-foreground" /></label>}{notice && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{notice}</p>}<Button type="button" onClick={runCopilot} disabled={busy || !accounts.length} className="gap-2">{busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{busy ? "Analisando..." : mode === "daily" ? "Gerar análise diária" : "Consultar Copiloto"}</Button></CardContent></Card>
+    <Card><CardHeader><CardTitle className="text-base">Resultado</CardTitle></CardHeader><CardContent>{output ? <div className="whitespace-pre-wrap rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-foreground">{output}</div> : <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">O resultado da análise aparecerá aqui.</p>}</CardContent></Card>
+  </div>;
 }
 
 export default function AdsBrain() {
@@ -142,7 +204,9 @@ export default function AdsBrain() {
   const [customUntil, setCustomUntil] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState("Todos os canais");
+  const [adsBrainTab, setAdsBrainTab] = useState("overview");
   const [expandedClient, setExpandedClient] = useState(null);
+  const [organizationOpen, setOrganizationOpen] = useState(false);
   const [lastSync, setLastSync] = useState(null);
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingNetwork, setEditingNetwork] = useState("Meta Ads");
@@ -461,6 +525,10 @@ export default function AdsBrain() {
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="hidden items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground md:flex"><RefreshCw className="h-3.5 w-3.5 text-primary" /> Sincronização automática a cada {SYNC_INTERVAL_HOURS}h</div>
+            <Button variant={organizationOpen ? "default" : "outline"} className="gap-2" onClick={() => setOrganizationOpen((current) => !current)} aria-pressed={organizationOpen} aria-label={organizationOpen ? "Concluir organização do Ads Brain" : "Organizar quadros do Ads Brain"}>
+              {organizationOpen ? <UnlockKeyhole className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
+              {organizationOpen ? "Concluir" : "Organizar"}
+            </Button>
             <Button variant="outline" className="gap-2" onClick={() => sync()} disabled={syncing}>
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               {syncing ? "Sincronizando..." : "Sincronizar dados"}
@@ -469,6 +537,15 @@ export default function AdsBrain() {
           </div>
         </div>
 
+        <div role="tablist" aria-label="Seções do Ads Brain" className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border bg-card p-1">
+          <button type="button" role="tab" aria-selected={adsBrainTab === "overview"} onClick={() => setAdsBrainTab("overview")} className={`rounded-md px-4 py-2 text-sm font-semibold ${adsBrainTab === "overview" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Visão geral</button>
+          <button type="button" role="tab" aria-selected={adsBrainTab === "copilot"} onClick={() => setAdsBrainTab("copilot")} className={`rounded-md px-4 py-2 text-sm font-semibold ${adsBrainTab === "copilot" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>Copiloto de Tráfego</button>
+        </div>
+
+        {organizationOpen && <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs font-medium text-primary"><LockKeyhole className="h-4 w-4" /> Modo de organização ativo: abra os clientes e organize campanhas, fixações e filtros pelos controles de cada quadro. Clique em “Concluir” para sair.</div>}
+
+        {adsBrainTab === "copilot" ? <TrafficCopilot accounts={clientAccounts} /> : <>
+
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div><h2 className="text-lg font-semibold">Resumo dos clientes</h2><p className="text-sm text-muted-foreground">Saldo consolidado, saúde e canais de anúncios por cliente.</p></div>
           <div className="flex flex-wrap gap-2"><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Período<select aria-label="Período do relatório" value={period} onChange={(e) => { const nextPeriod = e.target.value; setPeriod(nextPeriod); if (nextPeriod !== "Personalizado") sync(nextPeriod); }} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground">{periodOptions.map((option) => <option key={option}>{option}</option>)}</select></label>{period === "Personalizado" && <><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">De<input type="date" value={customSince} onChange={(event) => setCustomSince(event.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground" /></label><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Até<input type="date" value={customUntil} onChange={(event) => setCustomUntil(event.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground" /></label><Button type="button" variant="outline" className="self-end" disabled={!customSince || !customUntil || customSince > customUntil || syncing} onClick={() => sync("Personalizado", customSince, customUntil)}>Aplicar</Button></>}<label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Canal<select aria-label="Canal de anúncios" value={selectedChannel} onChange={(e) => setSelectedChannel(e.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"><option>Todos os canais</option>{channels.map((c) => <option key={c.name}>{c.name}</option>)}</select></label></div>
@@ -476,7 +553,7 @@ export default function AdsBrain() {
 
         <div aria-live="polite" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Airbyte conectado</span><span>Próxima atualização automática em até {SYNC_INTERVAL_HOURS} horas</span><span>{syncing ? "Sincronização em andamento" : lastSync ? `Última sincronização manual: ${lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Nenhuma sincronização manual neste navegador"}</span></div>
 
-        {lowBalanceAccounts.length > 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" /><div><p className="font-semibold">Atenção: saldo abaixo do mínimo</p><p className="mt-1 text-sm text-amber-800">{lowBalanceAccounts.length === 1 ? "Uma conta precisa de recarga." : `${lowBalanceAccounts.length} contas precisam de recarga.`}</p><div className="mt-2 flex flex-wrap gap-2">{lowBalanceAccounts.map((account) => <button key={account.id} type="button" onClick={() => setExpandedClient(account.id)} className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900">{account.name}: {account.balance} de mínimo {new Intl.NumberFormat("pt-BR", { style: "currency", currency: account.currency }).format(account.minimumBalance)}</button>)}</div></div></div></div>}
+        {lowBalanceAccounts.length > 0 && <div role="alert" className="w-full max-w-xl rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2.5 text-amber-950"><div className="flex items-center gap-2"><div className="rounded-md bg-amber-100 p-1.5"><AlertCircle className="h-4 w-4 text-amber-600" /></div><div className="min-w-0"><p className="text-xs font-semibold">Saldo abaixo do limite</p><p className="text-[11px] text-amber-800">{lowBalanceAccounts.length === 1 ? "1 conta precisa de recarga." : `${lowBalanceAccounts.length} contas precisam de recarga.`}</p></div></div><div className="mt-2 flex flex-wrap gap-1.5">{lowBalanceAccounts.map((account) => <button key={account.id} type="button" onClick={() => setExpandedClient(account.id)} className="max-w-full rounded-md border border-amber-300 bg-white px-2 py-1 text-left text-[11px] font-medium text-amber-900 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"><span className="block truncate">{account.name}</span><span className="block text-[10px] font-normal text-amber-800">{account.balance} · mínimo {new Intl.NumberFormat("pt-BR", { style: "currency", currency: account.currency }).format(account.minimumBalance)}</span></button>)}</div></div>}
 
         {clientAccounts.length === 0 ? (
           <Card><CardContent className="flex min-h-44 flex-col items-center justify-center p-8 text-center"><div className="mb-3 rounded-full bg-muted p-3"><WalletCards className="h-6 w-6 text-muted-foreground" /></div><h3 className="font-semibold">Nenhuma conta de cliente conectada</h3><p className="mt-1 max-w-lg text-sm text-muted-foreground">Ainda não há contas vinculadas a clientes. Depois da conexão, você verá saldo por conta, saúde em estrelas, campanhas e métricas completas.</p><Button className="mt-4 gap-2" onClick={() => openConnection()}><Plus className="h-4 w-4" /> Conectar primeira conta</Button></CardContent></Card>
@@ -493,7 +570,7 @@ export default function AdsBrain() {
                 : client.balance;
               const accounts = accountNames.map((platform, index) => ({ platform, name: `${client.accountName} · ${platform}`, balance: index === 0 ? cardSpending : "Saldo não informado", url: platform === "Meta Ads" ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${String(client.externalAccountId).replace(/^act_/, "")}` : "#" }));
               const allMetrics = metricCatalog.map((metric) => ({ ...metric, value: client.metrics?.[metric.key] }));
-              return <Card key={client.id} role="button" tabIndex={0} aria-expanded={expanded} className={`cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${scoreCardTone}`} onClick={() => setExpandedClient(expanded ? null : client.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setExpandedClient(expanded ? null : client.id); } }}><CardHeader className="flex-row items-start justify-between space-y-0"><div><CardTitle className="text-base">{client.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">ID da conta: {client.externalAccountId}</p><p className="mt-1 text-xs text-muted-foreground">{accounts.length} conta{accounts.length !== 1 ? "s" : ""} conectada{accounts.length !== 1 ? "s" : ""}</p></div><div className="flex flex-col items-end gap-3"><div className="flex items-center gap-1" aria-label={`${score} de 5 estrelas`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} className={`h-4 w-4 ${star <= score ? "fill-amber-400 text-amber-400" : "text-muted"}`} />)}</div><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openMetricEditor(client, client.platform.split(" + ")[0]); }}>Editar cliente</Button></div></CardHeader><CardContent className="space-y-4"><div className="flex items-end justify-between"><div><p className="text-xs text-muted-foreground">Contas de anúncios</p><div className="mt-2 flex flex-wrap gap-1.5">{accounts.map((account) => <span key={account.platform} className="rounded-full bg-muted px-2 py-1 text-xs">{account.platform}</span>)}</div></div><button type="button" aria-label={expanded ? `Recolher ${client.name}` : `Abrir ${client.name}`} onClick={(event) => { event.stopPropagation(); setExpandedClient(expanded ? null : client.id); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">{expanded ? "Recolher" : "Abrir cliente"} {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saldo por conta</p><div className="grid gap-2 sm:grid-cols-2">{accounts.map((account) => <div key={account.platform} className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs text-muted-foreground">{account.platform}</p><p className="font-semibold">{account.balance}</p></div><div className="flex items-center gap-3"><a href={account.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="flex items-center gap-1 text-xs font-medium text-primary no-underline">Abrir conta <ExternalLink className="h-3.5 w-3.5" /></a></div></div>)}</div></div>{expanded && <div className="space-y-5 border-t pt-4"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Campanhas e métricas completas</p><CampaignTable campaigns={client.campaigns} accountId={client.id} /></div><AccountMetrics account={client} /><p className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5 text-primary" /> Score ponderado: {score}/5</p></div>}</CardContent></Card>;
+              return <Card key={client.id} className={`transition-shadow hover:shadow-md ${scoreCardTone}`}><CardHeader className="flex-row items-start justify-between space-y-0"><div><CardTitle className="text-base">{client.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">ID da conta: {client.externalAccountId}</p><p className="mt-1 text-xs text-muted-foreground">{accounts.length} conta{accounts.length !== 1 ? "s" : ""} conectada{accounts.length !== 1 ? "s" : ""}</p></div><div className="flex flex-col items-end gap-3"><div className="flex items-center gap-1" aria-label={`${score} de 5 estrelas`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} className={`h-4 w-4 ${star <= score ? "fill-amber-400 text-amber-400" : "text-muted"}`} />)}</div><Button type="button" variant="outline" size="sm" onClick={() => setExpandedClient(client.id)}>Editar cliente</Button></div></CardHeader><CardContent className="space-y-4"><div className="flex items-end justify-between"><div><p className="text-xs text-muted-foreground">Contas de anúncios</p><div className="mt-2 flex flex-wrap gap-1.5">{accounts.map((account) => <span key={account.platform} className="rounded-full bg-muted px-2 py-1 text-xs">{account.platform}</span>)}</div></div><button type="button" aria-label={expanded ? `Recolher ${client.name}` : `Abrir ${client.name}`} onClick={() => setExpandedClient(expanded ? null : client.id)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">{expanded ? "Recolher" : "Abrir cliente"} {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saldo por conta</p><div className="grid gap-2 sm:grid-cols-2">{accounts.map((account) => <div key={account.platform} className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs text-muted-foreground">{account.platform}</p><p className="font-semibold">{account.balance}</p></div><div className="flex items-center gap-3"><a href={account.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="flex items-center gap-1 text-xs font-medium text-primary no-underline">Abrir conta <ExternalLink className="h-3.5 w-3.5" /></a></div></div>)}</div></div>{expanded && <div className="space-y-5 border-t pt-4"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Campanhas e métricas completas</p><CampaignTable campaigns={client.campaigns} accountId={client.id} organizeOpen={organizationOpen} showToggle={false} /></div><AccountMetrics account={client} /><p className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5 text-primary" /> Score ponderado: {score}/5</p></div>}</CardContent></Card>;
             })}
           </div>
         )}
@@ -508,6 +585,7 @@ export default function AdsBrain() {
         </div>
 
         <Card><CardContent className="flex min-h-56 flex-col items-center justify-center p-8 text-center"><div className="mb-3 rounded-full bg-muted p-3"><BarChart3 className="h-6 w-6 text-muted-foreground" /></div><h3 className="font-semibold">Seu painel de performance aparecerá aqui</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">Após conectar a primeira conta, o Ads Brain exibirá campanhas, gastos, saldo e oportunidades de otimização.</p><Button variant="link" className="mt-2">Conhecer o fluxo de dados <ChevronDown className="ml-1 h-4 w-4 -rotate-90" /></Button></CardContent></Card>
+        </>}
       </div>
       <Sheet open={Boolean(editingAccount)} onOpenChange={(open) => !open && setEditingAccount(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
@@ -515,7 +593,7 @@ export default function AdsBrain() {
           <div className="mt-6 space-y-5 pb-24">
             <label className="block text-sm font-medium">Nome do cliente<input required value={editingClientName} onChange={(event) => setEditingClientName(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Nome do cliente" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Será exibido como: {(editingClientName.trim() || "Nome do cliente")} - {editingNetwork}</span></label>
             <label className="text-sm font-medium">Rede de anúncios<select value={editingNetwork} disabled className="mt-2 h-10 w-full rounded-md border bg-muted px-3"><option>{editingNetwork}</option></select></label>
-            <label className="block text-sm font-medium">Saldo mínimo para alerta<input type="number" min="0" step="0.01" value={editingMinimumBalance} onChange={(event) => setEditingMinimumBalance(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Ex.: 500,00" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Deixe vazio para não gerar alerta de saldo nesta conta.</span></label>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3"><label className="block text-sm font-medium text-amber-950"><span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-600" /> Alerta de saldo abaixo de:</span><input aria-label="Alertar quando o saldo ficar abaixo de" type="number" min="0" step="0.01" value={editingMinimumBalance} onChange={(event) => setEditingMinimumBalance(event.target.value)} className="mt-2 h-10 w-full rounded-md border border-amber-300 bg-background px-3 text-sm text-foreground" placeholder="Ex.: 500,00" /><span className="mt-1 block text-xs font-normal text-amber-800">Informe o valor mínimo para mostrar o alerta no Ads Brain. Deixe vazio para desativar.</span></label></div>
             {editingAccount?.paymentMethod === "credit_card" && <label className="block text-sm font-medium">Limite de gastos<input type="number" min="0" step="0.01" value={editingSpendingLimit} onChange={(event) => setEditingSpendingLimit(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Ex.: 1000,00" /><span className="mt-1 block text-xs font-normal text-muted-foreground">O gasto acumulado deste mês será comparado visualmente com este limite.</span></label>}
             <MetricPicker catalog={metricCatalog} metricKey={metricToAdd} setMetricKey={setMetricToAdd} target={metricTarget} setTarget={setMetricTarget} weight={metricWeight} setWeight={setMetricWeight} onAdd={() => addMetric(setEditingMetrics)} />
             <MetricList metrics={editorCatalog} onRemove={(key) => setEditingMetrics((current) => { const next = { ...current }; delete next[key]; return next; })} />

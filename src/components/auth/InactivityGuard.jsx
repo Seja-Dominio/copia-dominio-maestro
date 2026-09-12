@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { maestro } from "@/api/maestroClient";
+import { getStoredCollaborator } from "@/api/supabaseClient";
 
 const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 horas
 const WARNING_BEFORE = 5 * 60 * 1000; // aviso 5 min antes
@@ -9,7 +10,7 @@ const TIMESHEET_INACTIVITY = 3 * 60 * 60 * 1000; // 3h para parar timesheets
 
 async function stopAllRunningTimesheets(capAt) {
   try {
-    const session = JSON.parse(sessionStorage.getItem("collaborator") || "null");
+    const session = getStoredCollaborator();
     if (!session?.id) return;
     const running = await maestro.entities.Timesheet.filter({ collaborator_id: session.id, is_running: true });
     if (!running.length) return;
@@ -32,7 +33,7 @@ async function stopAllRunningTimesheets(capAt) {
 
 export default function InactivityGuard({ onLogout }) {
   const [showWarning, setShowWarning] = useState(false);
-  const [countdown, setCountdown] = useState(120);
+  const [countdown, setCountdown] = useState(Math.ceil(WARNING_BEFORE / 1000));
   const warningTimerRef = useRef(null);
   const logoutTimerRef = useRef(null);
   const countdownRef = useRef(null);
@@ -58,7 +59,7 @@ export default function InactivityGuard({ onLogout }) {
     warningTimerRef.current = setTimeout(() => {
       showWarningRef.current = true;
       setShowWarning(true);
-      setCountdown(120);
+      setCountdown(Math.ceil(WARNING_BEFORE / 1000));
 
       countdownRef.current = setInterval(() => {
         setCountdown(prev => {
@@ -71,7 +72,7 @@ export default function InactivityGuard({ onLogout }) {
       }, 1000);
     }, INACTIVITY_TIMEOUT - WARNING_BEFORE);
 
-    // Timer para logout (120 min)
+    // Timer para logout após 24 horas sem atividade
     logoutTimerRef.current = setTimeout(() => {
       doLogout();
     }, INACTIVITY_TIMEOUT);
@@ -80,11 +81,11 @@ export default function InactivityGuard({ onLogout }) {
   const handleStayLoggedIn = useCallback(() => {
     showWarningRef.current = false;
     setShowWarning(false);
-    setCountdown(120);
+    setCountdown(Math.ceil(WARNING_BEFORE / 1000));
     startTimers();
   }, [startTimers]);
 
-  // Timesheet inactivity auto-stop (3h without navigation/text/upload)
+  // Timesheet inactivity auto-stop (3h without interaction inside the active job)
   const tsTimerRef = useRef(null);
   const tsLastActivityRef = useRef(Date.now());
   const tsStoppedRef = useRef(false);
@@ -104,9 +105,6 @@ export default function InactivityGuard({ onLogout }) {
   // Setup event listeners ONCE — use ref to check warning state
   useEffect(() => {
     const events = ["mousedown", "keydown", "scroll", "touchstart"];
-    // Extended events for timesheet: also track input, navigation, file uploads
-    const tsEvents = ["mousedown", "keydown", "scroll", "touchstart", "input", "change", "click"];
-
     const handleActivity = () => {
       // Only reset if warning is NOT showing
       if (!showWarningRef.current) {
@@ -164,7 +162,7 @@ export default function InactivityGuard({ onLogout }) {
     };
 
     events.forEach(e => document.addEventListener(e, handleActivity, true));
-    tsEvents.forEach(e => document.addEventListener(e, handleTsActivity, true));
+    window.addEventListener("job-timesheet-activity", handleTsActivity);
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -174,7 +172,7 @@ export default function InactivityGuard({ onLogout }) {
 
     return () => {
       events.forEach(e => document.removeEventListener(e, handleActivity, true));
-      tsEvents.forEach(e => document.removeEventListener(e, handleTsActivity, true));
+      window.removeEventListener("job-timesheet-activity", handleTsActivity);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearAllTimers();

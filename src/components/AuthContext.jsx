@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/api/supabaseClient';
+import { clearStoredCollaboratorSession, getStoredCollaborator, getStoredSessionToken, supabase } from '@/api/supabaseClient';
 
 const AuthContext = createContext();
 
@@ -26,24 +26,30 @@ export const AuthProvider = ({ children }) => {
 
     const checkAuth = async () => {
       try {
-        // Supabase Auth is the primary session source. The collaborator token
-        // remains a compatibility fallback for existing migrated accounts.
+        // Custom collaborator sessions are persisted for 24h. Prefer them so
+        // a stale native session cannot replace the active collaborator login.
+        const collaborator = getStoredCollaborator();
+        if (collaborator) {
+          sessionStorage.setItem('collaborator', JSON.stringify(collaborator));
+          const storedToken = getStoredSessionToken();
+          if (storedToken) sessionStorage.setItem('collaborator_session_token', storedToken);
+          setUser(collaborator);
+          setIsAuthenticated(true);
+          return;
+        }
+
+        // Supabase Auth remains available for native email-based accounts.
         if (supabase) {
           const { data, error } = await supabase.auth.getSession();
           if (!error && applySession(data.session)) return;
         }
-        const collaborator = sessionStorage.getItem('collaborator');
-        if (collaborator) {
-          setUser(JSON.parse(collaborator));
-          setIsAuthenticated(true);
-        } else {
-          // Salva a rota atual para redirecionar após login
-          const currentPath = window.location.pathname + window.location.search;
-          if (currentPath && currentPath !== '/' && currentPath !== '/Dashboard') {
-            localStorage.setItem('redirectAfterLogin', currentPath);
-          }
-          setAuthError({ type: 'auth_required' });
+
+        // Salva a rota atual para redirecionar após login
+        const currentPath = window.location.pathname + window.location.search;
+        if (currentPath && currentPath !== '/' && currentPath !== '/Dashboard') {
+          localStorage.setItem('redirectAfterLogin', currentPath);
         }
+        setAuthError({ type: 'auth_required' });
       } catch (error) {
         setAuthError({ type: 'auth_required' });
       } finally {
@@ -61,7 +67,7 @@ export const AuthProvider = ({ children }) => {
     const subscription = supabase?.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         applySession(session);
-      } else if (!sessionStorage.getItem('collaborator')) {
+      } else if (!getStoredCollaborator()) {
         setUser(null);
         setIsAuthenticated(false);
         setAuthError({ type: 'auth_required' });
@@ -76,8 +82,7 @@ export const AuthProvider = ({ children }) => {
 
   const navigateToLogin = () => {
     setUser(null);
-    sessionStorage.removeItem('collaborator');
-    sessionStorage.removeItem('collaborator_session_token');
+    clearStoredCollaboratorSession();
     setIsAuthenticated(false);
     supabase?.auth.signOut();
     // Reload para voltar à tela de login

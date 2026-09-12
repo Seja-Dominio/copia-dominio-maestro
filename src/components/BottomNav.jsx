@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderKanban, Briefcase, Calendar, Users, Brain } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Briefcase, Calendar, Users, Brain, MessageSquare } from "lucide-react";
 import { useEffect } from "react";
+import { canAccessPage } from "@/lib/accessControl";
 
 const NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
@@ -8,6 +9,7 @@ const NAV_ITEMS = [
   { label: "Jobs",      icon: Briefcase,        page: "Jobs" },
   { label: "Agenda",    icon: Calendar,         page: "Agenda" },
   { label: "Carteira",  icon: Users,            page: "ClientPortfolio" },
+  { label: "Conversas", icon: MessageSquare,    page: "Conversations" },
   { label: "Ads Brain", icon: Brain,             page: "AdsBrain" },
 ];
 
@@ -33,8 +35,9 @@ function useScrollPreservation() {
   }, [pathname]);
 }
 
-export default function BottomNav({ currentPageName }) {
+export default function BottomNav({ currentPageName, collaborator }) {
   useScrollPreservation();
+  const visibleItems = NAV_ITEMS.filter((item) => canAccessPage(collaborator, item.page));
 
   return (
     <nav
@@ -42,7 +45,7 @@ export default function BottomNav({ currentPageName }) {
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-card border-t border-border safe-bottom"
     >
       <div className="flex items-stretch">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = currentPageName === item.page;
           return (
             <Link

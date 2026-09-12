@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, Settings, Check, AlertCircle, Users, RefreshCw, QrCode, Copy, ContactRound, X, Loader2, Link2, Paperclip, Trash2, CalendarClock } from "lucide-react";
 import WhatsappReportsPanel from "@/components/conversations/WhatsappReportsPanel";
+import TeamChatPanel from "@/components/conversations/TeamChatPanel";
 
 function getClientDestinations(client) {
   const groupIds = Array.isArray(client?.whatsapp_group_ids) ? client.whatsapp_group_ids : [client?.whatsapp_group_id];
@@ -604,7 +605,7 @@ export default function Conversations() {
   const [clients, setClients] = useState([]);
   const [directory, setDirectory] = useState({ groups: [], contacts: [] });
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState("single"); // "single" | "bulk" | "reports"
+  const [mode, setMode] = useState("team"); // "team" | "single" | "bulk" | "reports"
   const [connection, setConnection] = useState({ loading: true, connected: false, state: "unknown", error: null });
   const [connectionManagerOpen, setConnectionManagerOpen] = useState(false);
 
@@ -645,9 +646,13 @@ export default function Conversations() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Conversas</h1>
-          <p className="text-sm text-muted-foreground mt-1">Envie mensagens WhatsApp para grupos de clientes via Evolution API</p>
+          <p className="text-sm text-muted-foreground mt-1">Centralize a comunicação da equipe e os envios para clientes</p>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-1">
+          <button onClick={() => setMode("team")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${mode === "team" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            <Users className="w-3.5 h-3.5" /> Equipe
+          </button>
           <button onClick={() => setMode("single")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${mode === "single" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
             <MessageSquare className="w-3.5 h-3.5" /> Individual
@@ -663,7 +668,7 @@ export default function Conversations() {
         </div>
       </div>
 
-      <div className={`mb-5 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${connection.connected ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+      {mode !== "team" && <div className={`mb-5 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${connection.connected ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${connection.connected ? "bg-green-500" : "bg-amber-500"}`} />
           <span>
@@ -678,12 +683,14 @@ export default function Conversations() {
             <QrCode className="h-3.5 w-3.5" /> {connection.connected ? "Gerenciar número" : "Conectar número"}
           </Button>
         </div>
-      </div>
+      </div>}
 
       {loading ? (
         <div className="glass-card p-8 text-center">
           <p className="text-sm text-muted-foreground">Carregando clientes...</p>
         </div>
+      ) : mode === "team" ? (
+        <TeamChatPanel />
       ) : mode === "single" ? (
         <SingleSend clients={clients} directory={directory} onClientsChanged={setClients} />
       ) : mode === "bulk" ? (

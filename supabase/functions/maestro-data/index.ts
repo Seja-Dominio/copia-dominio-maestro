@@ -227,11 +227,12 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);
   const accessLevel = String(body.__access_level || "").toLowerCase();
+  const canCreateMiniTask = operation === "create" && entity === "MiniTask";
   const gestorWritableEntities = ["Client", "Project", "Job", "Subtask", "AgendaEvent", "JobTemplate", "Squad"];
-  if (isWrite && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
+  if (isWrite && !canCreateMiniTask && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
     return json({ error: "O Gestor não pode alterar este tipo de dado" }, 403, origin);
   }
-  if (isWrite && !["master", "gestor"].includes(accessLevel)) {
+  if (isWrite && !canCreateMiniTask && !["master", "gestor"].includes(accessLevel)) {
     return json({ error: "Apenas gestores e masters podem alterar dados" }, 403, origin);
   }
   if (["delete", "transferSubtasks"].includes(operation) && accessLevel !== "master") {
@@ -283,7 +284,28 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   }
 
   if (operation === "create" || operation === "update") {
-    const payload = (body.data || {}) as Record<string, unknown>;
+    const payload = { ...((body.data || {}) as Record<string, unknown>) };
+    if (operation === "create" && entity === "MiniTask") {
+      const collaboratorId = String(payload.collaborator_id || "");
+      if (!collaboratorId) return json({ error: "A tarefa precisa de um responsável" }, 400, origin);
+
+      const { data: recipient } = await supabase
+        .from("legacy_records")
+        .select("record_id, payload")
+        .eq("entity", "Collaborator")
+        .eq("record_id", collaboratorId)
+        .maybeSingle();
+      if (!recipient || recipient.payload?.is_active === false) {
+        return json({ error: "O responsável selecionado não está ativo" }, 400, origin);
+      }
+
+      // A criação de MiniTask é permitida a todos os colaboradores, mas a
+      // autoria e o nível de acesso nunca podem ser forjados no cliente.
+      if (String(payload.sender_id || "")) {
+        payload.sender_id = session?.sub;
+        payload.sender_access_level = accessLevel;
+      }
+    }
     const recordId = operation === "update"
       ? String(body.id || "")
       : String(payload.id || crypto.randomUUID().replaceAll("-", ""));

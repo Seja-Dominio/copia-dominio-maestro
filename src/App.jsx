@@ -13,6 +13,7 @@ import InactivityGuard from '@/components/auth/InactivityGuard';
 import { AppConfigProvider } from '@/lib/AppConfigContext';
 import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
+import { logoutCollaborator } from '@/api/maestroClient';
 
 // Lazy imports with built-in retry to handle Vite HMR / recompilation failures
 function lazyWithRetry(factory) {
@@ -132,8 +133,7 @@ const AuthenticatedApp = () => {
   }
 
   const handleInactivityLogout = () => {
-    sessionStorage.removeItem("collaborator");
-    sessionStorage.removeItem("collaborator_session_token");
+    logoutCollaborator();
     window.location.href = "/";
   };
 

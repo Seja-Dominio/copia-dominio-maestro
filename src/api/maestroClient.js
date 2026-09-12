@@ -6,7 +6,7 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { callMaestroData, createSupabaseEntities, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase } from '@/api/supabaseClient';
+import { callMaestroData, createSupabaseEntities, getStoredCollaborator, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase, clearStoredCollaboratorSession } from '@/api/supabaseClient';
 
 const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
 
@@ -111,8 +111,10 @@ export function invokeMaestroFunction(name, payload) {
     if (name === 'whatsappConnect') return invokeWhatsapp({ action: 'connect' });
     if (name === 'whatsappStatus') return invokeWhatsapp({ action: 'status' });
     if (name === 'listWhatsappAutomations') return invokeWhatsapp({ action: 'listAutomations' });
+    if (name === 'configureWhatsappDominusWebhook') return invokeWhatsapp({ action: 'configureDominusWebhook' });
     if (name === 'saveWhatsappAutomation') return invokeWhatsapp({ action: 'saveAutomation', automation: payload });
     if (name === 'deleteWhatsappAutomation') return invokeWhatsapp({ action: 'deleteAutomation', ...payload });
+    if (name === 'teamChat') return invokeSupabaseFunction('team-chat', payload).then((data) => ({ data: data.data || data }));
     if (name === 'deleteTimesheet') return invokeAdminTimesheetFunction('delete', { timesheetId: payload?.timesheetId });
     if (name === 'clearAllTimesheets') return invokeAdminTimesheetFunction('clear');
     if (name === 'resetAllTimesheets') return invokeAdminTimesheetFunction('reset');
@@ -123,16 +125,11 @@ export function invokeMaestroFunction(name, payload) {
 }
 
 export function getCurrentCollaborator() {
-  try {
-    return JSON.parse(sessionStorage.getItem('collaborator') || 'null');
-  } catch {
-    return null;
-  }
+  return getStoredCollaborator();
 }
 
 export function logoutCollaborator() {
-  sessionStorage.removeItem('collaborator');
-  sessionStorage.removeItem('collaborator_session_token');
+  clearStoredCollaboratorSession();
 }
 
 const authProvider = import.meta.env.VITE_MAESTRO_AUTH_PROVIDER || 'base44';

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { maestro, uploadMaestroFile } from "@/api/maestroClient";
+import { getStoredCollaborator } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -435,13 +436,15 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   }, [job]);
 
   // Get session collaborator (custom auth)
-  const sessionCollaborator = (() => {
-    try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; }
-  })();
+  const sessionCollaborator = getStoredCollaborator();
 
   // The collaborator identity for timesheets
   const collabId = sessionCollaborator?.id || null;
   const collabName = sessionCollaborator?.name || "—";
+
+  const markTimesheetActivity = () => {
+    window.dispatchEvent(new Event("job-timesheet-activity"));
+  };
 
   async function addHistory(type, text, extra = {}) {
     const entry = { time: new Date().toISOString(), type, text, user: collabName, ...extra };
@@ -1029,6 +1032,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     <>
     <div aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={async () => { await stopTimer(); onClose(); }} />
     <div role="dialog" aria-modal="true" aria-labelledby="job-detail-title" tabIndex="-1" className="fixed inset-x-2 bottom-2 top-14 z-[10000] flex flex-col overflow-visible rounded-xl bg-card shadow-2xl md:bottom-auto md:left-[calc(0.5vw+40px)] md:right-auto md:top-[60px] md:h-[calc(100vh-70px)] md:w-[calc(59vw-80px)] md:max-w-[64rem]"
+      onPointerDown={markTimesheetActivity}
+      onKeyDown={markTimesheetActivity}
+      onInput={markTimesheetActivity}
+      onChange={markTimesheetActivity}
       onDragEnter={handleGlobalDragEnter}
       onDragLeave={handleGlobalDragLeave}
       onDragOver={handleGlobalDragOver}

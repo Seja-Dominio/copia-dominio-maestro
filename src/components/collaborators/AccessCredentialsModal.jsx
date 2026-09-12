@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { hashCollaboratorPassword } from "@/api/maestroClient";
+import { hashCollaboratorPassword, maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle, Copy, RotateCw, Eye, EyeOff } from "lucide-react";
+import { getTabPermissions, isAdminLevel, SYSTEM_TAB_PERMISSIONS } from "@/lib/accessControl";
 
 export default function AccessCredentialsModal({
   collaborator,
@@ -25,11 +26,12 @@ export default function AccessCredentialsModal({
   onClose,
   onSaved,
 }) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     login: collaborator?.login || "",
     password_hash: collaborator?.password_hash || "",
     access_level: collaborator?.access_level || "collaborator",
-  });
+    permissions: { tabs: getTabPermissions(collaborator) },
+  }));
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
@@ -51,21 +53,31 @@ export default function AccessCredentialsModal({
   };
 
   const handleSave = async () => {
-    if (!formData.login || !formData.password_hash) {
-      alert("Preencha login e senha");
+    if (!formData.login || (!collaborator?.id && !formData.password_hash)) {
+      alert(collaborator?.id ? "Preencha o login" : "Preencha login e senha");
       return;
     }
 
     setLoading(true);
     try {
       if (collaborator?.id) {
-        // Salvar credenciais com senha hasheada via backend
-        await hashCollaboratorPassword({
-          collaboratorId: collaborator.id,
-          password: formData.password_hash,
-          login: formData.login,
-          access_level: formData.access_level,
-        });
+        if (formData.password_hash) {
+          // Salvar credenciais com senha hasheada via backend
+          await hashCollaboratorPassword({
+            collaboratorId: collaborator.id,
+            password: formData.password_hash,
+            login: formData.login,
+            access_level: formData.access_level,
+            permissions: formData.permissions,
+          });
+        } else {
+          // Permite ajustar somente as permissões sem obrigar a redefinir a senha.
+          await maestro.entities.Collaborator.update(collaborator.id, {
+            login: formData.login,
+            access_level: formData.access_level,
+            permissions: formData.permissions,
+          });
+        }
       }
       onSaved?.();
       onClose();
@@ -109,7 +121,7 @@ export default function AccessCredentialsModal({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wide">
-                Senha
+                Nova senha
               </label>
               <Button
                 type="button"
@@ -125,7 +137,7 @@ export default function AccessCredentialsModal({
             <div className="flex gap-2">
               <Input
                 type={showPassword ? "text" : "password"}
-                placeholder="Digite uma senha segura"
+                placeholder={collaborator?.id ? "Deixe em branco para manter" : "Digite uma senha segura"}
                 value={formData.password_hash}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, password_hash: e.target.value }))
@@ -163,9 +175,17 @@ export default function AccessCredentialsModal({
             </label>
             <Select
               value={formData.access_level}
-              onValueChange={(value) =>
-                setFormData((prev) => ({ ...prev, access_level: value }))
-              }
+              onValueChange={(value) => setFormData((prev) => ({
+                ...prev,
+                access_level: value,
+                permissions: {
+                  ...prev.permissions,
+                  tabs: {
+                    ...prev.permissions.tabs,
+                    Financial: ["gestor", "master"].includes(value) && prev.permissions.tabs.Financial === true,
+                  },
+                },
+              }))}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -199,6 +219,40 @@ export default function AccessCredentialsModal({
             </Select>
           </div>
 
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <div className="mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Permissões por aba</p>
+              <p className="mt-1 text-xs text-muted-foreground">Marque as áreas que este colaborador poderá visualizar.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {SYSTEM_TAB_PERMISSIONS.map((tab) => {
+                const financeBlocked = tab.page === "Financial" && !isAdminLevel({ access_level: formData.access_level });
+                const checked = formData.permissions.tabs[tab.page] === true;
+                return (
+                  <label key={tab.page} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${financeBlocked ? "cursor-not-allowed border-border bg-muted/60 opacity-60" : "cursor-pointer border-border bg-background hover:border-primary/50"}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={loading || financeBlocked}
+                      onChange={() => setFormData((prev) => ({
+                        ...prev,
+                        permissions: {
+                          ...prev.permissions,
+                          tabs: { ...prev.permissions.tabs, [tab.page]: !checked },
+                        },
+                      }))}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-foreground">{tab.label}</span>
+                      {financeBlocked && <span className="block text-[10px] text-muted-foreground">Disponível apenas para Gestor ou Master</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Info */}
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <div className="flex gap-2">
@@ -216,7 +270,7 @@ export default function AccessCredentialsModal({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={loading || !formData.login || !formData.password_hash}
+            disabled={loading || !formData.login || (!collaborator?.id && !formData.password_hash)}
             className="bg-primary hover:bg-primary/90"
           >
             {loading ? "Salvando..." : "Salvar Credenciais"}

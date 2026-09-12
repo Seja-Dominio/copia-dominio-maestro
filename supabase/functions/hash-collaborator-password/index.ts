@@ -83,7 +83,7 @@ Deno.serve(async (request) => {
       return json({ error: "Apenas o Master pode alterar credenciais." }, 403, origin);
     }
 
-    const { collaboratorId, password, login, access_level } = await request.json();
+    const { collaboratorId, password, login, access_level, permissions } = await request.json();
     if (!collaboratorId || !password) {
       return json({ error: "collaboratorId e password são obrigatórios" }, 400, origin);
     }
@@ -96,11 +96,24 @@ Deno.serve(async (request) => {
     if (currentError) throw currentError;
     if (!current) return json({ error: "Colaborador não encontrado" }, 404, origin);
 
+    const nextAccessLevel = String(access_level ?? current.profile?.access_level ?? "collaborator").toLowerCase();
+    const rawPermissions = permissions && typeof permissions === "object" ? permissions as Record<string, unknown> : null;
+    const rawTabs = rawPermissions?.tabs && typeof rawPermissions.tabs === "object" ? rawPermissions.tabs as Record<string, unknown> : null;
+    const normalizedPermissions = rawPermissions && rawTabs
+      ? {
+          ...rawPermissions,
+          tabs: {
+            ...rawTabs,
+            Financial: ["gestor", "master"].includes(nextAccessLevel) && rawTabs.Financial === true,
+          },
+        }
+      : undefined;
     const hashedPassword = await hashPassword(String(password));
     const profile = {
       ...(current.profile || {}),
       ...(login !== undefined ? { login: String(login) } : {}),
-      ...(access_level !== undefined ? { access_level: String(access_level) } : {}),
+      ...(access_level !== undefined ? { access_level: nextAccessLevel } : {}),
+      ...(normalizedPermissions !== undefined ? { permissions: normalizedPermissions } : {}),
       id: collaboratorId,
     };
     const now = new Date().toISOString();

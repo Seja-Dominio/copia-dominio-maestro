@@ -22,6 +22,12 @@ verify_jwt = false
 [functions.whatsapp-send]
 verify_jwt = false
 
+[functions.dominus-webhook]
+verify_jwt = false
+
+[functions.team-chat]
+verify_jwt = false
+
 [functions.maestro-ai]
 verify_jwt = false
 

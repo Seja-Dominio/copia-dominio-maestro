@@ -174,32 +174,13 @@ Retorne somente os sete campos numerados, sem introdução ou conclusão.`,
       return;
     }
 
-    // Regular assistant response: conversational, with the current job as context.
-    const history = messages.map(m => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`).join("\n");
+    // The server-side orchestrator now decides which internal tools are needed.
+    // Keep the client payload structured and limited; permissions are enforced
+    // again inside the Edge Function and never trusted from this component.
+    const history = messages.slice(-12).map(item => ({ role: item.role, content: item.content }));
     const response = await askMaestroAI({
-      message: `Você é um assistente especializado no sistema AgênciaOS, uma plataforma de gestão para agências de marketing digital.
-
-O sistema tem: Dashboard, Projetos, Jobs, Propostas, Produção, Mídia, Financeiro, Conversas, Cadastros, Relatórios e Templates.
-
-Funcionalidades principais:
-- Projetos: agrupam jobs de um cliente. Clique em um projeto para ver seus jobs.
-- Jobs: unidades de trabalho (posts, reels, stories, vídeos). Cada job tem subtarefas, briefing, timesheet e comentários.
-- Timesheet: acumula tempo gasto em cada job para relatórios. Timer inicia automaticamente ao abrir o job.
-- Kanban: arraste jobs entre colunas para mudar status. Mover para "Concluído" completa todas subtarefas.
-- Sons ambiente: clique no ícone de volume no topo para ativar chuva, floresta, oceano, café ou lareira.
-- Templates: reutilize configurações de jobs/projetos.
-- Financeiro: controle de receitas, despesas e top clientes.
-
-Só preencho ou salvo briefing quando você pedir explicitamente, por exemplo: "Gerar briefing para o job: [título]".
-
-Página atual: ${currentPage}
-
-Histórico:
-${history}
-
-Usuário: ${msg}
-
-Responda de forma concisa e prática, em português. Use bullet points quando listar passos. Máximo 150 palavras.`,
+      message: msg,
+      history,
       context: { page: currentPage, task: "general", job: activeJob },
     });
 

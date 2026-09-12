@@ -21,7 +21,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import { useNavigate } from "react-router-dom";
-import { isAdminLevel } from "@/lib/accessControl";
+import { canAccessPage, isAdminLevel } from "@/lib/accessControl";
 
 const ALL_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
@@ -38,17 +38,7 @@ const ALL_NAV_ITEMS = [
   { label: "Ads Brain", icon: Brain,             page: "AdsBrain" },
 ];
 
-const COLLABORATOR_NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
-  { label: "Projetos",  icon: FolderKanban,    page: "Projects" },
-  { label: "Jobs",      icon: Briefcase,       page: "Jobs" },
-  { label: "Agenda",    icon: Calendar,        page: "Agenda" },
-  { label: "Carteira",  icon: Users,           page: "ClientPortfolio" },
-  { label: "Ads Brain", icon: Brain,            page: "AdsBrain" },
-];
-
-const getNavItems = (accessLevel) =>
-  (["master", "gestor"].includes(String(accessLevel).toLowerCase())) ? ALL_NAV_ITEMS : COLLABORATOR_NAV_ITEMS;
+const getNavItems = (collaborator) => ALL_NAV_ITEMS.filter((item) => canAccessPage(collaborator, item.page));
 
 export default function Layout({ children, currentPageName }) {
   const [user, setUser] = useState(null);
@@ -64,8 +54,8 @@ export default function Layout({ children, currentPageName }) {
       setUser(getCurrentCollaborator());
     };
     loadUser();
-    const collabSession = sessionStorage.getItem("collaborator");
-    if (collabSession) setCollaboratorData(JSON.parse(collabSession));
+    const collaborator = getCurrentCollaborator();
+    if (collaborator) setCollaboratorData(collaborator);
   }, []);
 
   // Rastrear última página visitada pelo colaborador
@@ -152,7 +142,7 @@ export default function Layout({ children, currentPageName }) {
 
           {/* Desktop nav */}
           <nav aria-label="Navegação principal" className="hidden md:flex items-center gap-1 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {getNavItems(collaboratorData?.access_level || "collaborator").map((item) => (
+            {getNavItems(collaboratorData).map((item) => (
               <Link
                 key={item.page}
                 to={`/${item.page}`}
@@ -257,7 +247,7 @@ export default function Layout({ children, currentPageName }) {
         <FloatingTodoList />
 
         {/* Bottom Navigation — mobile only */}
-        <BottomNav currentPageName={currentPageName} />
+        <BottomNav currentPageName={currentPageName} collaborator={collaboratorData} />
 
 
       </div>

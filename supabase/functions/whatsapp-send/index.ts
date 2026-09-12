@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type Session = { sub: string; exp: number };
+type Session = { sub: string; exp: number; access_level?: string; permissions?: Record<string, unknown> };
 type WhatsappPayload = {
-  action?: "send" | "listGroups" | "listContacts" | "syncDirectory" | "listDirectory" | "linkClient" | "connect" | "status" | "listAutomations" | "saveAutomation" | "deleteAutomation" | "processScheduled";
+  action?: "send" | "listGroups" | "listContacts" | "syncDirectory" | "listDirectory" | "linkClient" | "connect" | "status" | "listAutomations" | "saveAutomation" | "deleteAutomation" | "configureDominusWebhook" | "processScheduled";
   phone?: string;
   message?: string;
   fileUrl?: string;
@@ -42,8 +42,21 @@ async function verifySession(token: string): Promise<Session | null> {
   if (!valid) return null;
   const session = JSON.parse(decode(body)) as Session;
   if (!session.sub || !session.exp || session.exp < Math.floor(Date.now() / 1000)) return null;
-  const { data } = await supabase.from("maestro_collaborators").select("id, is_active").eq("id", session.sub).maybeSingle();
-  return data?.is_active ? session : null;
+  const { data } = await supabase.from("maestro_collaborators").select("id, is_active, profile").eq("id", session.sub).maybeSingle();
+  if (!data?.is_active) return null;
+  const profile = (data.profile || {}) as Record<string, unknown>;
+  const rawLevel = String(profile.access_level || session.access_level || "collaborator").toLowerCase();
+  return { ...session, access_level: rawLevel === "admin" ? "master" : rawLevel, permissions: (profile.permissions || {}) as Record<string, unknown> };
+}
+
+function canManageDominus(session: Session) {
+  return ["master", "gestor"].includes(String(session.access_level || "").toLowerCase());
+}
+
+function validGroupIds(value: unknown) {
+  return Array.isArray(value)
+    ? [...new Set(value.map(String).filter((id) => id.endsWith("@g.us")))]
+    : [];
 }
 
 function cors(origin = "") {
@@ -205,8 +218,13 @@ function manausNow() {
 }
 
 function automationIsDue(automation: any, now: { date: string; time: string; weekday: number }) {
-  if (automation.active === false || automation.frequency === "once") return false;
+  if (automation.active === false) return false;
+  const scheduleDate = String(automation.schedule_date || "");
+  if (scheduleDate && now.date < scheduleDate) return false;
   if (String(automation.schedule_time || "09:00") > now.time) return false;
+  if (automation.frequency === "once") {
+    return Boolean(scheduleDate && scheduleDate === now.date && !automation.last_run_at);
+  }
   if (automation.last_run_local_date === now.date) return false;
   if (automation.frequency === "weekly" && Array.isArray(automation.weekdays) && !automation.weekdays.map(Number).includes(now.weekday)) return false;
   if (automation.frequency === "daily" && Array.isArray(automation.weekdays) && automation.weekdays.length && !automation.weekdays.map(Number).includes(now.weekday)) return false;
@@ -225,6 +243,7 @@ async function loadEntityPayloads(entity: string) {
 
 function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], clients: any[], miniTasks: any[] = []) {
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
   const selected = Array.isArray(automation.metrics) && automation.metrics.length ? automation.metrics : ["overdue_posts", "next_5_unplanned"];
   const today = manausNow().date;
   const next = new Date(today + "T12:00:00");
@@ -250,13 +269,14 @@ function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], c
     const label = labels[id] || ["📌", id];
     if (!rows.length) return "✅ *" + label[1] + "*\n\nNenhum item encontrado.";
     const lines = rows.map((row: any) => {
-      if (id === "my_tasks") return "• " + (row.title || "Tarefa sem título") + " · " + (row.due_date ? new Date(row.due_date + "T12:00:00").toLocaleDateString("pt-BR") : "sem prazo");
-      const job = id === "overdue_tasks" ? jobs.find((item) => item.id === row.job_id) : row;
+      const job = id === "overdue_tasks" || id === "my_tasks" ? jobsById.get(row.job_id) : row;
       const client = clientNames.get(job?.client_id) || job?.client_name || "Cliente não identificado";
-      const title = id === "overdue_tasks" ? (job?.title || "Job") + " — " + (row.title || "Tarefa") : (row.title || "Post sem título");
-      const date = row.deadline || row.post_date;
+      const title = job?.title || (id === "my_tasks" ? "Sem job vinculado" : "Job sem título");
+      const stage = id === "overdue_tasks" ? row.title || "Etapa não identificada" : row.stage_title || job?.stage_title || (id === "my_tasks" ? "Minha tarefa" : "Etapa não identificada");
+      const responsible = id === "overdue_tasks" ? row.responsible_name || job?.stage_responsible_name || job?.responsible_name || "Sem responsável" : row.responsible_name || row.collaborator_name || row.stage_responsible_name || job?.stage_responsible_name || job?.responsible_name || "Sem responsável";
+      const date = row.deadline || row.due_date || row.post_date || job?.post_date;
       const missing = id === "missing_content" ? " · faltando: " + [!String(row.briefing || "").trim() ? "briefing" : "", !String(row.caption || "").trim() ? "legenda" : ""].filter(Boolean).join(" e ") : "";
-      return "• " + client + " · " + title + " · " + (date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR") : "sem data") + missing;
+      return "• " + (date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR") : "sem data") + " · " + client + " · " + title + " · " + stage + " · " + responsible + missing;
     });
     return label[0] + " *" + label[1] + "*\nTotal: " + rows.length + " item(ns)\n\n" + lines.join("\n");
   });
@@ -377,13 +397,18 @@ async function processScheduled(config: EvolutionConfig | null) {
   const now = manausNow();
   const dailyNotifications = await sendDailyOverdueNotifications(config, now, collaborators, jobs, subtasks, clients, projects);
   const results = [];
-  for (const automation of automations.filter((item) => automationIsDue(item, now))) {
+  for (const automation of automations.filter((item) => item.kind !== "dominus" && automationIsDue(item, now))) {
     if (!config) continue;
     const message = automation.kind === "dashboard" ? scheduledDashboardText(automation, jobs, subtasks, clients, miniTasks) : String(automation.message || "").trim();
     if (!message || !automation.group_id) continue;
     const result = await evolutionRequest(config, "/message/sendText/" + encodeURIComponent(config.instance), { method: "POST", body: JSON.stringify({ number: automation.group_id, text: message }) });
     if (!result.response.ok) throw new Error(result.data?.message || "Erro ao executar automação do WhatsApp");
-    const updated = await saveAutomation({ ...automation, last_run_at: new Date().toISOString(), last_run_local_date: now.date });
+    const updated = await saveAutomation({
+      ...automation,
+      active: automation.frequency === "once" ? false : automation.active !== false,
+      last_run_at: new Date().toISOString(),
+      last_run_local_date: now.date,
+    });
     results.push({ id: automation.id, name: automation.name, sent: true, updated });
   }
   return { processed: results.length, results, dailyNotifications, checkedAt: new Date().toISOString() };
@@ -412,7 +437,8 @@ Deno.serve(async (request) => {
     if (!config) return json({ error: "Evolution API não configurada no servidor" }, 503, origin);
 
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-    if (!token || !(await verifySession(token))) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
+    const session = token ? await verifySession(token) : null;
+    if (!session) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
 
     if (payload.action === "listGroups") {
       const { response, data } = await evolutionRequest(config, `/group/fetchAllGroups/${encodeURIComponent(config.instance)}?getParticipants=false`);
@@ -475,10 +501,31 @@ Deno.serve(async (request) => {
       return json({ automations: await listAutomations() }, 200, origin);
     }
 
+    if (payload.action === "configureDominusWebhook") {
+      if (!canManageDominus(session)) return json({ error: "A configuração do Dominus exige perfil Gestor ou Master." }, 403, origin);
+      const webhookSecret = Deno.env.get("DOMINUS_WEBHOOK_SECRET") || "";
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      if (!webhookSecret || !supabaseUrl) return json({ error: "O segredo do webhook do Dominus ainda não foi configurado." }, 503, origin);
+      const webhookUrl = `${supabaseUrl}/functions/v1/dominus-webhook?token=${encodeURIComponent(webhookSecret)}`;
+      const { response, data } = await evolutionRequest(config, `/webhook/set/${encodeURIComponent(config.instance)}`, {
+        method: "POST",
+        body: JSON.stringify({ enabled: true, url: webhookUrl, webhook_by_events: false, webhook_base64: false, events: ["MESSAGES_UPSERT"] }),
+      });
+      if (!response.ok) return json({ error: data?.message || "Não foi possível configurar o webhook do Dominus." }, response.status, origin);
+      return json({ configured: true, event: "MESSAGES_UPSERT" }, 200, origin);
+    }
+
     if (payload.action === "saveAutomation") {
       if (!payload.automation || typeof payload.automation !== "object") return json({ error: "automation é obrigatório" }, 400, origin);
       const automation = payload.automation as Record<string, unknown>;
-      if (!String(automation.group_id || "")) return json({ error: "Selecione um grupo WhatsApp" }, 400, origin);
+      if (automation.kind === "dominus") {
+        if (!canManageDominus(session)) return json({ error: "A configuração do Dominus exige perfil Gestor ou Master." }, 403, origin);
+        const groupIds = validGroupIds(automation.group_ids || (automation.group_id ? [automation.group_id] : []));
+        if (!groupIds.length) return json({ error: "Selecione pelo menos um grupo WhatsApp para o Dominus." }, 400, origin);
+        automation.group_ids = groupIds;
+        automation.group_id = groupIds[0];
+        automation.agent_name = "Dominus";
+      } else if (!String(automation.group_id || "")) return json({ error: "Selecione um grupo WhatsApp" }, 400, origin);
       if (automation.kind === "text" && !String(automation.message || "").trim()) return json({ error: "Informe a mensagem" }, 400, origin);
       return json({ automation: await saveAutomation(automation) }, 200, origin);
     }
@@ -486,6 +533,9 @@ Deno.serve(async (request) => {
     if (payload.action === "deleteAutomation") {
       const id = String(payload.automationId || "");
       if (!id) return json({ error: "automationId é obrigatório" }, 400, origin);
+      const automations = await listAutomations();
+      const target = automations.find((item) => item.id === id);
+      if (target?.kind === "dominus" && !canManageDominus(session)) return json({ error: "A configuração do Dominus exige perfil Gestor ou Master." }, 403, origin);
       return json(await deleteAutomation(id), 200, origin);
     }
 

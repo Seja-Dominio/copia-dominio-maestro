@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { loginCollaborator } from "@/api/maestroClient";
-import { supabase } from "@/api/supabaseClient";
+import { storeCollaboratorSession, supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, MessageCircle, User } from "lucide-react";
@@ -72,10 +72,7 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
       const collaborator = data.collaborator;
 
       // Salvar dados do colaborador na sessão
-      sessionStorage.setItem("collaborator", JSON.stringify(collaborator));
-      if (data.session_token) {
-        sessionStorage.setItem("collaborator_session_token", data.session_token);
-      }
+      storeCollaboratorSession(collaborator, data.session_token);
 
       onLoginSuccess?.(collaborator);
     } catch (err) {

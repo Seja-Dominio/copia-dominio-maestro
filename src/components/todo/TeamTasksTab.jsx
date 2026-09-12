@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { maestro } from "@/api/maestroClient";
-import { Search, Loader2, ChevronDown, ChevronRight, Users } from "lucide-react";
+import { Search, Loader2, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import TodoItem from "./TodoItem";
 import { isAdminLevel } from "@/lib/accessControl";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default function TeamTasksTab() {
   const [allTasks, setAllTasks] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [expandedCollab, setExpandedCollab] = useState(null);
 
@@ -23,13 +25,23 @@ export default function TeamTasksTab() {
 
   async function loadData() {
     setLoading(true);
-    const [tasks, collabs] = await Promise.all([
-      maestro.entities.MiniTask.list("-created_date", 1000),
-      maestro.entities.Collaborator.filter({ is_active: true }, "name", 200),
-    ]);
-    setAllTasks(tasks);
-    setCollaborators(collabs);
-    setLoading(false);
+    setError("");
+    try {
+      const [tasks, collabs] = await withTimeout(
+        Promise.all([
+          maestro.entities.MiniTask.list("-created_date", 1000),
+          maestro.entities.Collaborator.filter({ is_active: true }, "name", 200),
+        ]),
+        15000,
+        "Não foi possível carregar as tarefas da equipe. Tente novamente."
+      );
+      setAllTasks(tasks);
+      setCollaborators(collabs);
+    } catch (err) {
+      setError(err?.message || "Não foi possível carregar as tarefas da equipe.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function toggleComplete(task) {
@@ -96,6 +108,18 @@ export default function TeamTasksTab() {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 text-center">
+        <p role="alert" className="text-xs text-destructive">{error}</p>
+        <button type="button" onClick={loadData} className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted no-touch-min">
+          <RefreshCw className="w-3.5 h-3.5" />
+          Tentar novamente
+        </button>
       </div>
     );
   }
