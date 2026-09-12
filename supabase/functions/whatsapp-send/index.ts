@@ -509,7 +509,7 @@ Deno.serve(async (request) => {
       const webhookUrl = `${supabaseUrl}/functions/v1/dominus-webhook?token=${encodeURIComponent(webhookSecret)}`;
       const { response, data } = await evolutionRequest(config, `/webhook/set/${encodeURIComponent(config.instance)}`, {
         method: "POST",
-        body: JSON.stringify({ enabled: true, url: webhookUrl, webhook_by_events: false, webhook_base64: false, events: ["MESSAGES_UPSERT"] }),
+        body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, webhook_by_events: false, webhook_base64: false, events: ["MESSAGES_UPSERT"], headers: { "x-maestro-webhook-secret": webhookSecret } } }),
       });
       if (!response.ok) return json({ error: data?.message || "Não foi possível configurar o webhook do Dominus." }, response.status, origin);
       return json({ configured: true, event: "MESSAGES_UPSERT" }, 200, origin);
