@@ -1,0 +1,62 @@
+{
+  "name": "SavingsBox",
+  "type": "object",
+  "properties": {
+    "bank_account_id": {
+      "type": "string",
+      "description": "ID da conta banc\u00e1ria vinculada"
+    },
+    "bank_account_name": {
+      "type": "string",
+      "description": "Nome da conta banc\u00e1ria"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome da caixinha (ex: Reserva emerg\u00eancia, 13\u00ba, F\u00e9rias)"
+    },
+    "balance": {
+      "type": "number",
+      "default": 0,
+      "description": "Saldo atual da caixinha"
+    },
+    "cdi_rate": {
+      "type": "number",
+      "default": 100,
+      "description": "Percentual do CDI aplicado (ex: 100 = 100% CDI)"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor da caixinha (hex)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "bank_account_id",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

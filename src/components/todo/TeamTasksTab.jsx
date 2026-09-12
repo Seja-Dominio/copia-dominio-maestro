@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { maestro } from "@/api/maestroClient";
 import { Search, Loader2, ChevronDown, ChevronRight, Users } from "lucide-react";
 import TodoItem from "./TodoItem";
+import { isAdminLevel } from "@/lib/accessControl";
 
 export default function TeamTasksTab() {
   const [allTasks, setAllTasks] = useState([]);
@@ -14,7 +15,7 @@ export default function TeamTasksTab() {
     try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; }
   }, []);
   const myCollabId = myCollab?.id;
-  const isAdmin = myCollab?.access_level === "admin";
+  const isAdmin = isAdminLevel(myCollab);
 
   useEffect(() => {
     loadData();
@@ -78,9 +79,9 @@ export default function TeamTasksTab() {
     });
 
     // Sort by collaborator name and enrich with collab data
-    // Non-admin users cannot see admin tasks
+    // Collaborators cannot see management-only tasks.
     return collaborators
-      .filter(c => c.id !== myCollabId && map[c.id] && (isAdmin || c.access_level !== "admin"))
+      .filter(c => c.id !== myCollabId && map[c.id] && (isAdmin || !["master", "gestor"].includes(c.access_level)))
       .map(c => ({
         id: c.id,
         name: c.name,
@@ -136,8 +137,8 @@ export default function TeamTasksTab() {
                       {g.name?.[0]?.toUpperCase()}
                     </div>
                     <span className="text-xs font-semibold text-foreground flex-1 text-left truncate">{g.name}</span>
-                    {g.access_level === "admin" && (
-                      <span className="text-[8px] bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 px-1 py-0.5 rounded font-bold">ADM</span>
+                    {["master", "gestor"].includes(g.access_level) && (
+                      <span className="text-[8px] bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 px-1 py-0.5 rounded font-bold">{g.access_level === "master" ? "MASTER" : "GESTOR"}</span>
                     )}
                     <span className="text-[10px] bg-muted text-muted-foreground font-bold px-1.5 py-0.5 rounded-full">
                       {g.tasks.length}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { maestro } from "@/api/maestroClient";
 import { Send, Loader2, ChevronDown, X } from "lucide-react";
+import { isAdminLevel } from "@/lib/accessControl";
 
 export default function SendTaskForm({ currentCollab, onTaskSent }) {
   const [collaborators, setCollaborators] = useState([]);
@@ -95,8 +96,8 @@ export default function SendTaskForm({ currentCollab, onTaskSent }) {
                       <span className="text-[11px] font-medium text-foreground truncate block">{c.name}</span>
                       {c.role && <span className="text-[9px] text-muted-foreground">{c.role}</span>}
                     </div>
-                    {c.access_level === "admin" && (
-                      <span className="text-[8px] bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 px-1 py-0.5 rounded font-bold">ADM</span>
+                    {isAdminLevel(c) && (
+                      <span className="text-[8px] bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 px-1 py-0.5 rounded font-bold">{c.access_level === "master" ? "MASTER" : "GESTOR"}</span>
                     )}
                   </button>
                 ))

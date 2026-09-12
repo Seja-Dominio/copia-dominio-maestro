@@ -22,7 +22,7 @@ export default function NotificationBell({ collaboratorId }) {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
   const panelRef = useRef(null);
   const PAGE_SIZE = 5;
 
@@ -42,7 +42,6 @@ export default function NotificationBell({ collaboratorId }) {
     const unsub = maestro.entities.Notification.subscribe(event => {
       if (event.type === "create" && event.data?.user_id === collaboratorId) {
         setNotifications(prev => [event.data, ...prev]);
-        setTotal(t => t + 1);
       } else if (event.type === "update") {
         setNotifications(prev => prev.map(n => n.id === event.id ? event.data : n));
       }
@@ -61,14 +60,18 @@ export default function NotificationBell({ collaboratorId }) {
 
   async function loadNotifications(p) {
     if (!collaboratorId) return;
-    const all = await maestro.entities.Notification.filter(
-      { user_id: collaboratorId },
-      "-created_date",
-      30
-    );
-    setTotal(all.length);
-    setNotifications(all);
-    setPage(p);
+    setLoading(true);
+    try {
+      const all = await maestro.entities.Notification.filter(
+        { user_id: collaboratorId },
+        "-created_date",
+        30
+      );
+      setNotifications(all);
+      setPage(p);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const unread = notifications.filter(n => !n.is_read).length;
@@ -99,6 +102,10 @@ export default function NotificationBell({ collaboratorId }) {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setOpen(o => !o)}
+        aria-label={unread > 0 ? `Notificações, ${unread} não lidas` : "Notificações"}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="Notificações"
         className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground relative"
       >
         <Bell className="w-4 h-4" />
@@ -134,7 +141,9 @@ export default function NotificationBell({ collaboratorId }) {
 
           {/* List */}
           <div className="max-h-[360px] overflow-y-auto divide-y divide-border">
-            {visible.length === 0 ? (
+            {loading ? (
+              <div className="py-10 text-center text-sm text-muted-foreground" role="status">Carregando notificações...</div>
+            ) : visible.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">
                 <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
                 Sem notificações

@@ -1,0 +1,80 @@
+{
+  "name": "AgendaEvent",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "time": {
+      "type": "string",
+      "description": "HH:MM - Hor\u00e1rio de in\u00edcio"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "HH:MM - Hor\u00e1rio de t\u00e9rmino"
+    },
+    "activity_type": {
+      "type": "string",
+      "enum": [
+        "captacao",
+        "reuniao_relatorio",
+        "feedback_semanal",
+        "reuniao_cronograma",
+        "reuniao_comercial",
+        "apresentacao_proposta",
+        "alinhamento_cliente",
+        "visita_cliente",
+        "ligacao",
+        "followup",
+        "reuniao_interna",
+        "captacao_imagens",
+        "reuniao_planejamento",
+        "edicao_video",
+        "producao_conteudo",
+        "entrega_material",
+        "outro"
+      ],
+      "default": "captacao"
+    },
+    "collaborator_id": {
+      "type": "string"
+    },
+    "collaborator_name": {
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "agendado",
+        "realizado",
+        "noshow",
+        "cancelado"
+      ],
+      "default": "agendado"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "date",
+    "activity_type"
+  ],
+  "rls": {
+    "create": null,
+    "read": null,
+    "update": null,
+    "delete": null
+  }
+}

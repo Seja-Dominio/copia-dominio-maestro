@@ -223,7 +223,7 @@ async function loadEntityPayloads(entity: string) {
   return (data || []).map((row: any) => ({ id: row.record_id, ...(row.payload || {}) }));
 }
 
-function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], clients: any[]) {
+function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], clients: any[], miniTasks: any[] = []) {
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));
   const selected = Array.isArray(automation.metrics) && automation.metrics.length ? automation.metrics : ["overdue_posts", "next_5_unplanned"];
   const today = manausNow().date;
@@ -234,6 +234,9 @@ function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], c
   const rowsFor = (id: string) => {
     if (id === "overdue_posts") return jobs.filter((job) => job.post_date && job.post_date <= today && !excluded.includes(job.status));
     if (id === "next_5_unplanned") return jobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= nextKey && !excluded.includes(job.status));
+    if (id === "today_posts") return jobs.filter((job) => job.post_date === today && job.status !== "cancelled");
+    if (id === "my_tasks") return miniTasks.filter((task) => (!automation.collaborator_id || task.collaborator_id === automation.collaborator_id) && !task.is_completed && task.status !== "completed");
+    if (id === "missing_content") return jobs.filter((job) => !excluded.includes(job.status) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim()));
     const byId = new Map(jobs.map((job) => [job.id, job]));
     return subtasks.filter((task) => {
       const job = byId.get(task.job_id);
@@ -241,17 +244,19 @@ function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], c
       return deadline && deadline <= today && !task.is_completed && task.status !== "completed" && job && !excluded.includes(job.status);
     });
   };
-  const labels: Record<string, [string, string]> = { overdue_posts: ["⚠️", "Posts atrasados"], next_5_unplanned: ["📅", "Próximos 5 dias sem agendamento"], overdue_tasks: ["🧩", "Tarefas atrasadas"] };
+  const labels: Record<string, [string, string]> = { overdue_posts: ["⚠️", "Posts atrasados"], next_5_unplanned: ["📅", "Próximos 5 dias sem agendamento"], overdue_tasks: ["🧩", "Tarefas atrasadas"], today_posts: ["🗓️", "Postagens de hoje"], my_tasks: ["✅", "Minhas tarefas"], missing_content: ["📝", "Jobs com briefing e/ou legenda vazio"] };
   const sections = selected.map((id: string) => {
     const rows = rowsFor(id);
     const label = labels[id] || ["📌", id];
     if (!rows.length) return "✅ *" + label[1] + "*\n\nNenhum item encontrado.";
     const lines = rows.map((row: any) => {
+      if (id === "my_tasks") return "• " + (row.title || "Tarefa sem título") + " · " + (row.due_date ? new Date(row.due_date + "T12:00:00").toLocaleDateString("pt-BR") : "sem prazo");
       const job = id === "overdue_tasks" ? jobs.find((item) => item.id === row.job_id) : row;
       const client = clientNames.get(job?.client_id) || job?.client_name || "Cliente não identificado";
       const title = id === "overdue_tasks" ? (job?.title || "Job") + " — " + (row.title || "Tarefa") : (row.title || "Post sem título");
       const date = row.deadline || row.post_date;
-      return "• " + client + " · " + title + " · " + (date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR") : "sem data");
+      const missing = id === "missing_content" ? " · faltando: " + [!String(row.briefing || "").trim() ? "briefing" : "", !String(row.caption || "").trim() ? "legenda" : ""].filter(Boolean).join(" e ") : "";
+      return "• " + client + " · " + title + " · " + (date ? new Date(date + "T12:00:00").toLocaleDateString("pt-BR") : "sem data") + missing;
     });
     return label[0] + " *" + label[1] + "*\nTotal: " + rows.length + " item(ns)\n\n" + lines.join("\n");
   });
@@ -360,20 +365,21 @@ async function sendDailyOverdueNotifications(config: EvolutionConfig | null, now
 }
 
 async function processScheduled(config: EvolutionConfig | null) {
-  const [automations, jobs, subtasks, clients, collaborators, projects] = await Promise.all([
+  const [automations, jobs, subtasks, clients, collaborators, projects, miniTasks] = await Promise.all([
     loadEntityPayloads("WhatsappAutomation"),
     loadEntityPayloads("Job"),
     loadEntityPayloads("Subtask"),
     loadEntityPayloads("Client"),
     loadEntityPayloads("Collaborator"),
     loadEntityPayloads("Project"),
+    loadEntityPayloads("MiniTask"),
   ]);
   const now = manausNow();
   const dailyNotifications = await sendDailyOverdueNotifications(config, now, collaborators, jobs, subtasks, clients, projects);
   const results = [];
   for (const automation of automations.filter((item) => automationIsDue(item, now))) {
     if (!config) continue;
-    const message = automation.kind === "dashboard" ? scheduledDashboardText(automation, jobs, subtasks, clients) : String(automation.message || "").trim();
+    const message = automation.kind === "dashboard" ? scheduledDashboardText(automation, jobs, subtasks, clients, miniTasks) : String(automation.message || "").trim();
     if (!message || !automation.group_id) continue;
     const result = await evolutionRequest(config, "/message/sendText/" + encodeURIComponent(config.instance), { method: "POST", body: JSON.stringify({ number: automation.group_id, text: message }) });
     if (!result.response.ok) throw new Error(result.data?.message || "Erro ao executar automação do WhatsApp");

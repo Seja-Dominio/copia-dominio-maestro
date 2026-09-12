@@ -1,13 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { maestro } from "@/api/maestroClient";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Search, Filter, Crown, Users, TrendingDown, TrendingUp, ChevronDown } from "lucide-react";
+import { Search, Filter, Crown, Users, TrendingDown, TrendingUp, ChevronDown, X } from "lucide-react";
 import { MobileSelect } from "@/components/ui/bottom-sheet";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
 import ClientNpsCard from "@/components/clients/ClientNpsCard";
 import ClientEditDrawer from "@/components/clients/ClientEditDrawer";
-import { getNpsColor } from "@/components/clients/NpsScoreBadge";
 import { checkAndApplyLatePostPenalties } from "@/components/clients/npsJobWatcher";
 
 const TIERS = [
@@ -36,19 +33,27 @@ export default function ClientPortfolio() {
   const [responsibleFilter, setResponsibleFilter] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
   const [autoOpenClientId, setAutoOpenClientId] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(async () => {
-    const [c, h, e, fe] = await Promise.all([
-      maestro.entities.Client.list("name", 200),
-      maestro.entities.NpsHistory.list("-created_date", 500),
-      maestro.entities.NpsEntry.list("-created_date", 200),
-      maestro.entities.FinancialEntry.filter({ type: "revenue", origin: "fee_contract" }, "-due_date", 500),
-    ]);
-    setClients(c);
-    setNpsHistory(h);
-    setNpsEntries(e);
-    setFeeEntries(fe);
-    setLoading(false);
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [c, h, e, fe] = await Promise.all([
+        maestro.entities.Client.list("name", 200),
+        maestro.entities.NpsHistory.list("-created_date", 500),
+        maestro.entities.NpsEntry.list("-created_date", 200),
+        maestro.entities.FinancialEntry.filter({ type: "revenue", origin: "fee_contract" }, "-due_date", 500),
+      ]);
+      setClients(c);
+      setNpsHistory(h);
+      setNpsEntries(e);
+      setFeeEntries(fe);
+    } catch (error) {
+      setLoadError(error?.message || "Não foi possível carregar a carteira.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const { containerRef, handlers, PullIndicator } = usePullToRefresh(load);
@@ -111,6 +116,7 @@ export default function ClientPortfolio() {
   return (
     <div ref={containerRef} className="p-6 max-w-[1400px] mx-auto" style={{ WebkitOverflowScrolling: "touch" }} {...handlers}>
       <PullIndicator />
+      {loadError && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"><span>{loadError}</span><button type="button" onClick={load} className="rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-semibold hover:bg-destructive/10">Tentar novamente</button></div>}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -150,11 +156,13 @@ export default function ClientPortfolio() {
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <input
-              className="w-full h-9 pl-9 pr-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label="Buscar cliente"
+              className="w-full h-9 pl-9 pr-9 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder="Buscar cliente..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            {search && <button type="button" aria-label="Limpar busca de clientes" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="h-3.5 w-3.5" /></button>}
           </div>
           <button
             onClick={() => setShowFilters(v => !v)}

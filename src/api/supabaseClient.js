@@ -13,6 +13,7 @@ const environmentUrls = {
 };
 const expectedUrl = environmentUrls[appEnvironment];
 const unsafeTarget = expectedUrl && url !== expectedUrl;
+export const isDevelopmentEnvironment = appEnvironment !== 'production' && url === environmentUrls.development;
 
 function assertSafeTarget() {
   if (unsafeTarget) {
@@ -21,6 +22,25 @@ function assertSafeTarget() {
 }
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
+
+function clearStoredCollaboratorSession() {
+  sessionStorage.removeItem('collaborator');
+  sessionStorage.removeItem('collaborator_session_token');
+  // A token from another Supabase environment must not keep the UI in an
+  // apparently authenticated state after switching between Dev and Prod.
+  supabase?.auth.signOut().catch(() => {});
+}
+
+function throwSupabaseError(data, response, fallback) {
+  if (response.status === 401) {
+    clearStoredCollaboratorSession();
+    if (window.location.pathname !== '/') window.location.replace('/');
+  }
+  const error = new Error(data.error || fallback);
+  error.status = response.status;
+  error.details = data;
+  throw error;
+}
 
 export async function invokeSupabaseFunction(name, body = {}) {
   assertSafeTarget();
@@ -38,11 +58,7 @@ export async function invokeSupabaseFunction(name, body = {}) {
     body: JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) {
-    const error = new Error(data.error || `Erro ao executar ${name}.`);
-    error.details = data;
-    throw error;
-  }
+  if (!response.ok) throwSupabaseError(data, response, `Erro ao executar ${name}.`);
   return data;
 }
 
@@ -61,6 +77,10 @@ export function invokeAdminTimesheetFunction(action, payload = {}) {
 
 export function invokeSystemReportFunction(action) {
   return invokeSupabaseFunction('system-reports', { action });
+}
+
+export function invokeSnapshotSync({ force = true, entities } = {}) {
+  return invokeSupabaseFunction('sync-prod-snapshot', { action: 'sync', force, ...(entities ? { entities } : {}) }).then((data) => data.data);
 }
 
 export function invokeWhatsapp(payload) {
@@ -109,7 +129,7 @@ export async function uploadFileToSupabase(file) {
     body: form,
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Erro ao enviar arquivo.');
+  if (!response.ok) throwSupabaseError(data, response, 'Erro ao enviar arquivo.');
   return data;
 }
 
@@ -136,7 +156,7 @@ export async function loginCollaboratorWithSupabase({ login, password }) {
   return { data };
 }
 
-async function callMaestroData(body) {
+export async function callMaestroData(body) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
   const sessionToken = sessionStorage.getItem('collaborator_session_token');
@@ -152,7 +172,7 @@ async function callMaestroData(body) {
     body: JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Erro ao acessar os dados do Maestro.');
+  if (!response.ok) throwSupabaseError(data, response, 'Erro ao acessar os dados do Maestro.');
   return data.data;
 }
 

@@ -80,6 +80,19 @@ Deno.serve(async (request) => {
       if (error) throw error;
       return json({ accounts: data || [] });
     }
+    if (body.action === "remove") {
+      const accountId = String(body.account_id || "");
+      if (!accountId) return json({ error: "Selecione uma conta para remover." }, 400);
+      const { data: account, error: accountError } = await supabase.from("maestro_ads_accounts")
+        .select("id,external_account_name,network,external_account_id")
+        .eq("id", accountId)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!account) return json({ error: "Conta não encontrada no Ads Brain." }, 404);
+      const { error } = await supabase.from("maestro_ads_accounts").delete().eq("id", accountId);
+      if (error) throw error;
+      return json({ removed: true, account });
+    }
     if (body.action === "save") {
       const clientName = String(body.client_name || "").trim();
       const account = body.account || {};
@@ -110,9 +123,8 @@ Deno.serve(async (request) => {
       const { data: existingAccount, error: existingAccountError } = await supabase.from("maestro_ads_accounts")
         .select("id").eq("network", network).eq("external_account_id", externalAccountId).maybeSingle();
       if (existingAccountError) throw existingAccountError;
-      const { data, error } = existingAccount
-        ? await supabase.from("maestro_ads_accounts").update(accountPayload).eq("id", existingAccount.id).select().single()
-        : await supabase.from("maestro_ads_accounts").insert({ collaborator_id: collaborator.id, ...accountPayload }).select().single();
+      if (existingAccount) return json({ error: "Esta conta de anúncios já está ativa no Ads Brain. Remova o vínculo existente antes de cadastrá-la novamente.", code: "ACCOUNT_ALREADY_ACTIVE", account_id: existingAccount.id }, 409);
+      const { data, error } = await supabase.from("maestro_ads_accounts").insert({ collaborator_id: collaborator.id, ...accountPayload }).select().single();
       if (error) throw error;
       return json({ account: data });
     }

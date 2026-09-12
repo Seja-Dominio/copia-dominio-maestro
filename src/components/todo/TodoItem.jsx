@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import ConfirmDeleteTaskSheet from "./ConfirmDeleteTaskSheet";
 import TimeScrollPicker from "./TimeScrollPicker";
 import MiniTaskChecklist from "./MiniTaskChecklist";
+import { isAdminLevel } from "@/lib/accessControl";
 
 export default function TodoItem({ task, onToggle, onSetDate, onDelete, onSetPriority, isSentByMe, onChecklistChange }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -39,7 +40,7 @@ export default function TodoItem({ task, onToggle, onSetDate, onDelete, onSetPri
     : "";
 
   const isOverdue = task.due_date && !task.is_completed && new Date(task.due_date + "T23:59:59") < new Date();
-  const isFromAdmin = task.sender_id && task.sender_access_level === "admin" && !task.is_completed;
+  const isFromAdmin = task.sender_id && isAdminLevel({ access_level: task.sender_access_level }) && !task.is_completed;
   const isFromOther = task.sender_id && task.sender_id !== task.collaborator_id;
 
   // Auto-priority: tasks with due_date set to today (or past) become priority 1 (red) visually

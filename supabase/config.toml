@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.meta-ads-oauth]
 verify_jwt = false
+
+[functions.sync-prod-snapshot]
+verify_jwt = false

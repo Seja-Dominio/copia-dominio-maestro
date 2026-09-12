@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Settings, Eye, EyeOff, X, GripVertical, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -8,10 +8,9 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 export const WIDGET_OPTIONS = [
   { id: "my_alerts", label: "Minha fila de trabalho", adminOnly: false },
   { id: "delivery_metrics", label: "Gestão de Entregas", adminOnly: false },
-  { id: "kpi_cards", label: "KPIs (Clientes, Atrasados, NPS)", adminOnly: false },
-  { id: "alert_banners_team", label: "Alertas da Equipe", adminOnly: true },
+  { id: "kpi_cards", label: "NPS dos clientes", adminOnly: false },
   { id: "financial_section", label: "Financeiro", adminOnly: true },
-  { id: "nps_panel", label: "NPS Mais Baixos", adminOnly: false },
+  { id: "nps_panel", label: "NPS dos clientes ativos", adminOnly: false },
   { id: "contract_expiry", label: "Vencimentos de Contrato", adminOnly: false },
   { id: "birthdays", label: "Aniversários", adminOnly: false },
   { id: "top_clients", label: "Top Clientes — Horas", adminOnly: false },
@@ -54,12 +53,23 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
   const [widgets, setWidgets] = useState(currentWidgets);
   const [order, setOrder] = useState(currentOrder);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
 
   const handleOpen = () => {
     const synced = {};
     WIDGET_OPTIONS.forEach(w => { synced[w.id] = currentWidgets[w.id] !== false; });
     setWidgets(synced);
     setOrder([...currentOrder]);
+    setError("");
     setOpen(true);
   };
 
@@ -84,6 +94,7 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
 
   const handleSave = async () => {
     setSaving(true);
+    setError("");
     try {
       await maestro.entities.Collaborator.update(collaboratorId, {
         dashboard_widgets: widgets,
@@ -98,6 +109,8 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
       }
       onSave(widgets, order);
       setOpen(false);
+    } catch (saveError) {
+      setError(saveError?.message || "Não foi possível salvar a configuração.");
     } finally {
       setSaving(false);
     }
@@ -110,7 +123,7 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
 
   if (!open) {
     return (
-      <Button variant="outline" size="sm" onClick={handleOpen} className="gap-2 h-8 text-xs">
+      <Button variant="outline" size="sm" onClick={handleOpen} aria-haspopup="dialog" aria-expanded={open} className="gap-2 h-8 text-xs">
         <Settings className="w-3.5 h-3.5" />
         Personalizar
       </Button>
@@ -119,23 +132,24 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setOpen(false)}>
-      <div className="absolute right-6 top-[76px] bg-card border border-border rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="dashboard-widget-config-title" className="absolute inset-x-4 top-4 flex max-h-[calc(100vh-2rem)] w-auto flex-col rounded-2xl border border-border bg-card shadow-xl sm:inset-x-auto sm:right-6 sm:top-[76px] sm:w-full sm:max-w-md sm:max-h-[80vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-primary" />
-            <h3 className="text-sm font-bold text-foreground">Personalizar Dashboard</h3>
+            <h3 id="dashboard-widget-config-title" className="text-sm font-bold text-foreground">Personalizar Dashboard</h3>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleReset} className="text-muted-foreground hover:text-foreground p-1 no-touch-min" style={{ minHeight: "unset", minWidth: "unset" }} title="Restaurar padrão">
+            <button type="button" onClick={handleReset} aria-label="Restaurar configuração padrão" className="rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary no-touch-min" style={{ minHeight: "unset", minWidth: "unset" }} title="Restaurar padrão">
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setOpen(false)} aria-label="Fechar personalização do dashboard" className="rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-auto p-5">
+          {error && <p role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">{error}</p>}
           <p className="text-xs text-muted-foreground mb-3">
             Arraste para reordenar e ative/desative widgets. ({visibleCount}/{WIDGET_OPTIONS.length} visíveis)
           </p>
@@ -169,6 +183,7 @@ export default function DashboardWidgetConfig({ collaboratorId, currentWidgets, 
                           </div>
                           <Switch
                             checked={widgets[w.id] !== false}
+                            aria-label={`${widgets[w.id] !== false ? "Ocultar" : "Mostrar"} ${w.label}`}
                             onCheckedChange={() => toggle(w.id)}
                           />
                         </div>

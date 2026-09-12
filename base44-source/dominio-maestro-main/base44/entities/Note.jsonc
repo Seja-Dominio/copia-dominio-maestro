@@ -1,0 +1,29 @@
+{
+  "name": "Note",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da anota\u00e7\u00e3o"
+    },
+    "content": {
+      "type": "string",
+      "description": "Conte\u00fado da anota\u00e7\u00e3o (HTML do editor)"
+    },
+    "collaborator_id": {
+      "type": "string",
+      "description": "ID do colaborador dono"
+    },
+    "collaborator_name": {
+      "type": "string"
+    },
+    "is_pinned": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "title",
+    "collaborator_id"
+  ]
+}

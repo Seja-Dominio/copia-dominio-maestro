@@ -6,7 +6,7 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { createSupabaseEntities, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase } from '@/api/supabaseClient';
+import { callMaestroData, createSupabaseEntities, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase } from '@/api/supabaseClient';
 
 const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
 
@@ -24,16 +24,17 @@ export async function getDashboardData({ collaborator_id } = {}) {
     return maestro.functions.invoke('getDashboardData', { collaborator_id });
   }
 
-  const [projects, allJobs, entries, allCollaborators, timesheets, allClients, allAgendaEvents, allSubtasks] = await Promise.all([
-    maestro.entities.Project.list('-created_date', 50),
-    maestro.entities.Job.list('-post_date', 5000),
-    maestro.entities.FinancialEntry.list('-created_date', 150),
-    maestro.entities.Collaborator.list('name', 50),
-    maestro.entities.Timesheet.list('-created_date', 1000),
-    maestro.entities.Client.list('-nps_score', 50),
-    maestro.entities.AgendaEvent.list('-date', 100),
-    maestro.entities.Subtask.list('-created_date', 5000),
-  ]);
+  const dashboard = await callMaestroData({ operation: 'dashboard', collaborator_id });
+  const {
+    projects = [],
+    jobs: allJobs = [],
+    entries = [],
+    collaborators: allCollaborators = [],
+    timesheets = [],
+    clients: allClients = [],
+    agendaEvents: allAgendaEvents = [],
+    subtasks: allSubtasks = [],
+  } = dashboard || {};
 
   const activeCollaborators = allCollaborators.filter((collaborator) => collaborator.is_active !== false);
   const activeClients = allClients.filter((client) => client.status === 'active');

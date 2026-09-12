@@ -1,27 +1,59 @@
-import { useState, useRef, useMemo, memo } from "react";
+import { useState, useRef, memo } from "react";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { AlertCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { maestro } from "@/api/maestroClient";
 import { autoCompleteSubtasks } from "./subtaskAutoComplete";
-import { isJobOverdue } from "@/lib/jobWorkflow";
+import { isJobOverdue, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
 
 // Statuses are dynamic — loaded from AppConfigContext
 
-const KanbanCard = memo(function KanbanCard({ job, subtasks, onClick, today, isDragging, statusConfig }) {
-  const sc = statusConfig[job.status] || statusConfig.pending_briefing || {};
-  const isLate = isJobOverdue(job, today, "delivery_date");
+function getJobCardTone(job, subtasks, today) {
+  const workflowStatus = normalizeWorkflowStatus(job.status);
+  if (["completed", "scheduled"].includes(workflowStatus)) {
+    return {
+      key: "done",
+      label: workflowStatus === "completed" ? "Concluído" : "Agendado",
+      className: "border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/85 to-emerald-100/70 hover:from-emerald-100 hover:to-emerald-100 dark:border-emerald-800/70 dark:from-emerald-950/40 dark:via-emerald-950/30 dark:to-emerald-900/50 dark:hover:from-emerald-900/60 dark:hover:to-emerald-900/70",
+    };
+  }
+  if (isJobOverdue(job, today, "post_date")) {
+    return {
+      key: "post-overdue",
+      label: "Postagem atrasada",
+      className: "border-red-200 bg-gradient-to-br from-red-50 via-red-50/85 to-red-100/70 hover:from-red-100 hover:to-red-100 dark:border-red-800/70 dark:from-red-950/40 dark:via-red-950/30 dark:to-red-900/50 dark:hover:from-red-900/60 dark:hover:to-red-900/70",
+    };
+  }
+  if (subtasks.some(subtask => isSubtaskOverdue(subtask, today))) {
+    return {
+      key: "task-overdue",
+      label: "Tarefa atrasada",
+      className: "border-amber-200 bg-gradient-to-br from-amber-50 via-amber-50/85 to-amber-100/70 hover:from-amber-100 hover:to-amber-100 dark:border-amber-800/70 dark:from-amber-950/40 dark:via-amber-950/30 dark:to-amber-900/50 dark:hover:from-amber-900/60 dark:hover:to-amber-900/70",
+    };
+  }
+  return {
+    key: "on-time",
+    label: "No prazo",
+    className: "border-border bg-card hover:bg-muted/40 dark:bg-card dark:hover:bg-muted/50",
+  };
+}
+
+const KanbanCard = memo(function KanbanCard({ job, subtasks, onClick, today, isDragging }) {
+  const tone = getJobCardTone(job, subtasks, today);
+  const isLate = tone.key === "post-overdue";
   const completedSubs = subtasks.filter(s => s.is_completed).length;
 
   return (
     <div
-      className={`bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group ${isDragging ? "opacity-50 rotate-1" : ""}`}
+      data-status-tone={tone.key}
+      aria-label={`${job.title || "Job sem título"} — ${tone.label}`}
+      className={`border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group ${tone.className} ${isDragging ? "opacity-50 rotate-1" : ""}`}
       onClick={() => onClick(job)}
       draggable
     >
       <div className="flex items-start justify-between mb-2">
         <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{job.number || "—"}</span>
-        {isLate && <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />}
+        {isLate && <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" aria-label="Postagem atrasada" />}
       </div>
 
       <p className="text-sm font-medium text-foreground leading-tight mb-1.5 group-hover:text-primary transition-colors line-clamp-2">
@@ -56,9 +88,8 @@ const KanbanCard = memo(function KanbanCard({ job, subtasks, onClick, today, isD
   );
 });
 
-export default function KanbanView({ jobs, subtasks, getSubtasksForJob, onSelectJob, onUpdateStatus, today }) {
+export default function KanbanView({ jobs, getSubtasksForJob, onSelectJob, onUpdateStatus, today }) {
   const { statusList, statusConfig: STATUS_CONFIG } = useStatusConfig();
-  const STATUSES = statusList.map(s => s.key);
   const [draggedJob, setDraggedJob] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const scrollRef = useRef(null);
@@ -188,7 +219,6 @@ export default function KanbanView({ jobs, subtasks, getSubtasksForJob, onSelect
                       onClick={onSelectJob}
                       today={today}
                       isDragging={draggedJob?.id === job.id}
-                      statusConfig={STATUS_CONFIG}
                     />
                   </div>
                 ))}

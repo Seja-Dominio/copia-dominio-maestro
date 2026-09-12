@@ -27,6 +27,8 @@ import ActivityVolumeChart from "@/components/agenda/ActivityVolumeChart";
 import ClientKeyActivities from "@/components/agenda/ClientKeyActivities";
 import { DEFAULT_ACTIVITY_CONFIG } from "@/pages/Agenda";
 import { nowManaus, todayStr as getTodayStr } from "@/lib/dateUtils";
+import { getCurrentMonthPeriod } from "@/lib/deliveryMetrics";
+import { isMaster } from "@/lib/accessControl";
 
 const SECTIONS = [
   { id: "productivity", label: "Produtividade", icon: Users },
@@ -127,15 +129,22 @@ function CashFlowChart({ entries, period }) {
 export default function Reports() {
   const [searchParams] = useSearchParams();
   const sessionCollaborator = (() => { try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; } })();
-  const isAdmin = sessionCollaborator?.access_level === "admin";
+  const isAdmin = isMaster(sessionCollaborator);
   const initialSection = searchParams.get("section") || "productivity";
   const [section, setSection] = useState(initialSection);
   const requestedReport = searchParams.get("report");
   const [activeReport, setActiveReport] = useState(
     requestedReport || (initialSection === "timesheet" ? "by_user" : initialSection === "productivity" ? "daily" : initialSection === "jobs" ? "delivery" : "cashflow")
   );
-  const [period, setPeriod] = useState(null);
+  const initialPeriod = searchParams.get("start") && searchParams.get("end")
+    ? { start: searchParams.get("start"), end: searchParams.get("end") }
+    : initialSection === "jobs" && (requestedReport === "delivery" || !requestedReport)
+      ? getCurrentMonthPeriod(getTodayStr())
+      : null;
+  const [period, setPeriod] = useState(initialPeriod);
   const selectedUserId = searchParams.get("user");
+  const selectedResponsibleId = searchParams.get("responsible") || "";
+  const selectedStage = searchParams.get("stage") || "";
 
   const [entries, setEntries] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -433,7 +442,7 @@ export default function Reports() {
 
             {/* JOBS */}
             {section === "jobs" && activeReport === "delivery" && (
-              <DeliveryReport jobs={jobs} subtasks={subtasks} collaborators={collaborators} clients={clients} period={period} />
+              <DeliveryReport jobs={jobs} subtasks={subtasks} collaborators={collaborators} clients={clients} period={period} responsibleId={selectedResponsibleId} stage={selectedStage} />
             )}
             {section === "jobs" && activeReport === "board" && (
               <div className="glass-card p-6">

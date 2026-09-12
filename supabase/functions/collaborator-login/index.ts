@@ -55,10 +55,17 @@ async function signSession(payload: Record<string, unknown>) {
   return `${body}.${encode(String.fromCharCode(...new Uint8Array(signature)))}`;
 }
 
+async function hashPassword(password: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(salt).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(saltHex + password));
+  const hashHex = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${saltHex}:${hashHex}`;
+}
+
 async function verifyPassword(password: string, storedHash: string) {
-  // Senhas novas usam salt + SHA-256. Registros sem hash são rejeitados para
-  // não manter autenticação baseada em texto puro.
-  if (!storedHash.includes(":")) return false;
+  if (!storedHash) return { valid: false, needsRehash: false };
+  if (!storedHash.includes(":")) return { valid: storedHash === password, needsRehash: true };
 
   const [saltHex, expectedHash] = storedHash.split(":");
   const data = new TextEncoder().encode(saltHex + password);
@@ -66,7 +73,7 @@ async function verifyPassword(password: string, storedHash: string) {
   const actualHash = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return actualHash === expectedHash;
+  return { valid: actualHash === expectedHash, needsRehash: false };
 }
 
 function json(body: Record<string, unknown>, status = 200, origin = "") {
@@ -95,20 +102,50 @@ Deno.serve(async (request) => {
       .maybeSingle<CollaboratorRow>();
 
     if (error) throw error;
-    if (!data || !(await verifyPassword(String(password), data.password_hash))) {
+    const passwordCheck = data ? await verifyPassword(String(password), data.password_hash) : { valid: false, needsRehash: false };
+    if (!data || !passwordCheck.valid) {
       return json({ error: "Usuário ou senha incorretos" }, 401, origin);
     }
     if (!data.is_active) {
       return json({ error: "Sua conta está desativada. Contate o administrador." }, 403, origin);
     }
 
+    if (passwordCheck.needsRehash) {
+      const passwordHash = await hashPassword(String(password));
+      const now = new Date().toISOString();
+      const { error: authUpdateError } = await supabase
+        .from("maestro_collaborators")
+        .update({ password_hash: passwordHash, source_updated_at: now })
+        .eq("id", data.id);
+      if (authUpdateError) throw authUpdateError;
+
+      const { data: legacy, error: legacyReadError } = await supabase
+        .from("legacy_records")
+        .select("payload")
+        .eq("entity", "Collaborator")
+        .eq("record_id", data.id)
+        .maybeSingle();
+      if (legacyReadError) throw legacyReadError;
+      if (legacy) {
+        const { error: legacyUpdateError } = await supabase
+          .from("legacy_records")
+          .update({ payload: { ...(legacy.payload || {}), password_hash: passwordHash }, source_updated_at: now })
+          .eq("entity", "Collaborator")
+          .eq("record_id", data.id);
+        if (legacyUpdateError) throw legacyUpdateError;
+      }
+    }
+
+    const rawAccessLevel = String(data.profile?.access_level || "collaborator").toLowerCase();
+    const accessLevel = rawAccessLevel === "admin" ? "master" : rawAccessLevel;
+    const collaborator = { ...data.profile, access_level: accessLevel };
     const sessionToken = await signSession({
       sub: data.id,
-      access_level: data.profile.access_level || "collaborator",
-      exp: Math.floor(Date.now() / 1000) + (8 * 60 * 60),
+      access_level: accessLevel,
+      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60),
     });
 
-    return json({ success: true, collaborator: data.profile, session_token: sessionToken }, 200, origin);
+    return json({ success: true, collaborator, session_token: sessionToken }, 200, origin);
   } catch (error) {
     console.error("Collaborator login error:", error);
     return json({ error: "Erro ao autenticar. Tente novamente." }, 500, origin);

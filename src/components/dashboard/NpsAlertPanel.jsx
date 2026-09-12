@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPageUrl } from "@/utils";
 import { ArrowRight, TrendingDown, Crown } from "lucide-react";
 import { getNpsColor } from "@/components/clients/NpsScoreBadge";
 
 export default function NpsAlertPanel({ clients }) {
-  const sorted = [...clients].sort((a, b) => (a.nps_score ?? 100) - (b.nps_score ?? 100)).slice(0, 20);
+  const sorted = clients
+    .filter(client => client.status === "active")
+    .sort((a, b) => (a.nps_score ?? 100) - (b.nps_score ?? 100))
+    .slice(0, 20);
   const PAGE_SIZE = 5;
   const [page, setPage] = useState(0);
   const pages = Math.ceil(sorted.length / PAGE_SIZE);
   const visible = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(currentPage => Math.min(currentPage, Math.max(0, pages - 1)));
+  }, [pages]);
 
   if (sorted.length === 0) return null;
 
@@ -19,7 +26,7 @@ export default function NpsAlertPanel({ clients }) {
           <div className="w-7 h-7 bg-red-500 rounded-lg flex items-center justify-center">
             <TrendingDown className="w-3.5 h-3.5 text-white" />
           </div>
-          <h3 className="text-sm font-bold text-foreground">NPS Mais Baixos</h3>
+          <h3 className="text-sm font-bold text-foreground">NPS dos clientes ativos</h3>
         </div>
         <a href={createPageUrl("ClientPortfolio")} className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 no-underline">
           Ver carteira <ArrowRight className="w-3 h-3" />
@@ -29,13 +36,13 @@ export default function NpsAlertPanel({ clients }) {
         {visible.map(c => {
           const col = getNpsColor(c.nps_score ?? 100);
           return (
-            <div key={c.id} className="flex items-center gap-3 px-5 py-2.5">
+            <div key={c.id} className="flex min-w-0 items-center gap-3 px-5 py-2.5">
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-violet-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                 {c.name[0]?.toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1">
-                  <p className="text-xs font-semibold text-foreground truncate">{c.name}</p>
+                <div className="flex min-w-0 items-center gap-1">
+                  <p className="truncate text-xs font-semibold text-foreground" title={c.name}>{c.name}</p>
                   {c.tier === "elite" && <Crown className="w-3 h-3 text-amber-500 flex-shrink-0" />}
                 </div>
                 <p className="text-[10px] text-muted-foreground">{c.responsible || "—"}</p>
@@ -49,9 +56,9 @@ export default function NpsAlertPanel({ clients }) {
       </div>
       {pages > 1 && (
         <div className="flex items-center justify-between px-5 py-2 border-t border-border">
-          <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-30 font-semibold">← Ant</button>
-          <span className="text-[10px] text-muted-foreground">{page + 1}/{pages}</span>
-          <button onClick={() => setPage(p => Math.min(pages - 1, p + 1))} disabled={page === pages - 1} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-30 font-semibold">Próx →</button>
+          <button type="button" aria-label="Página anterior de NPS" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="rounded-md text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">← Ant</button>
+          <span className="text-[10px] text-muted-foreground" aria-live="polite">{page + 1}/{pages}</span>
+          <button type="button" aria-label="Próxima página de NPS" onClick={() => setPage(p => Math.min(pages - 1, p + 1))} disabled={page === pages - 1} className="rounded-md text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">Próx →</button>
         </div>
       )}
     </div>

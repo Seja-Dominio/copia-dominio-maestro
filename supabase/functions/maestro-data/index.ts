@@ -57,10 +57,18 @@ async function verifySession(token: string): Promise<Session | null> {
 
   const { data } = await supabase
     .from("maestro_collaborators")
-    .select("id, is_active")
+    .select("id, is_active, profile")
     .eq("id", session.sub)
     .maybeSingle();
-  return data?.is_active ? session : null;
+  if (!data?.is_active) return null;
+
+  const profile = (data.profile || {}) as Record<string, unknown>;
+  const rawAccessLevel = String(profile.access_level || session.access_level || "collaborator").toLowerCase();
+  const accessLevel = rawAccessLevel === "admin" ? "master" : rawAccessLevel;
+  return {
+    ...session,
+    access_level: accessLevel,
+  };
 }
 
 function json(body: Record<string, unknown>, status = 200, origin = "") {
@@ -68,6 +76,31 @@ function json(body: Record<string, unknown>, status = 200, origin = "") {
     status,
     headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
   });
+}
+
+function sanitizePayload(entity: string, payload: Record<string, unknown>) {
+  const safe = { ...payload };
+  if (entity === "Collaborator" || entity === "User") delete safe.password_hash;
+  return safe;
+}
+
+const DASHBOARD_FIELDS: Record<string, string[]> = {
+  Project: ["id", "name", "title", "status", "client_id", "client_name", "created_date", "updated_date"],
+  Job: ["id", "number", "title", "content_type", "status", "post_date", "project_id", "project_name", "client_id", "client_name", "responsible_id", "responsible_name", "stage_title", "stage_responsible_name", "created_date", "updated_date", "completed_at"],
+  Subtask: ["id", "job_id", "title", "status", "is_completed", "completed_at", "deadline", "order", "responsible_id", "responsible_name", "created_date", "updated_date"],
+  Timesheet: ["id", "collaborator_id", "job_id", "job_title", "client_id", "client_name", "is_running", "started_at", "duration_minutes", "created_date", "updated_date"],
+  Client: ["id", "name", "status", "tier", "nps_score", "created_date", "updated_date"],
+  Collaborator: ["id", "name", "full_name", "email", "role", "access_level", "is_active", "color", "birthday", "birth_date", "last_seen_at", "last_seen_page"],
+  AgendaEvent: ["id", "client_id", "date", "status", "title", "type", "created_date", "updated_date"],
+  FinancialEntry: ["id", "type", "status", "amount", "due_date", "competence_date", "payment_date", "billing_date", "created_date", "updated_date"],
+};
+
+function compactDashboardPayload(entity: string, payload: Record<string, unknown>) {
+  const fields = DASHBOARD_FIELDS[entity];
+  if (!fields) return sanitizePayload(entity, payload);
+  return Object.fromEntries(fields
+    .filter((field) => payload[field] !== undefined)
+    .map((field) => [field, payload[field]]));
 }
 
 function matches(payload: Record<string, unknown>, filters: Record<string, unknown>) {
@@ -109,21 +142,107 @@ async function listRows(entity: string) {
   return rows;
 }
 
-async function handleOperation(body: Record<string, unknown>, origin = "") {
+function collaboratorAccessLevel(collaborator: Record<string, unknown>) {
+  return String(collaborator.access_level || (collaborator.profile as Record<string, unknown> | undefined)?.access_level || "collaborator").toLowerCase();
+}
+
+function dashboardCollaborator(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name || row.full_name || "",
+    email: row.email || "",
+    is_active: row.is_active !== false,
+    access_level: collaboratorAccessLevel(row),
+    avatar_url: row.avatar_url || row.photo_url || null,
+    birth_date: row.birth_date || row.birthday || null,
+  };
+}
+
+async function dashboardData(session?: Session) {
+  const requests = [
+    ["projects", "Project", "-created_date", 50],
+    ["jobs", "Job", "-post_date", 5000],
+    ["entries", "FinancialEntry", "-created_date", 150],
+    ["collaborators", "Collaborator", "name", 100],
+    ["timesheets", "Timesheet", "-created_date", 1000],
+    ["clients", "Client", "-nps_score", 100],
+    ["agendaEvents", "AgendaEvent", "-date", 100],
+    ["subtasks", "Subtask", "-created_date", 10000],
+  ] as const;
+
+  const values = await Promise.all(requests.map(async ([key, entity, sort, limit]) => {
+    const rows = sortRows(await listRows(entity), sort);
+    return [key, rows.slice(0, limit).map((row) => compactDashboardPayload(entity, row.payload))] as const;
+  }));
+
+  const allData = Object.fromEntries(values) as Record<string, any[]>;
+  const role = String(session?.access_level || "collaborator").toLowerCase();
+  const canViewTeam = ["master", "gestor"].includes(role);
+  const canViewFinancial = role === "master";
+  const collaborators = (allData.collaborators || []).map(dashboardCollaborator);
+
+  if (canViewTeam) {
+    return {
+      ...allData,
+      collaborators,
+      entries: canViewFinancial ? allData.entries || [] : [],
+    };
+  }
+
+  const myId = String(session?.sub || "");
+  const mySubtasks = (allData.subtasks || []).filter((subtask) => String(subtask.responsible_id || "") === myId);
+  const myJobIds = new Set([
+    ...mySubtasks.map((subtask) => String(subtask.job_id || "")).filter(Boolean),
+    ...(allData.jobs || []).filter((job) => String(job.responsible_id || "") === myId).map((job) => String(job.id || "")).filter(Boolean),
+  ]);
+  const jobs = (allData.jobs || []).filter((job) => myJobIds.has(String(job.id || "")));
+  const projectIds = new Set(jobs.map((job) => String(job.project_id || "")).filter(Boolean));
+  const projects = (allData.projects || []).filter((project) => projectIds.has(String(project.id || "")));
+  const clientIds = new Set([
+    ...jobs.map((job) => String(job.client_id || "")).filter(Boolean),
+    ...projects.map((project) => String(project.client_id || "")).filter(Boolean),
+  ]);
+  const visibleCollaborators = collaborators.filter((collaborator) => !["gestor", "master"].includes(collaborator.access_level));
+
+  return {
+    projects,
+    jobs,
+    entries: [],
+    collaborators: visibleCollaborators,
+    timesheets: (allData.timesheets || []).filter((timesheet) => visibleCollaborators.some((collaborator) => collaborator.id === timesheet.collaborator_id)),
+    clients: (allData.clients || []).filter((client) => clientIds.has(String(client.id || ""))),
+    agendaEvents: (allData.agendaEvents || []).filter((event) => clientIds.has(String(event.client_id || ""))),
+    subtasks: mySubtasks,
+  };
+}
+
+async function handleOperation(body: Record<string, unknown>, origin = "", session?: Session) {
+  const operation = String(body.operation || "list");
+  if (operation === "dashboard") {
+    return json({ data: await dashboardData(session) }, 200, origin);
+  }
+
   const entity = String(body.entity || "");
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(entity)) return json({ error: "Entidade inválida" }, 400, origin);
 
-  const operation = String(body.operation || "list");
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);
-  if (isWrite && !["admin", "master"].includes(String(body.__access_level || ""))) {
-    return json({ error: "Apenas administradores podem alterar dados" }, 403, origin);
+  const accessLevel = String(body.__access_level || "").toLowerCase();
+  const gestorWritableEntities = ["Client", "Project", "Job", "Subtask", "AgendaEvent", "JobTemplate", "Squad"];
+  if (isWrite && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
+    return json({ error: "O Gestor não pode alterar este tipo de dado" }, 403, origin);
+  }
+  if (isWrite && !["master", "gestor"].includes(accessLevel)) {
+    return json({ error: "Apenas gestores e masters podem alterar dados" }, 403, origin);
+  }
+  if (["delete", "transferSubtasks"].includes(operation) && accessLevel !== "master") {
+    return json({ error: "Apenas o Master pode excluir ou transferir tarefas" }, 403, origin);
   }
   if (["list", "filter"].includes(operation)) {
     let rows = await listRows(entity);
     if (operation === "filter") rows = rows.filter((row) => matches(row.payload, (body.filters || {}) as Record<string, unknown>));
     rows = sortRows(rows, typeof body.sort === "string" ? body.sort : undefined);
     const limit = Number(body.limit || 100);
-    return json({ data: rows.slice(0, Math.max(0, limit)).map((row) => row.payload) }, 200, origin);
+    return json({ data: rows.slice(0, Math.max(0, limit)).map((row) => sanitizePayload(entity, row.payload)) }, 200, origin);
   }
 
   if (operation === "transferSubtasks") {
@@ -191,7 +310,32 @@ async function handleOperation(body: Record<string, unknown>, origin = "") {
       source_updated_at: now,
     }, { onConflict: "entity,record_id" });
     if (error) throw error;
-    return json({ data: nextPayload }, 200, origin);
+
+    if (entity === "Collaborator") {
+      const { data: currentAuth, error: currentAuthError } = await supabase
+        .from("maestro_collaborators")
+        .select("login, password_hash, profile")
+        .eq("id", recordId)
+        .maybeSingle();
+      if (currentAuthError) throw currentAuthError;
+
+      const profile = {
+        ...(currentAuth?.profile || {}),
+        ...sanitizePayload(entity, nextPayload),
+        id: recordId,
+      };
+      const { error: authError } = await supabase.from("maestro_collaborators").upsert({
+        id: recordId,
+        login: String(nextPayload.login || currentAuth?.login || recordId),
+        password_hash: String(currentAuth?.password_hash || nextPayload.password_hash || ""),
+        is_active: nextPayload.is_active !== false,
+        profile,
+        source_updated_at: now,
+      }, { onConflict: "id" });
+      if (authError) throw authError;
+    }
+
+    return json({ data: sanitizePayload(entity, nextPayload) }, 200, origin);
   }
 
   if (operation === "bulkCreate") {
@@ -228,7 +372,7 @@ Deno.serve(async (request) => {
     if (!session) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
     const body = await request.json() as Record<string, unknown>;
     body.__access_level = session.access_level;
-    return await handleOperation(body, origin);
+    return await handleOperation(body, origin, session);
   } catch (error) {
     console.error("Maestro data error:", error);
     return json({ error: "Erro ao processar a operação" }, 500, origin);

@@ -1,0 +1,82 @@
+{
+  "name": "Supplier",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do fornecedor"
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Raz\u00e3o social"
+    },
+    "cnpj": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "impressao",
+        "midia",
+        "tecnologia",
+        "freelancer",
+        "equipamentos",
+        "espaco",
+        "outro"
+      ],
+      "description": "Categoria do fornecedor"
+    },
+    "contact_name": {
+      "type": "string",
+      "description": "Nome do contato principal"
+    },
+    "website": {
+      "type": "string"
+    },
+    "payment_terms": {
+      "type": "string",
+      "description": "Condi\u00e7\u00f5es de pagamento"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": null,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

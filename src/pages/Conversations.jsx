@@ -3,12 +3,123 @@ import { createPortal } from "react-dom";
 import { maestro, invokeMaestroFunction, uploadMaestroFile } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Send, Settings, Check, AlertCircle, ChevronDown, Users, RefreshCw, QrCode, Copy, ContactRound, X, Loader2, Link2, Paperclip, Trash2, CalendarClock } from "lucide-react";
+import { MessageSquare, Send, Settings, Check, AlertCircle, Users, RefreshCw, QrCode, Copy, ContactRound, X, Loader2, Link2, Paperclip, Trash2, CalendarClock } from "lucide-react";
 import WhatsappReportsPanel from "@/components/conversations/WhatsappReportsPanel";
 
 function getClientDestinations(client) {
   const groupIds = Array.isArray(client?.whatsapp_group_ids) ? client.whatsapp_group_ids : [client?.whatsapp_group_id];
   return [...new Set([...groupIds, ...(Array.isArray(client?.whatsapp_contact_ids) ? client.whatsapp_contact_ids : [])].filter(Boolean))];
+}
+
+function getClientDestinationOptions(client, directory = {}) {
+  const groups = Array.isArray(directory.groups) ? directory.groups : [];
+  const contacts = Array.isArray(directory.contacts) ? directory.contacts : [];
+  const groupIds = Array.isArray(client?.whatsapp_group_ids) ? client.whatsapp_group_ids : [client?.whatsapp_group_id];
+  const contactIds = Array.isArray(client?.whatsapp_contact_ids) ? client.whatsapp_contact_ids : [];
+  const groupById = new Map(groups.map((group) => [String(group.id), group]));
+  const contactById = new Map(contacts.map((contact) => [String(contact.id), contact]));
+  return [
+    ...[...new Set(groupIds.filter(Boolean))].map((id) => ({
+      id: String(id),
+      kind: "group",
+      name: groupById.get(String(id))?.name || "Grupo do cliente",
+      detail: String(id),
+    })),
+    ...[...new Set(contactIds.filter(Boolean))].map((id) => ({
+      id: String(id),
+      kind: "contact",
+      name: contactById.get(String(id))?.name || "Contato do cliente",
+      detail: contactById.get(String(id))?.phone || String(id),
+    })),
+  ];
+}
+
+function defaultRecipientIds(client, directory) {
+  const options = getClientDestinationOptions(client, directory);
+  const group = options.find((option) => option.kind === "group");
+  return group ? [group.id] : options.slice(0, 1).map((option) => option.id);
+}
+
+function getRecipientsForClient(client, selectedIds, directory) {
+  const options = getClientDestinationOptions(client, directory);
+  const allowed = new Set(options.map((option) => option.id));
+  const ids = Array.isArray(selectedIds) ? selectedIds.filter((id) => allowed.has(String(id))) : [];
+  return ids.length ? ids : defaultRecipientIds(client, directory);
+}
+
+function ClientContactList({ clients, selectedClient, onSelect, selectedRecipientCount = 0, search, onSearch }) {
+  const available = clients.filter((client) => getClientDestinations(client).length > 0);
+  const filtered = available.filter((client) => client.name?.toLowerCase().includes(search.trim().toLowerCase()));
+
+  return (
+    <aside className="glass-card min-h-0 overflow-hidden">
+      <div className="border-b border-border p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Clientes com WhatsApp</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Selecione para iniciar uma conversa</p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{available.length}</span>
+        </div>
+        <Input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar cliente..." className="mt-3 h-9 text-sm" />
+      </div>
+      <div className="max-h-[32rem] overflow-y-auto p-2">
+        {filtered.length ? filtered.map((client) => {
+          const destinationCount = getClientDestinations(client).length;
+          const isSelected = selectedClient?.id === client.id;
+          return (
+            <button type="button" key={client.id} onClick={() => onSelect(client)} className={`mb-1 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted"}`}>
+              <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${isSelected ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>{client.name?.[0]?.toUpperCase() || "?"}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground">{client.name}</span><span className="block truncate text-[11px] text-muted-foreground">{destinationCount} destino(s) vinculado(s){isSelected && selectedRecipientCount ? ` · ${selectedRecipientCount} selecionado(s)` : ""}</span></span>
+            </button>
+          );
+        }) : <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nenhum cliente com contato atribuído.</p>}
+      </div>
+    </aside>
+  );
+}
+
+function RecipientSelector({ client, directory, selectedIds, onChange }) {
+  const options = getClientDestinationOptions(client, directory);
+  const group = options.find((option) => option.kind === "group");
+  const contactIds = options.filter((option) => option.kind === "contact").map((option) => option.id);
+  const currentIds = getRecipientsForClient(client, selectedIds, directory);
+  const currentSet = new Set(currentIds);
+  const mode = group && currentIds.length === 1 && currentIds[0] === group.id
+    ? "group"
+    : contactIds.length > 0 && currentIds.length === contactIds.length && contactIds.every((id) => currentSet.has(id))
+      ? "all"
+      : "custom";
+
+  const update = (ids) => onChange([...new Set(ids)]);
+  const chooseMode = (nextMode) => {
+    if (nextMode === "group") return update(group ? [group.id] : defaultRecipientIds(client, directory));
+    if (nextMode === "all") return update(contactIds.length ? contactIds : defaultRecipientIds(client, directory));
+    if (nextMode === "custom") return update(currentIds);
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-background/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Destinatários</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">O grupo do cliente vem selecionado por padrão.</p>
+        </div>
+        <span className="rounded-full bg-muted px-2 py-1 text-xs font-semibold text-foreground">{currentIds.length} selecionado(s)</span>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {group && <button type="button" onClick={() => chooseMode("group")} className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${mode === "group" ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}><span className="block font-semibold">Grupo do cliente</span><span className="mt-0.5 block truncate text-muted-foreground">{group.name}</span></button>}
+        {contactIds.length > 0 && <button type="button" onClick={() => chooseMode("all")} className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${mode === "all" ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}><span className="block font-semibold">Todos os contatos</span><span className="mt-0.5 block text-muted-foreground">{contactIds.length} contato(s)</span></button>}
+        <button type="button" onClick={() => chooseMode("custom")} className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${mode === "custom" ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}><span className="block font-semibold">Escolher contatos</span><span className="mt-0.5 block text-muted-foreground">Seleção múltipla</span></button>
+      </div>
+      {mode === "custom" && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {options.map((option) => <button type="button" key={`${option.kind}:${option.id}`} onClick={() => update(currentSet.has(option.id) ? currentIds.filter((id) => id !== option.id) : [...currentIds, option.id])} className={`flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-left ${currentSet.has(option.id) ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}><span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${currentSet.has(option.id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{currentSet.has(option.id) && <Check className="h-3 w-3" />}</span><span className="min-w-0"><span className="block truncate text-xs font-semibold text-foreground">{option.name}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{option.detail}</span></span></button>)}
+        </div>
+      )}
+      {!options.length && <p className="mt-3 text-xs text-amber-700">Este cliente ainda não tem grupo ou contato vinculado.</p>}
+    </div>
+  );
 }
 
 function MediaPicker({ media, onChange, disabled = false }) {
@@ -60,31 +171,41 @@ function MediaPicker({ media, onChange, disabled = false }) {
 }
 
 // ---- Single send mode ----
-function SingleSend({ clients }) {
+function SingleSend({ clients, directory, onClientsChanged }) {
   const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState([]);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState(null);
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [groupIdInput, setGroupIdInput] = useState("");
   const [savingGroup, setSavingGroup] = useState(false);
-  const [search, setSearch] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
   const [media, setMedia] = useState(null);
 
-  const filteredClients = clients.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()));
+  const selectClient = (client) => {
+    setSelectedClient(client);
+    setSelectedRecipientIds(defaultRecipientIds(client, directory));
+    setStatus(null);
+  };
 
   const handleSaveGroupId = async (client) => {
     setSavingGroup(true);
-    const groupIds = [...new Set(groupIdInput.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean))];
-    await maestro.entities.Client.update(client.id, { whatsapp_group_id: groupIds[0] || "", whatsapp_group_ids: groupIds });
-    setEditingGroupId(null);
-    setSavingGroup(false);
-    setSelectedClient({ ...client, whatsapp_group_id: groupIds[0] || "", whatsapp_group_ids: groupIds });
+    try {
+      const groupIds = [...new Set(groupIdInput.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean))];
+      await maestro.entities.Client.update(client.id, { whatsapp_group_id: groupIds[0] || "", whatsapp_group_ids: groupIds });
+      const updated = { ...client, whatsapp_group_id: groupIds[0] || "", whatsapp_group_ids: groupIds };
+      setEditingGroupId(null);
+      setSelectedClient(updated);
+      setSelectedRecipientIds(defaultRecipientIds(updated, directory));
+      onClientsChanged?.(clients.map((item) => item.id === client.id ? updated : item));
+    } finally {
+      setSavingGroup(false);
+    }
   };
 
   const handleSend = async () => {
-    const destinations = getClientDestinations(selectedClient);
+    const destinations = getRecipientsForClient(selectedClient, selectedRecipientIds, directory);
     if (destinations.length === 0) {
       setStatus({ type: "error", text: "Configure um grupo ou contato WhatsApp para este cliente primeiro." });
       return;
@@ -109,7 +230,7 @@ function SingleSend({ clients }) {
       if (failures.length) {
         setStatus({ type: "error", text: `${sent} enviado(s). ${failures.length} recusado(s): ${failures.join("; ")}` });
       } else {
-        setStatus({ type: "success", text: media ? "Mídia enviada para todos os destinos!" : "Mensagem enviada para todos os destinos!" });
+        setStatus({ type: "success", text: media ? `Mídia enviada para ${sent} destinatário(s)!` : `Mensagem enviada para ${sent} destinatário(s)!` });
         setMessage("");
         setMedia(null);
       }
@@ -119,99 +240,41 @@ function SingleSend({ clients }) {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Client selector */}
-      <div className="glass-card p-5">
-        <label className="text-sm font-semibold text-foreground block mb-2">Cliente</label>
-        <div className="relative">
-          <button onClick={() => { setDropdownOpen(o => !o); setSearch(""); }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-input bg-background text-sm hover:border-ring transition-colors">
-            <span className={selectedClient ? "text-foreground" : "text-muted-foreground"}>
-              {selectedClient ? selectedClient.name : "Selecionar cliente..."}
-            </span>
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          </button>
-          {dropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
-                <Input autoFocus placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="h-8 text-sm" />
-              </div>
-              <div className="max-h-52 overflow-y-auto">
-                {filteredClients.map(c => (
-                  <button key={c.id} onClick={() => { setSelectedClient(c); setDropdownOpen(false); setSearch(""); setStatus(null); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left hover:bg-muted transition-colors">
-                    <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0">
-                      {c.name?.[0]?.toUpperCase()}
-                    </div>
-                    <span className="flex-1 font-medium text-foreground">{c.name}</span>
-                    {!c.whatsapp_group_id && <span className="text-xs text-amber-600 font-medium">sem grupo</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
+    <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <ClientContactList clients={clients} selectedClient={selectedClient} onSelect={selectClient} selectedRecipientCount={selectedRecipientIds.length} search={clientSearch} onSearch={setClientSearch} />
+      <div className="space-y-4">
         {selectedClient && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Grupos e contatos WhatsApp</span>
-              {editingGroupId !== selectedClient.id && (
-                <button onClick={() => { setEditingGroupId(selectedClient.id); setGroupIdInput((selectedClient.whatsapp_group_ids || [selectedClient.whatsapp_group_id]).filter(Boolean).join("\n")); }}
-                  className="text-xs text-primary hover:underline flex items-center gap-1">
-                  <Settings className="w-3 h-3" /> Configurar
-                </button>
-              )}
+          <div className="glass-card p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div><p className="text-lg font-semibold text-foreground">{selectedClient.name}</p><p className="text-xs text-muted-foreground">Escolha quem receberá esta mensagem.</p></div>
+              {editingGroupId !== selectedClient.id && <button type="button" onClick={() => { setEditingGroupId(selectedClient.id); setGroupIdInput((selectedClient.whatsapp_group_ids || [selectedClient.whatsapp_group_id]).filter(Boolean).join("\n")); }} className="flex items-center gap-1 text-xs text-primary hover:underline"><Settings className="h-3 w-3" /> Configurar</button>}
             </div>
             {editingGroupId === selectedClient.id ? (
-              <div className="flex gap-2">
-                <textarea value={groupIdInput} onChange={e => setGroupIdInput(e.target.value)} placeholder="Um grupo por linha ou separado por vírgula" rows={2} className="min-h-8 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs" />
-                <Button size="sm" onClick={() => handleSaveGroupId(selectedClient)} disabled={savingGroup} className="h-8 text-xs">{savingGroup ? "..." : "Salvar"}</Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditingGroupId(null)} className="h-8 text-xs">Cancelar</Button>
-              </div>
-            ) : (
-              <p className="whitespace-pre-line text-sm font-mono">{getClientDestinations(selectedClient).length ? getClientDestinations(selectedClient).join("\n") : <span className="text-muted-foreground italic">Não configurado</span>}</p>
-            )}
+              <div className="flex flex-wrap gap-2"><textarea value={groupIdInput} onChange={e => setGroupIdInput(e.target.value)} placeholder="Um grupo por linha ou separado por vírgula" rows={2} className="min-h-8 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs" /><Button size="sm" onClick={() => handleSaveGroupId(selectedClient)} disabled={savingGroup} className="h-8 text-xs">{savingGroup ? "..." : "Salvar"}</Button><Button size="sm" variant="ghost" onClick={() => setEditingGroupId(null)} className="h-8 text-xs">Cancelar</Button></div>
+            ) : <RecipientSelector client={selectedClient} directory={directory} selectedIds={selectedRecipientIds} onChange={setSelectedRecipientIds} />}
           </div>
         )}
-      </div>
-
-      {selectedClient && (
-        <div className="glass-card p-5">
-          <label className="text-sm font-semibold text-foreground block mb-2">Mensagem</label>
-          <textarea value={message} onChange={e => setMessage(e.target.value)}
-            placeholder={`Escreva a mensagem para ${selectedClient.name}...`}
-            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-            rows={5} onKeyDown={e => e.key === "Enter" && e.ctrlKey && handleSend()} />
-          <MediaPicker media={media} onChange={setMedia} disabled={sending} />
-          <p className="text-xs text-muted-foreground mt-1">Ctrl+Enter para enviar</p>
-          {status && (
-            <div className={`mt-3 flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${status.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-              {status.type === "success" ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {status.text}
-            </div>
-          )}
-          <div className="flex justify-end mt-3">
-            <Button onClick={handleSend} disabled={sending || (!message.trim() && !media)} className="gap-2">
-              <Send className="w-4 h-4" /> {sending ? "Enviando..." : "Enviar no WhatsApp"}
-            </Button>
+        {selectedClient && (
+          <div className="glass-card p-5">
+            <label className="mb-2 block text-sm font-semibold text-foreground">Mensagem</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder={`Escreva a mensagem para ${selectedClient.name}...`} className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" rows={5} onKeyDown={e => e.key === "Enter" && e.ctrlKey && handleSend()} />
+            <MediaPicker media={media} onChange={setMedia} disabled={sending} />
+            <p className="mt-1 text-xs text-muted-foreground">Ctrl+Enter para enviar</p>
+            {status && <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${status.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>{status.type === "success" ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}{status.text}</div>}
+            <div className="mt-3 flex justify-end"><Button onClick={handleSend} disabled={sending || (!message.trim() && !media) || selectedRecipientIds.length === 0} className="gap-2"><Send className="h-4 w-4" /> {sending ? "Enviando..." : `Enviar para ${getRecipientsForClient(selectedClient, selectedRecipientIds, directory).length} destinatário(s)`}</Button></div>
           </div>
-        </div>
-      )}
-
-      {!selectedClient && (
-        <div className="text-center py-12">
-          <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-30" />
-          <p className="text-muted-foreground">Selecione um cliente para enviar mensagem</p>
-        </div>
-      )}
+        )}
+        {!selectedClient && <div className="glass-card py-16 text-center"><MessageSquare className="mx-auto mb-3 h-12 w-12 text-muted-foreground opacity-30" /><p className="text-muted-foreground">Selecione um cliente na lista para enviar mensagem</p></div>}
+      </div>
     </div>
   );
 }
 
 // ---- Bulk send mode ----
-function BulkSend({ clients }) {
+function BulkSend({ clients, directory }) {
   const [selected, setSelected] = useState(new Set());
+  const [recipientSelections, setRecipientSelections] = useState({});
+  const [activeClient, setActiveClient] = useState(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState([]); // {name, status, error}
@@ -221,9 +284,19 @@ function BulkSend({ clients }) {
   const withDestination = clients.filter(c => getClientDestinations(c).length > 0);
   const filtered = withDestination.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()));
 
+  const selectBulkClient = (client) => {
+    setActiveClient(client);
+    setRecipientSelections((current) => current[client.id] ? current : { ...current, [client.id]: defaultRecipientIds(client, directory) });
+  };
+  const setClientRecipients = (client, ids) => setRecipientSelections((current) => ({ ...current, [client.id]: ids }));
+
   const toggleAll = () => {
-    if (selected.size === filtered.length) setSelected(new Set());
-    else setSelected(new Set(filtered.map(c => c.id)));
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+      return;
+    }
+    setSelected(new Set(filtered.map(c => c.id)));
+    setRecipientSelections((current) => Object.fromEntries(filtered.map((client) => [client.id, current[client.id] || defaultRecipientIds(client, directory)])));
   };
 
   const toggleClient = (id) => {
@@ -243,7 +316,8 @@ function BulkSend({ clients }) {
     for (const client of toSend) {
       const failures = [];
       let sent = 0;
-      for (const destination of getClientDestinations(client)) {
+      const destinations = getRecipientsForClient(client, recipientSelections[client.id], directory);
+      for (const destination of destinations) {
         try {
           const r = media
             ? await invokeMaestroFunction("sendWhatsappFile", { phone: destination, fileUrl: media.url, caption: message.trim(), fileName: media.name, fileType: media.type })
@@ -263,11 +337,11 @@ function BulkSend({ clients }) {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="glass-card p-5">
+    <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="glass-card p-4">
         <div className="flex items-center justify-between mb-3">
-          <label className="text-sm font-semibold text-foreground">Selecionar Clientes</label>
-          <button onClick={toggleAll} className="text-xs text-primary hover:underline font-semibold">
+          <label className="text-sm font-semibold text-foreground">Clientes com WhatsApp</label>
+          <button type="button" onClick={toggleAll} className="text-xs font-semibold text-primary hover:underline">
             {selected.size === filtered.length && filtered.length > 0 ? "Desmarcar todos" : "Selecionar todos"}
           </button>
         </div>
@@ -275,17 +349,17 @@ function BulkSend({ clients }) {
         {withDestination.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">Nenhum cliente com destino WhatsApp configurado</p>
         ) : (
-          <div className="space-y-1.5 max-h-60 overflow-y-auto">
+          <div className="max-h-[32rem] space-y-1.5 overflow-y-auto">
             {filtered.map(c => (
-              <button key={c.id} onClick={() => toggleClient(c.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${selected.has(c.id) ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}>
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${selected.has(c.id) ? "bg-primary border-primary" : "border-border"}`}>
+              <button type="button" key={c.id} onClick={() => { toggleClient(c.id); selectBulkClient(c); }} className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${activeClient?.id === c.id ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted"}`}>
+                <div className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors ${selected.has(c.id) ? "border-primary bg-primary" : "border-border"}`}>
                   {selected.has(c.id) && <Check className="w-3 h-3 text-white" />}
                 </div>
                 <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0">
                   {c.name?.[0]?.toUpperCase()}
                 </div>
                 <span className="text-sm font-medium text-foreground flex-1">{c.name}</span>
+                <span className="text-[10px] text-muted-foreground">{getClientDestinations(c).length}</span>
               </button>
             ))}
           </div>
@@ -295,8 +369,10 @@ function BulkSend({ clients }) {
         )}
       </div>
 
+      <div className="space-y-4">
+      {activeClient && <div className="glass-card p-5"><RecipientSelector client={activeClient} directory={directory} selectedIds={recipientSelections[activeClient.id] || defaultRecipientIds(activeClient, directory)} onChange={(ids) => setClientRecipients(activeClient, ids)} /></div>}
       <div className="glass-card p-5">
-        <label className="text-sm font-semibold text-foreground block mb-2">Mensagem</label>
+        <div className="mb-2 flex items-center justify-between gap-2"><label className="text-sm font-semibold text-foreground">Mensagem</label><span className="text-xs text-muted-foreground">{selected.size} cliente(s)</span></div>
         <textarea value={message} onChange={e => setMessage(e.target.value)}
           placeholder="Mensagem que será enviada para todos os destinos selecionados..."
           className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
@@ -323,6 +399,7 @@ function BulkSend({ clients }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -420,7 +497,7 @@ function WhatsAppConnectionManager({ open, onClose, connection, onConnectionChan
         groupIds: [...selectedGroupIds],
         contactIds: [...selectedContactIds],
       });
-      const updated = result.data?.client || { ...client, whatsapp_group_id: [...selectedGroupIds][0] || "", whatsapp_group_ids: [...selectedGroupIds], whatsapp_contact_ids: [...selectedContactIds] };
+      const updated = { ...client, ...(result.data?.client || {}), id: client.id, whatsapp_group_id: [...selectedGroupIds][0] || "", whatsapp_group_ids: [...selectedGroupIds], whatsapp_contact_ids: [...selectedContactIds] };
       onClientsChanged(clients.map((item) => item.id === client.id ? updated : item));
       setNotice({ type: "success", text: `Vínculos salvos para ${client.name}.` });
     } catch (error) {
@@ -525,6 +602,7 @@ function DirectoryList({ title, icon, empty, items, children }) {
 // ---- Main page ----
 export default function Conversations() {
   const [clients, setClients] = useState([]);
+  const [directory, setDirectory] = useState({ groups: [], contacts: [] });
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("single"); // "single" | "bulk" | "reports"
   const [connection, setConnection] = useState({ loading: true, connected: false, state: "unknown", error: null });
@@ -546,15 +624,24 @@ export default function Conversations() {
   };
 
   useEffect(() => {
-    maestro.entities.Client.filter({ status: "active" }, "name", 200).then(data => {
+    Promise.all([
+      maestro.entities.Client.filter({ status: "active" }, "name", 200),
+      invokeMaestroFunction("listWhatsappDirectory", {}),
+    ]).then(([data, directoryResult]) => {
       setClients(data);
+      setDirectory({ groups: directoryResult.data?.groups || [], contacts: directoryResult.data?.contacts || [] });
       setLoading(false);
+    }).catch(() => {
+      maestro.entities.Client.filter({ status: "active" }, "name", 200).then((data) => {
+        setClients(data);
+        setLoading(false);
+      });
     });
     loadConnection();
   }, []);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="mx-auto max-w-6xl p-6">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Conversas</h1>
@@ -598,9 +685,9 @@ export default function Conversations() {
           <p className="text-sm text-muted-foreground">Carregando clientes...</p>
         </div>
       ) : mode === "single" ? (
-        <SingleSend clients={clients} />
+        <SingleSend clients={clients} directory={directory} onClientsChanged={setClients} />
       ) : mode === "bulk" ? (
-        <BulkSend clients={clients} />
+        <BulkSend clients={clients} directory={directory} />
       ) : (
         <WhatsappReportsPanel clients={clients} />
       )}

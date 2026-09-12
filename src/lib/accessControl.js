@@ -1,16 +1,15 @@
 /**
  * Access control helpers for the 3-level permission system:
- * - master: full access (was previously "admin")
- * - gestor: admin-like but NO financial, NO delete users/clients/projects, NO system exports
+ * - master: full access
+ * - gestor: access to operational management, without financial or destructive settings actions
  * - collaborator: basic user
  */
 
 export function getAccessLevel(collaborator) {
   if (!collaborator) return "collaborator";
-  // Legacy: treat "admin" as "master" for backwards compatibility
-  const level = collaborator.access_level;
-  if (level === "admin") return "master";
-  return level || "collaborator";
+  const level = String(collaborator.access_level || "collaborator").toLowerCase();
+  // Normalize old records without exposing a fourth access level in the UI.
+  return level === "admin" ? "master" : level;
 }
 
 export function isMaster(collaborator) {

@@ -1,0 +1,36 @@
+{
+  "name": "Squad",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do squad/time"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor do squad (hex)"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collaborator_id": {
+            "type": "string"
+          },
+          "collaborator_name": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Membros do squad"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

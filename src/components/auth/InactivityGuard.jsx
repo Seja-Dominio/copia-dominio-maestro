@@ -3,9 +3,9 @@ import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { maestro } from "@/api/maestroClient";
 
-const INACTIVITY_TIMEOUT = 120 * 60 * 1000; // 120 minutos
-const WARNING_BEFORE = 2 * 60 * 1000; // aviso 2 min antes
-const TIMESHEET_INACTIVITY = 120 * 60 * 1000; // 2h para parar timesheets
+const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 horas
+const WARNING_BEFORE = 5 * 60 * 1000; // aviso 5 min antes
+const TIMESHEET_INACTIVITY = 3 * 60 * 60 * 1000; // 3h para parar timesheets
 
 async function stopAllRunningTimesheets(capAt) {
   try {
@@ -54,7 +54,7 @@ export default function InactivityGuard({ onLogout }) {
     clearAllTimers();
     lastActivityRef.current = Date.now();
 
-    // Timer para mostrar aviso (118 min)
+    // Timer para mostrar aviso cinco minutos antes do limite
     warningTimerRef.current = setTimeout(() => {
       showWarningRef.current = true;
       setShowWarning(true);
@@ -84,7 +84,7 @@ export default function InactivityGuard({ onLogout }) {
     startTimers();
   }, [startTimers]);
 
-  // Timesheet inactivity auto-stop (2h without navigation/text/upload)
+  // Timesheet inactivity auto-stop (3h without navigation/text/upload)
   const tsTimerRef = useRef(null);
   const tsLastActivityRef = useRef(Date.now());
   const tsStoppedRef = useRef(false);

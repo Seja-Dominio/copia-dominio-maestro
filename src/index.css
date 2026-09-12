@@ -77,14 +77,26 @@
     --destructive: 0 63% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 28% 18%;
-    --input: 215 28% 18%;
+    /* Off-white structural lines soften the dark theme without changing status colors. */
+    --border: 220 14% 72%;
+    --input: 220 14% 52%;
     --ring: 215 72% 55%;
 
     --sidebar: 215 72% 8%;
     --sidebar-foreground: 220 15% 78%;
     --sidebar-active: 215 72% 55%;
     --sidebar-hover: 215 72% 14%;
+  }
+}
+
+/* Soften structural frames in dark mode while keeping the palette intact. */
+@layer utilities {
+  .dark [class*="border-border"] {
+    border-color: hsl(var(--border) / 0.4);
+  }
+
+  .dark .border-input {
+    border-color: hsl(var(--input) / 0.4);
   }
 }
 

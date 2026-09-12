@@ -23,6 +23,7 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
     is_active: collaborator?.is_active !== undefined ? collaborator.is_active : true,
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [roleOptions, setRoleOptions] = useState([]);
 
   useEffect(() => {
@@ -44,18 +45,26 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
-    const data = {
-      ...form,
-      hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : undefined,
-      monthly_salary: form.monthly_salary ? Number(form.monthly_salary) : undefined,
-    };
-    let result;
-    if (collaborator?.id) {
-      result = await maestro.entities.Collaborator.update(collaborator.id, data);
-    } else {
-      result = await maestro.entities.Collaborator.create(data);
+    setSaveError("");
+    try {
+      const data = {
+        ...form,
+        hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : undefined,
+        monthly_salary: form.monthly_salary ? Number(form.monthly_salary) : undefined,
+      };
+      let result;
+      if (collaborator?.id) {
+        result = await maestro.entities.Collaborator.update(collaborator.id, data);
+      } else {
+        result = await maestro.entities.Collaborator.create(data);
+      }
+      onSave(result);
+    } catch (error) {
+      console.error("Erro ao salvar colaborador:", error);
+      setSaveError(error?.message || "Não foi possível salvar o colaborador. Verifique sua permissão e tente novamente.");
+    } finally {
+      setSaving(false);
     }
-    onSave(result);
   }
 
   const drawerFooter = (
@@ -70,6 +79,11 @@ export default function CollaboratorFormModal({ collaborator, onClose, onSave })
   return (
     <StandardDrawer open={true} onClose={onClose} title={collaborator ? "Editar Colaborador" : "Novo Colaborador"} width={520} footer={drawerFooter}>
         <form id="collab-form" onSubmit={handleSubmit} className="p-6 space-y-4">
+          {saveError && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {saveError}
+            </div>
+          )}
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Nome *</label>
             <Input placeholder="Nome completo" value={form.name} onChange={set("name")} required />

@@ -4,14 +4,12 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
 import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Plus, Search, Star, FolderKanban, Clock,
-  Calendar, Archive, CheckCircle2, Circle,
+  Calendar, CheckCircle2,
   Crown, Users, X
 } from "lucide-react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import ProjectDetailModal from "../components/projects/ProjectDetailModal";
 import CreateProjectModal from "../components/projects/CreateProjectModal";
 import ProjectJobsView from "../components/projects/ProjectJobsView";
@@ -19,13 +17,6 @@ import AllJobsCalendar from "../components/projects/AllJobsCalendar";
 import BulkScheduleDownload from "../components/projects/BulkScheduleDownload";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { isMaster } from "@/lib/accessControl";
-
-const statusConfig = {
-  no_status: { label: "Sem status", color: "bg-gray-100 text-gray-600", icon: Circle },
-  in_progress: { label: "Em andamento", color: "bg-blue-100 text-blue-700", icon: Clock },
-  completed: { label: "Concluído", color: "bg-green-100 text-green-700", icon: CheckCircle2 },
-  archived: { label: "Arquivado", color: "bg-gray-100 text-gray-500", icon: Archive },
-};
 
 const ProjectCard = memo(function ProjectCard({ project, jobs, client, onClick, onToggleFavorite, totalMinutes, statusList }) {
   const activeJobs = jobs.filter(j => j.status !== "cancelled");
@@ -184,34 +175,40 @@ export default function Projects() {
   const [jobsByProject, setJobsByProject] = useState({});
   const [clientsById, setClientsById] = useState({});
   const [hoursByProject, setHoursByProject] = useState({});
+  const [loadError, setLoadError] = useState("");
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
-    const [data, jobs, clients, timesheets] = await Promise.all([
-      maestro.entities.Project.list("-created_date", 100),
-      maestro.entities.Job.list("-created_date", 500),
-      maestro.entities.Client.list("name", 200),
-      maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 2000),
-    ]);
-    setProjects(data);
-    const grouped = {};
-    jobs.forEach(j => {
-      if (!grouped[j.project_id]) grouped[j.project_id] = [];
-      grouped[j.project_id].push(j);
-    });
-    setJobsByProject(grouped);
-    const byId = {};
-    clients.forEach(c => { byId[c.id] = c; });
-    setClientsById(byId);
-    // Calcular horas por projeto a partir dos timesheets
-    const hByProject = {};
-    timesheets.forEach(t => {
-      if (t.project_id && t.duration_minutes) {
-        hByProject[t.project_id] = (hByProject[t.project_id] || 0) + t.duration_minutes;
-      }
-    });
-    setHoursByProject(hByProject);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const [data, jobs, clients, timesheets] = await Promise.all([
+        maestro.entities.Project.list("-created_date", 100),
+        maestro.entities.Job.list("-created_date", 500),
+        maestro.entities.Client.list("name", 200),
+        maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 2000),
+      ]);
+      setProjects(data);
+      const grouped = {};
+      jobs.forEach(j => {
+        if (!grouped[j.project_id]) grouped[j.project_id] = [];
+        grouped[j.project_id].push(j);
+      });
+      setJobsByProject(grouped);
+      const byId = {};
+      clients.forEach(c => { byId[c.id] = c; });
+      setClientsById(byId);
+      const hByProject = {};
+      timesheets.forEach(t => {
+        if (t.project_id && t.duration_minutes) {
+          hByProject[t.project_id] = (hByProject[t.project_id] || 0) + t.duration_minutes;
+        }
+      });
+      setHoursByProject(hByProject);
+    } catch (error) {
+      setLoadError(error?.message || "Não foi possível carregar os projetos.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
@@ -342,6 +339,12 @@ export default function Projects() {
   return (
     <div ref={containerRef} className="p-6" style={{ WebkitOverflowScrolling: "touch" }} {...handlers}>
       <PullIndicator />
+      {loadError && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span>{loadError}</span>
+          <Button variant="outline" size="sm" onClick={loadProjects}>Tentar novamente</Button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -369,12 +372,8 @@ export default function Projects() {
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Buscar projetos..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+            <Input className="pl-9 pr-9" placeholder="Buscar projetos..." value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button type="button" aria-label="Limpar busca de projetos" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="h-3.5 w-3.5" /></button>}
         </div>
         {allTeams.length > 0 && (
           <div className="relative">

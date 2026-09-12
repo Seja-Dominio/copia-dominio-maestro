@@ -7,6 +7,9 @@ export const REPORT_METRICS = [
   { id: "overdue_posts", label: "Posts atrasados", description: "Jobs com data de postagem vencida e ainda não concluídos." },
   { id: "next_5_unplanned", label: "Próximos 5 dias sem agendamento", description: "Posts dos próximos cinco dias que ainda não foram agendados." },
   { id: "overdue_tasks", label: "Tarefas atrasadas", description: "Subtarefas vencidas que ainda estão pendentes." },
+  { id: "today_posts", label: "Postagens de hoje", description: "Jobs com data de postagem marcada para hoje." },
+  { id: "my_tasks", label: "Minhas tarefas", description: "Minhas mini tarefas que ainda estão abertas." },
+  { id: "missing_content", label: "Jobs com briefing e/ou legenda vazio", description: "Jobs ativos que precisam de briefing, legenda ou dos dois." },
 ];
 const WEEK_DAYS = [{ id: 1, label: "Seg" }, { id: 2, label: "Ter" }, { id: 3, label: "Qua" }, { id: 4, label: "Qui" }, { id: 5, label: "Sex" }, { id: 6, label: "Sáb" }, { id: 7, label: "Dom" }];
 
@@ -24,12 +27,15 @@ function dateLabel(value) {
   return value ? new Date(value + "T12:00:00").toLocaleDateString("pt-BR") : "sem data";
 }
 
-function rowsForMetric(id, jobs, subtasks) {
+function rowsForMetric(id, jobs, subtasks, myTasks = []) {
   const today = todayKey();
   const next = plusDays(today, 5);
   const excluded = ["completed", "scheduled", "cancelled"];
   if (id === "overdue_posts") return jobs.filter((job) => job.post_date && job.post_date <= today && !excluded.includes(job.status)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
   if (id === "next_5_unplanned") return jobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= next && !excluded.includes(job.status)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
+  if (id === "today_posts") return jobs.filter((job) => job.post_date === today && job.status !== "cancelled").sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  if (id === "my_tasks") return myTasks.filter((task) => !task.is_completed && task.status !== "completed").sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+  if (id === "missing_content") return jobs.filter((job) => !excluded.includes(job.status) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim())).sort((a, b) => String(a.post_date || "9999").localeCompare(String(b.post_date || "9999")));
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
   return subtasks.filter((task) => {
     const job = jobsById.get(task.job_id);
@@ -38,18 +44,20 @@ function rowsForMetric(id, jobs, subtasks) {
   }).sort((a, b) => String(a.deadline || "9999").localeCompare(String(b.deadline || "9999")));
 }
 
-export function formatDashboardReport(metricIds, jobs, subtasks, clientNames) {
+export function formatDashboardReport(metricIds, jobs, subtasks, clientNames, myTasks = []) {
   const sections = metricIds.map((id) => {
     const metric = REPORT_METRICS.find((item) => item.id === id);
-    const rows = rowsForMetric(id, jobs, subtasks);
+    const rows = rowsForMetric(id, jobs, subtasks, myTasks);
     const lines = rows.map((row) => {
       const job = id === "overdue_tasks" ? jobs.find((item) => item.id === row.job_id) : row;
       const client = clientNames.get(job?.client_id) || job?.client_name || "Cliente não identificado";
+      if (id === "my_tasks") return "• " + (row.title || "Tarefa sem título") + " · " + dateLabel(row.due_date);
       const title = id === "overdue_tasks" ? (job?.title || "Job") + " — " + (row.title || "Tarefa") : (row.title || "Post sem título");
-      return "• " + client + " · " + title + " · " + dateLabel(row.deadline || row.post_date);
+      const missing = id === "missing_content" ? " · faltando: " + [!String(row.briefing || "").trim() ? "briefing" : "", !String(row.caption || "").trim() ? "legenda" : ""].filter(Boolean).join(" e ") : "";
+      return "• " + client + " · " + title + " · " + dateLabel(row.deadline || row.post_date) + missing;
     });
     if (!rows.length) return "✅ *" + metric.label + "*\n\nNenhum item encontrado.";
-    const emoji = id === "overdue_posts" ? "⚠️" : id === "next_5_unplanned" ? "📅" : "🧩";
+    const emoji = id === "overdue_posts" ? "⚠️" : id === "next_5_unplanned" ? "📅" : id === "overdue_tasks" ? "🧩" : id === "today_posts" ? "🗓️" : id === "my_tasks" ? "✅" : "📝";
     return emoji + " *" + metric.label + "*\nTotal: " + rows.length + " item(ns)\n\n" + lines.join("\n");
   });
   return "*Resumo do Maestro*\n📅 " + new Date().toLocaleDateString("pt-BR") + "\n\n" + sections.join("\n\n━━━━━━━━━━━━\n\n");
@@ -80,6 +88,7 @@ export default function WhatsappReportsPanel({ clients }) {
   const [automations, setAutomations] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
+  const [myTasks, setMyTasks] = useState([]);
   const [groupId, setGroupId] = useState("");
   const [metricIds, setMetricIds] = useState(["overdue_posts", "next_5_unplanned"]);
   const [frequency, setFrequency] = useState("once");
@@ -91,6 +100,9 @@ export default function WhatsappReportsPanel({ clients }) {
   const [notice, setNotice] = useState(null);
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));
   const selectedGroup = groups.find((group) => group.id === groupId);
+  const collaboratorId = (() => {
+    try { return JSON.parse(sessionStorage.getItem("collaborator") || "null")?.id || ""; } catch { return ""; }
+  })();
 
   const loadData = async () => {
     setLoading(true);
@@ -100,11 +112,13 @@ export default function WhatsappReportsPanel({ clients }) {
         invokeMaestroFunction("listWhatsappAutomations", {}),
         maestro.entities.Job.list("-post_date", 5000),
         maestro.entities.Subtask.list("-created_date", 5000),
+        maestro.entities.MiniTask.filter({ collaborator_id: collaboratorId }, "-created_date", 1000),
       ]);
       setGroups(results[0].data?.groups || []);
       setAutomations(results[1].data?.automations || []);
       setJobs(results[2] || []);
       setSubtasks(results[3] || []);
+      setMyTasks(results[4] || []);
       setNotice(null);
     } catch (error) {
       setNotice({ type: "error", text: error.message || "Não foi possível carregar os relatórios." });
@@ -119,12 +133,12 @@ export default function WhatsappReportsPanel({ clients }) {
   const toggleMetric = (id) => setMetricIds((current) => current.includes(id) ? current.filter((item) => item !== id) : current.concat(id));
   const generatePreview = () => {
     if (!metricIds.length) return setNotice({ type: "info", text: "Selecione pelo menos uma métrica." });
-    setPreview(formatDashboardReport(metricIds, jobs, subtasks, clientNames));
+    setPreview(formatDashboardReport(metricIds, jobs, subtasks, clientNames, myTasks));
     setNotice(null);
   };
   const sendReport = async () => {
     if (!groupId) return setNotice({ type: "info", text: "Selecione um grupo WhatsApp." });
-    const text = preview || formatDashboardReport(metricIds, jobs, subtasks, clientNames);
+    const text = preview || formatDashboardReport(metricIds, jobs, subtasks, clientNames, myTasks);
     setBusy(true);
     try {
       const result = await invokeMaestroFunction("sendWhatsapp", { phone: groupId, message: text });
@@ -142,7 +156,7 @@ export default function WhatsappReportsPanel({ clients }) {
     try {
       const result = await invokeMaestroFunction("saveWhatsappAutomation", {
         kind: "dashboard", name: "Resumo do dashboard — " + (selectedGroup?.name || "WhatsApp"), group_id: groupId, metrics: metricIds,
-        frequency, schedule_time: "09:00", weekdays: frequency === "weekly" ? [Number(weekday)] : [1, 2, 3, 4, 5, 6, 7], active: frequency !== "once",
+        frequency, schedule_time: "09:00", weekdays: frequency === "weekly" ? [Number(weekday)] : [1, 2, 3, 4, 5, 6, 7], active: frequency !== "once", collaborator_id: collaboratorId,
       });
       setAutomations((current) => [result.data?.automation].concat(current.filter((item) => item.id !== result.data?.automation?.id)).filter(Boolean));
       setNotice({ type: "success", text: frequency === "once" ? "Resumo salvo. Use Enviar agora para dispará-lo." : "Resumo automático salvo." });

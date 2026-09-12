@@ -21,6 +21,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import { useNavigate } from "react-router-dom";
+import { isAdminLevel } from "@/lib/accessControl";
 
 const ALL_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
@@ -39,7 +40,7 @@ const ALL_NAV_ITEMS = [
 
 const COLLABORATOR_NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "Dashboard" },
-  { label: "Projects",  icon: FolderKanban,    page: "Projects" },
+  { label: "Projetos",  icon: FolderKanban,    page: "Projects" },
   { label: "Jobs",      icon: Briefcase,       page: "Jobs" },
   { label: "Agenda",    icon: Calendar,        page: "Agenda" },
   { label: "Carteira",  icon: Users,           page: "ClientPortfolio" },
@@ -47,7 +48,7 @@ const COLLABORATOR_NAV_ITEMS = [
 ];
 
 const getNavItems = (accessLevel) =>
-  (accessLevel === "admin" || accessLevel === "master" || accessLevel === "gestor") ? ALL_NAV_ITEMS : COLLABORATOR_NAV_ITEMS;
+  (["master", "gestor"].includes(String(accessLevel).toLowerCase())) ? ALL_NAV_ITEMS : COLLABORATOR_NAV_ITEMS;
 
 export default function Layout({ children, currentPageName }) {
   const [user, setUser] = useState(null);
@@ -112,6 +113,13 @@ export default function Layout({ children, currentPageName }) {
     <TooltipProvider>
       <div className="min-h-screen bg-background flex flex-col font-inter">
 
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground focus:shadow-lg"
+        >
+          Pular para o conteúdo principal
+        </a>
+
         {/* ─── HEADER ─────────────────────────────────────────────────── */}
         <header className="h-14 bg-card border-b border-border flex items-center px-4 gap-3 sticky top-0 z-50 shadow-sm safe-top">
 
@@ -143,15 +151,17 @@ export default function Layout({ children, currentPageName }) {
           </div>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1 flex-1 overflow-x-auto">
+          <nav aria-label="Navegação principal" className="hidden md:flex items-center gap-1 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {getNavItems(collaboratorData?.access_level || "collaborator").map((item) => (
               <Link
                 key={item.page}
                 to={`/${item.page}`}
+                aria-current={isActive(item.page) ? "page" : undefined}
+                title={item.label}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all duration-150 no-underline ${
                   isActive(item.page)
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:bg-muted"
                 }`}
               >
                 <item.icon className="w-3.5 h-3.5" />
@@ -170,7 +180,7 @@ export default function Layout({ children, currentPageName }) {
                 user={user}
                 darkMode={darkMode}
                 onToggleDark={() => setDarkMode(d => !d)}
-                isAdmin={collaboratorData?.access_level === "admin"}
+                isAdmin={isAdminLevel(collaboratorData)}
                 onLogout={() => {
                   logoutCollaborator();
                   window.location.href = "/";
@@ -205,7 +215,7 @@ export default function Layout({ children, currentPageName }) {
                   <DropdownMenuItem>
                     <HelpCircle className="w-4 h-4 mr-2" /> Ajuda
                   </DropdownMenuItem>
-                  {(collaboratorData?.access_level === "admin" || collaboratorData?.access_level === "master" || collaboratorData?.access_level === "gestor") && (
+                  {isAdminLevel(collaboratorData) && (
                     <Link to="/Configuracoes" className="no-underline">
                       <DropdownMenuItem>
                         <Settings className="w-4 h-4 mr-2" /> Configurações
@@ -229,6 +239,8 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Main content */}
         <main
+          id="main-content"
+          tabIndex="-1"
           className="flex-1 overflow-auto"
           style={{
             WebkitOverflowScrolling: "touch",
@@ -241,7 +253,7 @@ export default function Layout({ children, currentPageName }) {
         </main>
 
         <AIAssistant currentPage={currentPageName} />
-        {(collaboratorData?.access_level === "admin" || collaboratorData?.access_level === "master" || collaboratorData?.access_level === "gestor") && <AdminChat />}
+        {isAdminLevel(collaboratorData) && <AdminChat />}
         <FloatingTodoList />
 
         {/* Bottom Navigation — mobile only */}

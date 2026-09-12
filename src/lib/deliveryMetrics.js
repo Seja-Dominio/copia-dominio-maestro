@@ -1,5 +1,5 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from "date-fns";
-import { isClosedJob, isJobOverdue, isOpenSubtask, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
+import { isClosedJob, isJobOverdue, isOpenSubtask, isPostSchedulingSubtask, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
 import { todayStr as getTodayStr } from "@/lib/dateUtils";
 
 function dayOnly(value) {
@@ -46,8 +46,13 @@ export function calculateDeliveryMetrics({ jobs = [], subtasks = [], collaborato
     subtasksByJob.get(subtask.job_id).push(subtask);
   });
 
-  const overdueJobs = openJobs.filter((job) => isJobOverdue(job, today, "post_date"));
-  const overdueTasks = relevantSubtasks.filter((subtask) => openJobIds.has(subtask.job_id) && isSubtaskOverdue(subtask, today));
+  const overdueJobs = openJobs.filter((job) => {
+    const currentStage = getCurrentStageSubtask(job.id, subtasksByJob.get(job.id) || []);
+    return isInPeriod(job.post_date, effectivePeriod)
+      && isJobOverdue(job, today, "post_date")
+      && !isPostSchedulingSubtask(currentStage);
+  });
+  const overdueTasks = relevantSubtasks.filter((subtask) => isInPeriod(subtask.deadline, effectivePeriod) && openJobIds.has(subtask.job_id) && isSubtaskOverdue(subtask, today));
   const overdueTasksByJob = new Map();
   overdueTasks.forEach((subtask) => {
     if (!overdueTasksByJob.has(subtask.job_id)) overdueTasksByJob.set(subtask.job_id, []);
@@ -117,11 +122,64 @@ export function calculateDeliveryMetrics({ jobs = [], subtasks = [], collaborato
     .map((row) => ({ ...row, jobs: row.jobs.size, ageDays: row.oldestPostDate ? Math.max(0, differenceInCalendarDays(parseISO(today), parseISO(row.oldestPostDate))) : 0 }))
     .sort((left, right) => right.jobs - left.jobs || right.tasks - left.tasks || left.responsibleName.localeCompare(right.responsibleName));
 
-  const upcomingNotScheduled = openJobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= format(addDays(parseISO(today), 5), "yyyy-MM-dd"));
+  // The upcoming-postings KPI is a rolling operational window, not a
+  // historical report period. It must match the Dashboard's post calendar.
+  const upcomingNotScheduled = openJobs.filter((job) => job.post_date && job.post_date >= today && job.post_date <= format(addDays(parseISO(today), 5), "yyyy-MM-dd"));
   const activeTasks = relevantSubtasks.filter((subtask) => openJobIds.has(subtask.job_id) && isOpenSubtask(subtask));
   const clientRows = [...new Set(overdueJobs.map((job) => job.client_id).filter(Boolean))]
     .map((clientId) => ({ id: clientId, name: clientsById.get(clientId)?.name || overdueJobs.find((job) => job.client_id === clientId)?.client_name || "Cliente não identificado", jobs: overdueJobs.filter((job) => job.client_id === clientId).length, tasks: overdueTasks.filter((subtask) => jobById.get(subtask.job_id)?.client_id === clientId).length }))
     .sort((left, right) => right.jobs - left.jobs || right.tasks - left.tasks);
+
+  const detailRows = [
+    ...overdueJobs.map((job) => {
+      const currentStage = getCurrentStageSubtask(job.id, subtasksByJob.get(job.id) || []);
+      return {
+        key: `job-${job.id}`,
+        kind: "Job atrasado",
+        clientId: job.client_id || "",
+        clientName: clientsById.get(job.client_id)?.name || job.client_name || "Cliente não identificado",
+        jobId: job.id,
+        jobTitle: job.title || "Job sem título",
+        taskTitle: currentStage?.title || "Data de postagem do job",
+        date: job.post_date || "",
+        responsibleId: currentStage?.responsible_id || job.responsible_id || "",
+        responsibleName: currentStage?.responsible_name || job.responsible_name || collaboratorsById.get(job.responsible_id)?.name || "Sem responsável",
+        status: job.status || "",
+      };
+    }),
+    ...overdueTasks.map((subtask) => {
+      const job = jobById.get(subtask.job_id);
+      return {
+        key: `task-${subtask.id}`,
+        kind: "Tarefa atrasada",
+        clientId: job?.client_id || "",
+        clientName: clientsById.get(job?.client_id)?.name || job?.client_name || "Cliente não identificado",
+        jobId: job?.id || subtask.job_id || "",
+        jobTitle: job?.title || "Job não identificado",
+        taskTitle: subtask.title || "Tarefa sem título",
+        date: subtask.deadline || "",
+        responsibleId: subtask.responsible_id || "",
+        responsibleName: subtask.responsible_name || collaboratorsById.get(subtask.responsible_id)?.name || "Sem responsável",
+        status: subtask.status || "pending",
+      };
+    }),
+    ...completedTasksWithDeadline.map((subtask) => {
+      const job = jobById.get(subtask.job_id);
+      return {
+        key: `completed-${subtask.id}`,
+        kind: dayOnly(subtask.completed_at) <= dayOnly(subtask.deadline) ? "Entregue no prazo" : "Entregue fora do prazo",
+        clientId: job?.client_id || "",
+        clientName: clientsById.get(job?.client_id)?.name || job?.client_name || "Cliente não identificado",
+        jobId: job?.id || subtask.job_id || "",
+        jobTitle: job?.title || "Job não identificado",
+        taskTitle: subtask.title || "Tarefa sem título",
+        date: subtask.completed_at || subtask.deadline || "",
+        responsibleId: subtask.responsible_id || "",
+        responsibleName: subtask.responsible_name || collaboratorsById.get(subtask.responsible_id)?.name || "Sem responsável",
+        status: subtask.status || "completed",
+      };
+    }),
+  ].sort((left, right) => String(left.date || "9999-12-31").localeCompare(String(right.date || "9999-12-31")) || left.clientName.localeCompare(right.clientName) || left.jobTitle.localeCompare(right.jobTitle));
 
   return {
     period: effectivePeriod,
@@ -132,6 +190,7 @@ export function calculateDeliveryMetrics({ jobs = [], subtasks = [], collaborato
     responsibleRows,
     stageRows,
     clientRows,
+    detailRows,
     overdueJobOwners,
     totals: {
       overdueJobs: overdueJobs.length,

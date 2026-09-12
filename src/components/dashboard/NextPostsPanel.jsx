@@ -1,30 +1,38 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPageUrl } from "@/utils";
 import { Calendar, CalendarDays, ArrowRight, Briefcase } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { STATUS_CONFIG, CONTENT_ICONS } from "./dashboardConstants";
+import { normalizeWorkflowStatus } from "@/lib/jobWorkflow";
 
-export default function NextPostsPanel({ dayGroups, scheduledCount, notScheduledCount, todayStr, onJobClick }) {
+export default function NextPostsPanel({ dayGroups, todayStr, onJobClick }) {
   const [expandedDates, setExpandedDates] = useState({});
+  const summary = useMemo(() => {
+    const jobs = dayGroups.flatMap(group => group.jobs || []);
+    return {
+      scheduled: jobs.filter(job => normalizeWorkflowStatus(job.status) === "scheduled").length,
+      notScheduled: jobs.filter(job => !["scheduled", "completed", "cancelled"].includes(normalizeWorkflowStatus(job.status))).length,
+    };
+  }, [dayGroups]);
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
             <Calendar className="w-3.5 h-3.5 text-white" />
           </div>
-          <h3 className="text-sm font-bold text-foreground">Próximas Postagens — 5 dias</h3>
+          <h3 className="text-sm font-bold text-foreground">Postagens — hoje e próximos 5 dias</h3>
         </div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <span className="flex items-center gap-1.5 text-green-600 font-semibold">
             <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-            {scheduledCount} agendados
+            {summary.scheduled} agendados
           </span>
           <span className="flex items-center gap-1.5 text-amber-600 font-semibold">
             <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-            {notScheduledCount} não agendados
+            {summary.notScheduled} não agendados
           </span>
         </div>
       </div>
@@ -53,11 +61,13 @@ export default function NextPostsPanel({ dayGroups, scheduledCount, notScheduled
                   {visibleJobs.map(j => {
                     const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
                     const ContentIcon = CONTENT_ICONS[j.content_type] || Briefcase;
-                    const isNotScheduled = j.status !== "scheduled" && j.status !== "completed";
+                    const normalizedStatus = normalizeWorkflowStatus(j.status);
+                    const isCompletedOrScheduled = ["scheduled", "completed"].includes(normalizedStatus);
+                    const statusLabel = isCompletedOrScheduled ? (normalizedStatus === "completed" ? "Concluída" : "Agendada") : "Pendente";
                     return (
-                      <button key={j.id} onClick={() => onJobClick?.(j)} className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-colors text-left ${isNotScheduled ? "border-amber-200 bg-amber-50/60 dark:bg-amber-900/10 hover:bg-amber-100/60" : "border-green-200 bg-green-50/60 dark:bg-green-900/10 hover:bg-green-100/60"}`}>
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isNotScheduled ? "bg-amber-100" : "bg-green-100"}`}>
-                          <ContentIcon className={`w-3.5 h-3.5 ${isNotScheduled ? "text-amber-600" : "text-green-600"}`} />
+                      <button type="button" key={j.id} onClick={() => onJobClick?.(j)} aria-label={`${j.title || "Job sem título"} — ${j.client_name || "Sem cliente"} — ${j.stage_title || "Etapa não identificada"} — ${statusLabel}`} className={`group w-full flex items-center gap-3 p-2.5 rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${isCompletedOrScheduled ? "border-green-300 bg-green-200 hover:bg-green-300 dark:border-green-800 dark:bg-green-900/50 dark:hover:bg-green-900/70" : "border-red-300 bg-red-200 hover:bg-red-300 dark:border-red-800 dark:bg-red-900/50 dark:hover:bg-red-900/70"}`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isCompletedOrScheduled ? "bg-green-100" : "bg-red-100"}`}>
+                          <ContentIcon className={`w-3.5 h-3.5 ${isCompletedOrScheduled ? "text-green-600" : "text-red-600"}`} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-foreground truncate">{j.title}</p>
@@ -76,7 +86,7 @@ export default function NextPostsPanel({ dayGroups, scheduledCount, notScheduled
                   })}
                 </div>
                 {hasMore && (
-                  <button onClick={() => setExpandedDates(prev => ({ ...prev, [dateStr]: !isExpanded }))} className="mt-2 text-xs text-primary font-semibold hover:underline">
+                  <button type="button" onClick={() => setExpandedDates(prev => ({ ...prev, [dateStr]: !isExpanded }))} className="mt-2 rounded-md text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
                     {isExpanded ? "← Ver menos" : `Ver mais ${dayJobs.length - 3}`}
                   </button>
                 )}

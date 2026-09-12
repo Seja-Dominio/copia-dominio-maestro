@@ -5,17 +5,17 @@ import { maestro, uploadMaestroFile } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  X, Plus, CheckCircle2, Circle, Clock, AlertCircle,
-  Calendar, Save, Trash2, Timer, Send, Paperclip,
-  History, MessageSquare, ChevronRight, MoreVertical,
-  Share2, CheckSquare, User, Play, Square, Copy, ChevronDown,
+  X, Plus, CheckCircle2, Circle, Clock,
+  Calendar, Trash2, Timer, Send, Paperclip,
+  History, MessageSquare, ChevronRight,
+  Play, Square, Copy, ChevronDown,
   RotateCcw, ChevronLeft, Check, GripVertical, Ban, Upload, FileText, Printer
 } from "lucide-react";
 import JobAttachmentsTab from "./JobAttachmentsTab";
 import SendJobToWhatsAppModal from "./SendJobToWhatsAppModal";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import TimesheetEditModal from "@/components/timesheets/TimesheetEditModal";
-import { format, differenceInSeconds, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, parseISO } from "date-fns";
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { autoCompleteSubtasks, deriveJobStatusFromSubtasks } from "./subtaskAutoComplete";
@@ -23,6 +23,7 @@ import { fireJobCreatedNotifications, fireJobStatusNotifications, fireNewSubtask
 import { isJobOverdue, isOpenSubtask } from "@/lib/jobWorkflow";
 import SpellCheckTextarea from "@/components/SpellCheckTextarea";
 import { safeDelete } from "@/lib/safeDelete";
+import { isAdminLevel } from "@/lib/accessControl";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import { Link2 } from "lucide-react";
 
@@ -378,7 +379,6 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   const [isReworkMode, setIsReworkMode] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
   const [history, setHistory] = useState([]);
-  const [repeating, setRepeating] = useState(false);
   const [legendaCopied, setLegendaCopied] = useState(false);
   const [editingBriefing, setEditingBriefing] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
@@ -588,6 +588,25 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       addHistory("timer_session", `Sessão de trabalho: ${label}${activeTimer.is_rework ? " (retrabalho)" : ""}`, { duration_minutes: dur });
     }
   }
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const timer = activeTimerRef.current;
+      if (timer) {
+        const duration = Math.max(1, Math.floor((Date.now() - new Date(timer.started_at).getTime()) / 60000));
+        void maestro.entities.Timesheet.update(timer.id, {
+          ended_at: new Date().toISOString(),
+          is_running: false,
+          duration_minutes: duration,
+        });
+      }
+      onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   async function startTimer() {
     if (!collabId) return;
@@ -846,7 +865,6 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   }
 
   async function repeatJob(count) {
-    setRepeating(true);
     const n = Math.max(1, Math.min(20, count));
     for (let i = 0; i < n; i++) {
       const newJob = await maestro.entities.Job.create({
@@ -867,7 +885,6 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         void fireJobCreatedNotifications(newJob, createdSubtasks).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
       }
     }
-    setRepeating(false);
     onSubtasksChange?.();
   }
 
@@ -1010,9 +1027,8 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
   return createPortal(
     <>
-    <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={async () => { await stopTimer(); onClose(); }} />
-    <div className="bg-card rounded-xl shadow-2xl flex flex-col overflow-visible"
-      style={{position:"fixed", top: 60, left:"calc(0.5vw + 40px)", transform:"none", width:"calc(59vw - 80px)", maxWidth:"64rem", height:"calc(100vh - 70px)", maxHeight:"calc(100vh - 70px)", zIndex: 10000, borderRadius: 12}}
+    <div aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={async () => { await stopTimer(); onClose(); }} />
+    <div role="dialog" aria-modal="true" aria-labelledby="job-detail-title" tabIndex="-1" className="fixed inset-x-2 bottom-2 top-14 z-[10000] flex flex-col overflow-visible rounded-xl bg-card shadow-2xl md:bottom-auto md:left-[calc(0.5vw+40px)] md:right-auto md:top-[60px] md:h-[calc(100vh-70px)] md:w-[calc(59vw-80px)] md:max-w-[64rem]"
       onDragEnter={handleGlobalDragEnter}
       onDragLeave={handleGlobalDragLeave}
       onDragOver={handleGlobalDragOver}
@@ -1122,6 +1138,8 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           <div className="flex items-center gap-3">
             <button className="text-muted-foreground hover:text-amber-400 transition-colors" onClick={() => update("is_favorite", !job.is_favorite)}>★</button>
             <input
+              id="job-detail-title"
+              aria-label="Título do job"
               className="text-xl font-bold text-foreground bg-transparent border-none outline-none flex-1 focus:ring-0 p-0"
               value={job.title}
               onChange={e => update("title", e.target.value)}
@@ -1137,10 +1155,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         </div>
 
         {/* MAIN SPLIT */}
-        <div className="flex flex-1 min-h-0 overflow-hidden rounded-b-2xl">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-b-2xl md:flex-row">
 
           {/* LEFT */}
-          <div className="flex-1 overflow-y-auto border-r border-border">
+          <div className="min-h-0 flex-1 overflow-y-auto md:border-r md:border-border">
 
             {/* Subtasks */}
             <div className="px-5 py-3 border-b border-border">
@@ -1248,6 +1266,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               </div>
               <input
                 type="url"
+                aria-label="Link de referência do job"
                 placeholder="https://www.instagram.com/reel/..."
                 value={job.reference_url || ""}
                 onChange={e => update("reference_url", e.target.value)}
@@ -1278,7 +1297,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 />
               ) : (
                 <div
+                  role="textbox"
+                  tabIndex="0"
+                  aria-label="Briefing do job"
                   onClick={() => setEditingBriefing(true)}
+                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setEditingBriefing(true); }}
                   className="min-h-[120px] rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-text whitespace-pre-wrap"
                 >
                   {job.briefing ? (
@@ -1331,7 +1354,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 />
               ) : (
                 <div
+                  role="textbox"
+                  tabIndex="0"
+                  aria-label="Legenda do job"
                   onClick={() => setEditingCaption(true)}
+                  onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setEditingCaption(true); }}
                   className="min-h-[80px] rounded-lg border border-input bg-background px-3 py-2 text-sm cursor-text whitespace-pre-wrap"
                 >
                   {job.caption ? (
@@ -1347,7 +1374,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           </div>
 
           {/* RIGHT — Tabs */}
-          <div className="w-80 flex flex-col overflow-hidden">
+          <div className="h-[22rem] w-full shrink-0 border-t border-border flex flex-col overflow-hidden md:h-auto md:w-80 md:border-l md:border-t-0">
             <div className="flex border-b border-border flex-shrink-0 overflow-x-auto">
               {[
                 { id: "comments", label: "Comentários", icon: MessageSquare },
@@ -1409,14 +1436,14 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <input className="flex-1 h-9 rounded-lg border border-input bg-background px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      <input aria-label="Comentário do job" className="flex-1 h-9 rounded-lg border border-input bg-background px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                         placeholder="Insira seu comentário aqui ou cole uma imagem"
                         value={newComment} onChange={e => setNewComment(e.target.value)}
                         onKeyDown={e => e.key === "Enter" && !e.shiftKey && postComment()}
                         onPaste={handleCommentPaste} />
                       <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
                         onChange={e => { if (e.target.files[0]) handleImageAttach(e.target.files[0]); e.target.value = ""; }} />
-                      <button onClick={postComment} className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-white hover:bg-primary/90">
+                      <button type="button" aria-label="Enviar comentário" onClick={postComment} className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-white hover:bg-primary/90">
                         <Send className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1492,7 +1519,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                 <div className="relative h-full flex flex-col">
                   <JobAttachmentsTab
                     currentUser={collabName}
-                    isAdmin={sessionCollaborator?.access_level === "admin"}
+                    isAdmin={isAdminLevel(sessionCollaborator)}
                     uploadContext={{ clientName: job.client_name, projectName: job.project_name, jobTitle: job.title }}
                     attachments={job.attachments || []}
                     commentImages={comments.flatMap(c => {
@@ -1565,7 +1592,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         <TimesheetEditModal
           timesheet={timesheetModal}
           collaborators={collaborators}
-          isAdmin={sessionCollaborator?.access_level === "admin"}
+          isAdmin={isAdminLevel(sessionCollaborator)}
           onClose={() => setTimesheetModal(null)}
           onSaved={async () => {
             const updated = await maestro.entities.Timesheet.filter({ job_id: job.id }, "-created_date", 50);

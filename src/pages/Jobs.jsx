@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
-import { getCurrentCollaborator, maestro } from "@/api/maestroClient";
+import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Plus, Search, LayoutList, Kanban, Table2, Clock,
-  Calendar, AlertCircle, GripVertical, ChevronRight,
+  AlertCircle,
   User, Filter, Users, Building2
 } from "lucide-react";
 import {
@@ -18,9 +17,10 @@ import { format } from "date-fns";
 import JobDetailModal from "../components/jobs/JobDetailModal";
 import CreateJobModal from "../components/jobs/CreateJobModal";
 import KanbanView from "../components/jobs/KanbanView";
-import JobsListView from "@/components/jobs/JobsListView";
 import SubtasksPautaView from "@/components/jobs/SubtasksPautaView";
-import { isJobOverdue } from "@/lib/jobWorkflow";
+import { isJobOverdue, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
+import { isAdminLevel } from "@/lib/accessControl";
+import { useToast } from "@/components/ui/use-toast";
 
 export { DEFAULT_STATUS_CONFIG as STATUS_CONFIG } from "@/lib/AppConfigContext";
 // Re-export for backward compat with components that still import from here
@@ -32,6 +32,21 @@ const VIEWS = [
   { id: "timesheet", label: "Timesheet", icon: Clock },
 ];
 
+const TABLE_TONE_CLASSES = {
+  "post-overdue": "bg-red-50/70 hover:bg-red-100/80 dark:bg-red-950/20 dark:hover:bg-red-950/35",
+  "task-overdue": "bg-amber-50/70 hover:bg-amber-100/80 dark:bg-amber-950/20 dark:hover:bg-amber-950/35",
+  done: "bg-emerald-50/70 hover:bg-emerald-100/80 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/35",
+  "on-time": "hover:bg-muted/50",
+};
+
+function getJobToneKey(job, subtasks, today) {
+  const status = normalizeWorkflowStatus(job.status);
+  if (["completed", "scheduled"].includes(status)) return "done";
+  if (isJobOverdue(job, today, "post_date")) return "post-overdue";
+  if (subtasks.some(subtask => isSubtaskOverdue(subtask, today))) return "task-overdue";
+  return "on-time";
+}
+
 export default function Jobs() {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
   const [jobs, setJobs] = useState([]);
@@ -41,7 +56,6 @@ export default function Jobs() {
   const [search, setSearch] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [user, setUser] = useState(null);
   const [jobFilter, setJobFilter] = useState("all"); // "all" | "mine" | "overdue"
   const [teamFilter, setTeamFilter] = useState("all");
   const [projects, setProjects] = useState([]);
@@ -52,9 +66,10 @@ export default function Jobs() {
   });
   const [activeClients, setActiveClients] = useState([]);
   const [activeCollaborators, setActiveCollaborators] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
-    setUser(getCurrentCollaborator());
     loadData();
     maestro.entities.Collaborator.filter({ is_active: true }, "name", 100).then(setActiveCollaborators);
     maestro.entities.Client.filter({ status: "active" }, "name", 500).then(setActiveClients);
@@ -67,19 +82,25 @@ export default function Jobs() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [j, s, p] = await Promise.all([
-      maestro.entities.Job.list("-post_date", 5000),
-      maestro.entities.Subtask.list("-created_date", 5000),
-      maestro.entities.Project.list("-created_date", 5000),
-    ]);
-    // Keep completed jobs visible so the external app preserves the historical
-    // pauta from Base44. Only cancelled jobs stay out of the main job views.
-    const visibleJobs = j.filter(job => job.status !== "cancelled");
-    const visibleJobIds = new Set(visibleJobs.map(job => job.id));
-    setJobs(visibleJobs);
-    setSubtasks(s.filter(sub => visibleJobIds.has(sub.job_id)));
-    setProjects(p);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const [j, s, p] = await Promise.all([
+        maestro.entities.Job.list("-post_date", 5000),
+        maestro.entities.Subtask.list("-created_date", 5000),
+        maestro.entities.Project.list("-created_date", 5000),
+      ]);
+      // Keep completed jobs visible so the external app preserves the historical
+      // pauta from Base44. Only cancelled jobs stay out of the main job views.
+      const visibleJobs = j.filter(job => job.status !== "cancelled");
+      const visibleJobIds = new Set(visibleJobs.map(job => job.id));
+      setJobs(visibleJobs);
+      setSubtasks(s.filter(sub => visibleJobIds.has(sub.job_id)));
+      setProjects(p);
+    } catch (error) {
+      setLoadError(error?.message || "Não foi possível carregar os jobs.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // Abrir job direto pela URL (?job=ID)
@@ -118,9 +139,12 @@ export default function Jobs() {
     setJobs(curr => curr.map(j => j.id === jobId ? { ...j, status } : j));
     try {
       await maestro.entities.Job.update(jobId, { status });
+      const statusLabel = STATUS_CONFIG[status]?.label || "Status atualizado";
+      toast({ title: "Job atualizado", description: statusLabel });
     } catch {
       // Revert on error
       setJobs(curr => curr.map(j => j.id === jobId ? { ...j, status: prev } : j));
+      toast({ variant: "destructive", title: "Não foi possível atualizar o job", description: "Tente novamente." });
     }
   }
 
@@ -150,8 +174,7 @@ export default function Jobs() {
     });
   }, []);
 
-  const filtered = jobs
-    .filter(j => {
+  const baseFiltered = jobs.filter(j => {
       if (search && !j.title?.toLowerCase().includes(search.toLowerCase()) && !j.client_name?.toLowerCase().includes(search.toLowerCase())) return false;
       if (clientFilter !== "all") {
         if (j.client_id !== clientFilter) return false;
@@ -164,8 +187,19 @@ export default function Jobs() {
       if (collaboratorFilter !== "all") {
         if (j.responsible_id !== collaboratorFilter && !(j.involved || []).includes(collaboratorFilter)) return false;
       }
+      return true;
+    });
+
+  const filterCounts = {
+    all: baseFiltered.length,
+    mine: baseFiltered.filter(isMyJob).length,
+    overdue: baseFiltered.filter(j => isMyJob(j) && isJobOverdue(j, today, "post_date")).length,
+  };
+
+  const filtered = baseFiltered
+    .filter(j => {
       if (jobFilter === "mine") return isMyJob(j);
-      if (jobFilter === "overdue") return isMyJob(j) && j.post_date && j.post_date <= today && j.status !== "completed" && j.status !== "scheduled" && j.status !== "cancelled";
+      if (jobFilter === "overdue") return isMyJob(j) && isJobOverdue(j, today, "post_date");
       return true;
     })
     .sort((a, b) => {
@@ -222,6 +256,7 @@ export default function Jobs() {
           >
             <f.icon className="w-3.5 h-3.5" />
             {f.label}
+            <span className="rounded-full bg-background/20 px-1.5 py-0.5 text-[10px] tabular-nums">{filterCounts[f.id]}</span>
           </button>
         ))}
 
@@ -282,6 +317,16 @@ export default function Jobs() {
         </div>
       </div>
 
+      {view === "kanban" && (
+        <div aria-label="Legenda de cores dos jobs" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-background px-4 py-2 text-[10px] font-semibold text-muted-foreground">
+          <span className="uppercase tracking-wide">Legenda</span>
+          <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />Postagem atrasada</span>
+          <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />Tarefa atrasada</span>
+          <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full border border-border bg-card" aria-hidden="true" />No prazo</span>
+          <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" />Concluído ou agendado</span>
+        </div>
+      )}
+
       {/* Content */}
       <div
         ref={containerRef}
@@ -290,14 +335,24 @@ export default function Jobs() {
         {...handlers}
       >
         <PullIndicator />
-        {!loading && (
+        {loadError && (
+          <div role="alert" className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:mx-6">
+            <span>{loadError}</span>
+            <Button variant="outline" size="sm" onClick={loadData}>Tentar novamente</Button>
+          </div>
+        )}
+        {loading ? (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4 sm:p-6" role="status" aria-label="Carregando jobs">
+            {Array.from({ length: 8 }, (_, index) => <div key={index} className="h-32 animate-pulse rounded-xl bg-muted" />)}
+          </div>
+        ) : (
           <>
             {view === "pautas" && (
               <SubtasksPautaView
                 subtasks={subtasks}
                 jobs={jobs}
                 collabId={collabId}
-                isAdmin={collaborator?.access_level === "admin"}
+                isAdmin={isAdminLevel(collaborator)}
                 onSelectJob={handleSelectJob}
                 onSubtaskComplete={async (subtaskId) => {
                   // Optimistic: remove from list immediately
@@ -309,7 +364,6 @@ export default function Jobs() {
             {view === "kanban" && (
               <KanbanView
                 jobs={filtered}
-                subtasks={subtasks}
                 getSubtasksForJob={getSubtasksForJob}
                 onSelectJob={handleSelectJob}
                 onUpdateStatus={updateJobStatus}
@@ -318,7 +372,7 @@ export default function Jobs() {
             )}
             {view === "table" && (
               <div className="p-6">
-                <div className="glass-card overflow-hidden">
+                  <div className="glass-card overflow-x-auto">
                   <table className="w-full text-sm">
                    <thead className="bg-muted border-b border-border">
                      <tr>
@@ -335,12 +389,14 @@ export default function Jobs() {
                    <tbody>
                      {filtered.map(j => {
                        const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
+                       const jobSubtasks = getSubtasksForJob(j.id);
+                       const toneKey = getJobToneKey(j, jobSubtasks, today);
                        const isLate = isJobOverdue(j, today, "delivery_date");
                        return (
                          <tr
                            key={j.id}
                            onClick={() => handleSelectJob(j)}
-                           className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
+                           className={`border-b border-border cursor-pointer transition-colors ${TABLE_TONE_CLASSES[toneKey]}`}
                          >
                             <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{j.number || "—"}</td>
                             <td className="px-4 py-3 font-medium text-foreground">{j.title}</td>
@@ -381,7 +437,7 @@ export default function Jobs() {
               <TimesheetView />
             )}
           </>
-          )}
+        )}
       </div>
 
       {selectedJob && ReactDOM.createPortal(

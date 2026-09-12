@@ -30,7 +30,7 @@ async function authorize(token: string) {
   try { session = JSON.parse(decode(body)) as Session; } catch { return false; }
   if (!session.sub || !session.exp || session.exp < Math.floor(Date.now() / 1000)) return false;
   const { data } = await supabase.from("maestro_collaborators").select("is_active, profile").eq("id", session.sub).maybeSingle();
-  return Boolean(data?.is_active && ["master", "admin"].includes(data.profile?.access_level));
+  return Boolean(data?.is_active && data.profile?.access_level === "master");
 }
 async function load(entity: string) {
   const rows: Row[] = [];

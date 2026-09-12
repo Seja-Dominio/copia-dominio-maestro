@@ -1,6 +1,7 @@
 export default function StatCard({ title, value, sub, icon: Icon, color, href }) {
+  const cardClassName = `flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-[box-shadow,border-color] ${href ? "cursor-pointer hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" : ""}`;
   const inner = (
-    <div className="bg-card border border-border rounded-2xl p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+    <div className={cardClassName}>
       <div className={`w-12 h-12 ${color} rounded-2xl flex items-center justify-center flex-shrink-0`}>
         <Icon className="w-5 h-5 text-white" />
       </div>

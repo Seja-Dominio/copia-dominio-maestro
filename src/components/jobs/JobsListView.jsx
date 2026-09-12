@@ -2,7 +2,15 @@ import { useStatusConfig } from "@/lib/AppConfigContext";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertCircle } from "lucide-react";
-import { isJobOverdue } from "@/lib/jobWorkflow";
+import { isJobOverdue, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
+
+function getListCardTone(job, subtasks, today) {
+  const status = normalizeWorkflowStatus(job.status);
+  if (["completed", "scheduled"].includes(status)) return "border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/85 to-emerald-100/70 dark:border-emerald-800/70 dark:from-emerald-950/40 dark:via-emerald-950/30 dark:to-emerald-900/50";
+  if (isJobOverdue(job, today, "post_date")) return "border-red-200 bg-gradient-to-br from-red-50 via-red-50/85 to-red-100/70 dark:border-red-800/70 dark:from-red-950/40 dark:via-red-950/30 dark:to-red-900/50";
+  if (subtasks.some(subtask => isSubtaskOverdue(subtask, today))) return "border-amber-200 bg-gradient-to-br from-amber-50 via-amber-50/85 to-amber-100/70 dark:border-amber-800/70 dark:from-amber-950/40 dark:via-amber-950/30 dark:to-amber-900/50";
+  return "border-border bg-card";
+}
 
 export default function JobsListView({ jobs, getSubtasksForJob, onSelectJob, today }) {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
@@ -35,13 +43,14 @@ export default function JobsListView({ jobs, getSubtasksForJob, onSelectJob, tod
         const sc = STATUS_CONFIG[j.status] || STATUS_CONFIG.pending_briefing;
         const subtasks = getSubtasksForJob(j.id);
         const openSubtasks = subtasks.filter(s => !s.is_completed).length;
-        const isLate = isJobOverdue(j, today);
+        const isLate = isJobOverdue(j, today, "post_date");
+        const toneClass = getListCardTone(j, subtasks, today);
 
         return (
           <div
             key={j.id}
             onClick={() => onSelectJob(j)}
-            className={`glass-card p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-3 ${
+            className={`border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-3 ${toneClass} ${
               j.status === "cancelled" ? "opacity-50" : ""
             }`}
           >

@@ -79,7 +79,7 @@ Deno.serve(async (request) => {
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
     const session = token ? await verifySession(token) : null;
     if (!session) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
-    if (session.access_level !== "master" && session.access_level !== "admin") {
+    if (session.access_level !== "master") {
       return json({ error: "Apenas o Master pode alterar credenciais." }, 403, origin);
     }
 

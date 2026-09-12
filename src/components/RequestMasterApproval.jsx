@@ -51,7 +51,7 @@ export default function RequestMasterApproval({
 
       // Notify all masters
       const allCollabs = await maestro.entities.Collaborator.filter({ is_active: true });
-      const masters = allCollabs.filter(c => c.access_level === "master" || c.access_level === "admin");
+      const masters = allCollabs.filter(c => c.access_level === "master");
 
       for (const master of masters) {
         await maestro.entities.Notification.create({

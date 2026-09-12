@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, ListTodo } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { isClosedJob, isOpenSubtask } from "@/lib/jobWorkflow";
-import { useStatusConfig } from "@/lib/AppConfigContext";
+import { isClosedJob, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
+import { getCurrentStageSubtask } from "@/lib/deliveryMetrics";
 import { createPageUrl } from "@/utils";
 import NextPostsPanel from "@/components/dashboard/NextPostsPanel";
 
@@ -14,32 +14,33 @@ function formatDeadline(date) {
   return format(parseISO(date), "dd/MM", { locale: ptBR });
 }
 
-function QueueItem({ item, tone, statusLabel, responsibleName, onJobClick }) {
-  const toneClasses = {
-    danger: "border-red-200 bg-red-50/60 hover:bg-red-100/70 dark:border-red-900 dark:bg-red-950/20",
-    warning: "border-amber-200 bg-amber-50/60 hover:bg-amber-100/70 dark:border-amber-900 dark:bg-amber-950/20",
-  };
+function QueueItem({ item, responsibleName, onJobClick }) {
+  const isCompletedOrScheduled = ["scheduled", "completed"].includes(normalizeWorkflowStatus(item.job.status));
+  const toneClasses = isCompletedOrScheduled
+    ? "border-green-300 bg-green-200 hover:bg-green-300 dark:border-green-800 dark:bg-green-900/50 dark:hover:bg-green-900/70"
+    : "border-red-300 bg-red-200 hover:bg-red-300 dark:border-red-800 dark:bg-red-900/50 dark:hover:bg-red-900/70";
   return (
     <button
       type="button"
       onClick={() => onJobClick?.(item.job)}
-      className={`w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${toneClasses[tone]}`}
+      aria-label={`${item.job.title || "Job sem título"} — ${item.job.client_name || "Sem cliente"} — ${item.subtask?.title || "Etapa não identificada"} — ${responsibleName || "Sem responsável"} — postagem ${item.job.post_date ? formatDeadline(item.job.post_date) : "sem data"}`}
+      className={`w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${toneClasses}`}
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-bold text-foreground">{statusLabel}</p>
+        <p className="truncate text-xs font-bold text-foreground">{item.job.title || "Job sem título"}</p>
         <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-          {item.job.client_name || "Sem cliente"} · {item.job.title} · {responsibleName || "Sem responsável"}
+          {item.job.client_name || "Sem cliente"} · {item.subtask?.title || "Etapa não identificada"} · {responsibleName || "Sem responsável"}
         </p>
       </div>
       <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-muted-foreground">
-        {item.subtask.deadline ? formatDeadline(item.subtask.deadline) : "—"}
+        {item.job.post_date ? formatDeadline(item.job.post_date) : "—"}
         <ArrowRight className="h-3 w-3" />
       </span>
     </button>
   );
 }
 
-function QueueSection({ title, count, icon: Icon, tone, items, statusConfig, collaboratorsById, onJobClick }) {
+function QueueSection({ title, count, icon: Icon, tone, items, collaboratorsById, onJobClick }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? items : items.slice(0, MAX_VISIBLE);
   if (!items.length) return null;
@@ -53,17 +54,15 @@ function QueueSection({ title, count, icon: Icon, tone, items, statusConfig, col
       <div className="space-y-1.5">
         {visible.map(item => (
           <QueueItem
-            key={item.subtask.id}
+            key={item.job.id}
             item={item}
-            tone={tone}
-            statusLabel={statusConfig[item.job.status]?.label || item.job.status || "Sem status"}
-            responsibleName={item.subtask.responsible_name || collaboratorsById.get(item.subtask.responsible_id)?.name}
+            responsibleName={item.subtask?.responsible_name || collaboratorsById.get(item.subtask?.responsible_id)?.name || item.job.responsible_name}
             onJobClick={onJobClick}
           />
         ))}
       </div>
       {items.length > MAX_VISIBLE && (
-        <button type="button" onClick={() => setExpanded(value => !value)} className="text-[11px] font-semibold text-primary hover:underline">
+        <button type="button" onClick={() => setExpanded(value => !value)} className="rounded-md text-[11px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
           {expanded ? "Mostrar menos" : `Ver mais ${items.length - MAX_VISIBLE}`}
         </button>
       )}
@@ -71,23 +70,37 @@ function QueueSection({ title, count, icon: Icon, tone, items, statusConfig, col
   );
 }
 
-export default function MyWorkQueue({ subtasks, jobs, collaborators = [], todayStr, upcomingPosts, onJobClick }) {
-  const { statusConfig } = useStatusConfig();
-  const jobMap = useMemo(() => new Map(jobs.map(job => [job.id, job])), [jobs]);
+export default function MyWorkQueue({ subtasks, allSubtasks, jobs, collaborators = [], todayStr, upcomingPosts, onJobClick, agencyView = false }) {
   const collaboratorsById = useMemo(() => new Map(collaborators.map(collaborator => [collaborator.id, collaborator])), [collaborators]);
   const queue = useMemo(() => {
-    const items = subtasks
-      .map(subtask => ({ subtask, job: jobMap.get(subtask.job_id) }))
-      .filter(item => item.job && !isClosedJob(item.job))
-      .filter(item => isOpenSubtask(item.subtask));
+    // A queue card represents the current stage of a job. Older open stages
+    // remain useful in reports, but must not look like separate jobs here.
+    const subtasksByJob = new Map();
+    (allSubtasks || subtasks).forEach(subtask => {
+      if (!subtasksByJob.has(subtask.job_id)) subtasksByJob.set(subtask.job_id, []);
+      subtasksByJob.get(subtask.job_id).push(subtask);
+    });
+    const items = jobs
+      .map(job => ({ job, subtask: getCurrentStageSubtask(job.id, subtasksByJob.get(job.id) || []) }))
+      .filter(item => item.job.post_date && item.job.status !== "cancelled");
+
+    const oldestFirst = (left, right) => {
+      const postDateOrder = String(left.job.post_date || "9999-12-31").localeCompare(String(right.job.post_date || "9999-12-31"));
+      if (postDateOrder !== 0) return postDateOrder;
+      return String(left.job.id).localeCompare(String(right.job.id));
+    };
 
     return {
-      overdue: items.filter(item => item.subtask.deadline && item.subtask.deadline < todayStr),
-      today: items.filter(item => item.subtask.deadline === todayStr),
+      overdue: items.filter(item => item.job.post_date < todayStr && !isClosedJob(item.job)).sort(oldestFirst),
+      today: items.filter(item => item.job.post_date === todayStr).sort(oldestFirst),
     };
-  }, [subtasks, jobMap, todayStr]);
+  }, [subtasks, allSubtasks, jobs, todayStr]);
 
   const total = queue.overdue.length + queue.today.length;
+  const pendingPostCount = useMemo(
+    () => new Set([...queue.overdue, ...queue.today].map(item => item.job.id)).size,
+    [queue],
+  );
   const hasUpcomingPosts = upcomingPosts?.dayGroups?.length > 0;
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -97,8 +110,12 @@ export default function MyWorkQueue({ subtasks, jobs, collaborators = [], todayS
             <ListTodo className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-foreground">Minha fila de trabalho</h3>
-            <p className="text-xs text-muted-foreground">O que precisa da sua ação agora</p>
+            <h3 className="text-sm font-bold text-foreground">{agencyView ? "Fila de trabalho da agência" : "Minha fila de trabalho"}</h3>
+            <p className="text-xs text-muted-foreground">
+              {agencyView
+                ? `${total} postagens exigem atenção da equipe`
+                : `${pendingPostCount} postagens · ${total} postagens na sua fila`}
+            </p>
           </div>
         </div>
         <a href={createPageUrl("Jobs")} className="flex items-center gap-1 text-xs font-semibold text-primary no-underline hover:underline">
@@ -110,12 +127,12 @@ export default function MyWorkQueue({ subtasks, jobs, collaborators = [], todayS
         <div className="flex flex-col items-center gap-2 px-5 py-10 text-center text-muted-foreground">
           <CheckCircle2 className="h-9 w-9 text-emerald-500/60" />
           <p className="text-sm font-semibold text-foreground">Tudo em dia</p>
-          <p className="text-xs">Nenhuma tarefa pendente no período.</p>
+          <p className="text-xs">Nenhuma postagem pendente no período.</p>
         </div>
       ) : (
         <div className="grid gap-5 p-5 lg:grid-cols-2">
-          <QueueSection title="Atrasadas" count={queue.overdue.length} icon={AlertTriangle} tone="danger" items={queue.overdue} statusConfig={statusConfig} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
-          <QueueSection title="Vence hoje" count={queue.today.length} icon={Clock3} tone="warning" items={queue.today} statusConfig={statusConfig} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
+          <QueueSection title="Postagens atrasadas" count={queue.overdue.length} icon={AlertTriangle} tone="danger" items={queue.overdue} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
+          <QueueSection title="Postagens hoje" count={queue.today.length} icon={Clock3} tone="warning" items={queue.today} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
           {upcomingPosts && (
             <div className="lg:col-span-2">
               <NextPostsPanel {...upcomingPosts} onJobClick={onJobClick} />

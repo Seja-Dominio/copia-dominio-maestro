@@ -57,7 +57,7 @@ async function getAdminSession(token: string): Promise<{ session: Session; colla
   if (error || !data?.is_active) return null;
 
   const accessLevel = data.profile?.access_level;
-  if (!(["master", "admin"].includes(accessLevel))) return null;
+  if (accessLevel !== "master") return null;
   return { session, collaborator: data.profile || {} };
 }
 

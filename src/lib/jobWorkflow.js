@@ -13,12 +13,26 @@ export function isOpenSubtask(subtask) {
   return normalizeWorkflowStatus(subtask.status || "pending") !== "completed";
 }
 
+export function isPostSchedulingSubtask(subtask) {
+  const title = String(subtask?.title || subtask?.name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return title === "conferencia" || title.startsWith("conferencia ");
+}
+
 export function isJobOverdue(job, today, dateField = "post_date") {
-  return Boolean(job?.[dateField] && job[dateField] <= today && !isClosedJob(job));
+  return Boolean(job?.[dateField] && job[dateField] < today && !isClosedJob(job));
 }
 
 export function isSubtaskOverdue(subtask, today) {
-  return Boolean(subtask?.deadline && subtask.deadline <= today && isOpenSubtask(subtask));
+  return Boolean(
+    subtask?.deadline
+    && subtask.deadline < today
+    && isOpenSubtask(subtask)
+    && !isPostSchedulingSubtask(subtask),
+  );
 }
 
 export function isWithinNextDays(date, today, lastDay) {

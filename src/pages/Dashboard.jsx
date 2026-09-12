@@ -3,14 +3,16 @@ import { createPageUrl } from "@/utils";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getDashboardData } from "@/api/maestroClient";
 import { maestro } from "@/api/maestroClient";
+import { isDevelopmentEnvironment } from "@/api/supabaseClient";
 import {
-  Briefcase, AlertCircle, Users, AlertTriangle, XCircle, GripVertical, Lock, Unlock, EyeOff, Eye
+  Briefcase, Users, GripVertical, Lock, Unlock, EyeOff, Eye
 } from "lucide-react";
 import { format, addDays, subDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { nowManaus, todayStr as getTodayStr, currentMonthStr } from "@/lib/dateUtils";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
+import SnapshotSyncButton from "@/components/dashboard/SnapshotSyncButton";
 
 import FinancialSection from "@/components/dashboard/FinancialSection";
 import TimesheetMonitor from "@/components/dashboard/TimesheetMonitor";
@@ -23,7 +25,6 @@ import DailySummaryPanel from "@/components/dashboard/DailySummaryPanel";
 import ClientKeyActivities from "@/components/agenda/ClientKeyActivities";
 
 import StatCard from "@/components/dashboard/StatCard";
-import AlertBanner from "@/components/dashboard/AlertBanner";
 import NpsAlertPanel from "@/components/dashboard/NpsAlertPanel";
 import TopClientsWidget from "@/components/dashboard/TopClientsWidget";
 import MyWorkQueue from "@/components/dashboard/MyWorkQueue";
@@ -31,8 +32,56 @@ import JobDetailModal from "@/components/jobs/JobDetailModal";
 import ClientAttentionWidget from "@/components/dashboard/ClientAttentionWidget";
 import ScheduleTrustWidget from "@/components/dashboard/ScheduleTrustWidget";
 import DeliveryMetricsWidget from "@/components/dashboard/DeliveryMetricsWidget";
-import { isClosedJob, isJobOverdue, isSubtaskOverdue } from "@/lib/jobWorkflow";
+import { isClosedJob, isJobOverdue, isPostSchedulingSubtask, isSubtaskOverdue, normalizeWorkflowStatus } from "@/lib/jobWorkflow";
 import { getCurrentStageSubtask } from "@/lib/deliveryMetrics";
+import { isAdminLevel, isMaster } from "@/lib/accessControl";
+
+function parseDashboardList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function DashboardLoadingState() {
+  return (
+    <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:space-y-6 sm:p-6" role="status" aria-label="Carregando dashboard">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <div className="h-7 w-56 animate-pulse rounded-lg bg-muted" />
+          <div className="h-4 w-72 animate-pulse rounded-lg bg-muted" />
+        </div>
+        <div className="flex gap-2">
+          <div className="h-9 w-36 animate-pulse rounded-xl bg-muted" />
+          <div className="h-9 w-28 animate-pulse rounded-xl bg-muted" />
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {["fila", "entregas"].map((section) => (
+          <div key={section} className={`overflow-hidden rounded-2xl border border-border bg-card ${section === "entregas" ? "lg:col-span-2" : ""}`}>
+            <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+              <div className="h-9 w-9 animate-pulse rounded-xl bg-muted" />
+              <div className="space-y-2">
+                <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-56 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: section === "fila" ? 4 : 8 }, (_, index) => (
+                <div key={`${section}-${index}`} className="h-16 animate-pulse rounded-xl bg-muted" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <span className="sr-only">Carregando dados do dashboard...</span>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
@@ -45,18 +94,18 @@ export default function Dashboard() {
   const [subtasks, setSubtasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCollaborator, setSelectedCollaborator] = useState(null);
-  const [overdueFilter, setOverdueFilter] = useState("all");
   const [visibleWidgets, setVisibleWidgets] = useState({});
   const [widgetOrder, setWidgetOrder] = useState([]);
   const [editMode, setEditMode] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedJobSubtasks, setSelectedJobSubtasks] = useState([]);
   const [jobHistory, setJobHistory] = useState([]);
+  const [dashboardError, setDashboardError] = useState("");
 
   const sessionCollaborator = useMemo(() => {
     try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; }
   }, []);
-  const isAdmin = sessionCollaborator?.access_level === "admin" || sessionCollaborator?.access_level === "master" || sessionCollaborator?.access_level === "gestor";
+  const isAdmin = isAdminLevel(sessionCollaborator);
 
   const resolvedCollaborator = useMemo(() => {
     if (!sessionCollaborator?.id) return null;
@@ -70,8 +119,6 @@ export default function Dashboard() {
     }
   }, [resolvedCollaborator]);
 
-  const isWidgetVisible = (id) => visibleWidgets[id] !== false;
-
   const handleJobClick = useCallback(async (job) => {
     const jobSubtasks = subtasks.filter(s => s.job_id === job.id).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
     setSelectedJob(job);
@@ -79,23 +126,26 @@ export default function Dashboard() {
   }, [subtasks]);
 
   const load = useCallback(async () => {
+    setDashboardError("");
+    setLoading(true);
     try {
       const res = await getDashboardData({ collaborator_id: sessionCollaborator?.id });
       const d = res?.data || {};
       setProjects(Array.isArray(d.projects) ? d.projects : []);
-      setJobs(Array.isArray(d.jobs) ? d.jobs : (d.jobs ? JSON.parse(d.jobs) : []));
+      setJobs(parseDashboardList(d.jobs));
       setEntries(Array.isArray(d.entries) ? d.entries : []);
       setCollaborators(Array.isArray(d.collaborators) ? d.collaborators : []);
       setTimesheets(Array.isArray(d.timesheets) ? d.timesheets : []);
       setClients(Array.isArray(d.clients) ? d.clients : []);
       setAgendaEvents(Array.isArray(d.agendaEvents) ? d.agendaEvents : []);
-      setSubtasks(Array.isArray(d.subtasks) ? d.subtasks : (d.subtasks ? JSON.parse(d.subtasks) : []));
+      setSubtasks(parseDashboardList(d.subtasks));
     } catch (err) {
       console.error("Erro ao carregar dashboard:", err);
+      setDashboardError(err?.message || "Não foi possível carregar os dados do dashboard.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionCollaborator?.id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -160,6 +210,12 @@ export default function Dashboard() {
     return new Set(projects.filter(p => p.status === "completed" || p.status === "archived").map(p => p.id));
   }, [projects]);
 
+  const isCountedOverdueJob = useCallback((job, date = todayStr) => {
+    if (!isJobOverdue(job, date)) return false;
+    const currentStage = getCurrentStageSubtask(job.id, subtasks);
+    return !isPostSchedulingSubtask(currentStage);
+  }, [subtasks, todayStr]);
+
   // ── Clients at risk ──
   const clientsAtRisk = useMemo(() => {
     if (!isAdmin) return [];
@@ -208,7 +264,7 @@ export default function Dashboard() {
       let hasCaptacaoPending = false;
 
       cJobs.forEach(j => {
-        if (isJobOverdue(j, todayDate)) {
+        if (isCountedOverdueJob(j, todayDate)) {
           overdueJobsCount++;
         }
         const jSubs = subtasksByJob[j.id] || [];
@@ -232,7 +288,7 @@ export default function Dashboard() {
     });
 
     return results.sort((a, b) => (b.overdueJobsCount + b.overdueSubtasksCount + (b.captacaoPendingSemAgenda ? 5 : 0)) - (a.overdueJobsCount + a.overdueSubtasksCount + (a.captacaoPendingSemAgenda ? 5 : 0)));
-  }, [isAdmin, jobs, subtasks, agendaEvents, clients, excludedProjectIds]);
+  }, [isAdmin, jobs, subtasks, agendaEvents, clients, excludedProjectIds, isCountedOverdueJob]);
 
   const myCollabId = resolvedCollaborator?.id;
 
@@ -246,41 +302,6 @@ export default function Dashboard() {
     const ids = new Set(mySubtasks.map(s => s.job_id).filter(Boolean));
     return jobs.filter(j => j.responsible_id === myCollabId || ids.has(j.id));
   }, [jobs, mySubtasks, myCollabId]);
-
-  const teamOverdueSubtasks = useMemo(() => {
-    const activeJobIds = new Set(jobs.filter(j => !isClosedJob(j) && (!j.project_id || !excludedProjectIds.has(j.project_id))).map(j => j.id));
-    return subtasks.filter(s => activeJobIds.has(s.job_id) && isSubtaskOverdue(s, todayStr));
-  }, [jobs, subtasks, todayStr, excludedProjectIds]);
-
-  const myOverdueJobs = useMemo(() => {
-    if (!myCollabId) return [];
-    const overdueByPost = myJobs.filter(j => isJobOverdue(j, todayStr));
-    const subtaskJobIds = new Set(mySubtasks.filter(s => isSubtaskOverdue(s, todayStr)).map(s => s.job_id).filter(Boolean));
-    const overdueBySubtask = jobs.filter(j => subtaskJobIds.has(j.id) && !isClosedJob(j));
-    const allIds = new Set([...overdueByPost.map(j => j.id), ...overdueBySubtask.map(j => j.id)]);
-    const jobMap = new Map(jobs.map(j => [j.id, j]));
-    return Array.from(allIds).map(id => jobMap.get(id)).filter(Boolean).sort((a, b) => (a.post_date || "9999").localeCompare(b.post_date || "9999"));
-  }, [myJobs, mySubtasks, jobs, myCollabId, todayStr]);
-
-  const allOverdueJobs = useMemo(() => {
-    if (!isAdmin) return myOverdueJobs;
-    const jobMap = new Map(jobs.map(j => [j.id, j]));
-    const ids = new Set();
-    jobs.forEach(j => {
-      if (isClosedJob(j)) return;
-      if (j.project_id && excludedProjectIds.has(j.project_id)) return;
-      if (isJobOverdue(j, todayStr)) ids.add(j.id);
-    });
-    subtasks.forEach(s => {
-      if (isSubtaskOverdue(s, todayStr) && s.job_id) {
-        const j = jobMap.get(s.job_id);
-        if (!j || isClosedJob(j)) return;
-        if (j.project_id && excludedProjectIds.has(j.project_id)) return;
-        ids.add(s.job_id);
-      }
-    });
-    return Array.from(ids).map(id => jobMap.get(id)).filter(Boolean).sort((a, b) => (a.post_date || "9999").localeCompare(b.post_date || "9999"));
-  }, [jobs, myOverdueJobs, isAdmin, todayStr, subtasks, excludedProjectIds]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -336,43 +357,13 @@ export default function Dashboard() {
     return results;
   }, [jobHistory, jobs, clients, projects]);
 
-  // Map: jobId → Set of collaborator IDs with overdue subtasks on that job
-  const overdueSubtaskOwnersByJob = useMemo(() => {
-    const map = {};
-    subtasks.forEach(s => {
-      if (isSubtaskOverdue(s, todayStr) && s.job_id && s.responsible_id) {
-        if (!map[s.job_id]) map[s.job_id] = new Set();
-        map[s.job_id].add(s.responsible_id);
-      }
-    });
-    return map;
-  }, [subtasks, todayStr]);
-
-  // Combined list: overdue + next 5 days not scheduled (for the panel sections)
-  const overdueJobs = useMemo(() => {
-    const overdueIds = new Set(allOverdueJobs.map(j => j.id));
-    const next5NotSched = (isAdmin ? jobs : myJobs).filter(j =>
-      j.post_date && j.post_date > todayStr && j.post_date <= in5DaysStr &&
-      !["scheduled", "completed", "cancelled"].includes(j.status) &&
-      !overdueIds.has(j.id)
-    );
-    let combined = [...allOverdueJobs, ...next5NotSched];
-    if (overdueFilter !== "all") {
-      combined = combined.filter(j =>
-        j.responsible_id === overdueFilter ||
-        (overdueSubtaskOwnersByJob[j.id] && overdueSubtaskOwnersByJob[j.id].has(overdueFilter))
-      );
-    }
-    return combined;
-  }, [allOverdueJobs, jobs, myJobs, isAdmin, overdueFilter, todayStr, in5DaysStr, overdueSubtaskOwnersByJob]);
-
   const next5Jobs = useMemo(() => {
     const source = isAdmin ? jobs : myJobs;
-    return source.filter(j => j.post_date && j.post_date > todayStr && j.post_date <= in5DaysStr).sort((a, b) => (a.post_date || "").localeCompare(b.post_date || ""));
+    return source.filter(j => j.post_date && j.post_date >= todayStr && j.post_date <= in5DaysStr).sort((a, b) => (a.post_date || "").localeCompare(b.post_date || ""));
   }, [jobs, myJobs, isAdmin, todayStr, in5DaysStr]);
 
-  const notScheduledNext5 = next5Jobs.filter(j => !["scheduled", "completed", "cancelled"].includes(j.status));
-  const scheduledNext5 = next5Jobs.filter(j => j.status === "scheduled");
+  const notScheduledNext5 = next5Jobs.filter(j => !["scheduled", "completed", "cancelled"].includes(normalizeWorkflowStatus(j.status)));
+  const scheduledNext5 = next5Jobs.filter(j => normalizeWorkflowStatus(j.status) === "scheduled");
 
   const postageJobs = isAdmin ? jobs : myJobs;
   const dayGroups = useMemo(() => {
@@ -401,14 +392,14 @@ export default function Dashboard() {
     my_alerts: {
       render: () => myCollabId ? (
         <MyWorkQueue
-          subtasks={mySubtasks}
-          jobs={myJobs}
+          subtasks={isAdmin ? subtasks : mySubtasks}
+          allSubtasks={subtasks}
+          jobs={isAdmin ? jobs : myJobs}
           collaborators={collaborators}
           todayStr={todayStr}
+          agencyView={isAdmin}
           upcomingPosts={{
             dayGroups,
-            scheduledCount: scheduledNext5.length,
-            notScheduledCount: notScheduledNext5.length,
             todayStr,
           }}
           onJobClick={handleJobClick}
@@ -429,51 +420,21 @@ export default function Dashboard() {
       adminOnly: false,
     },
     kpi_cards: {
-      render: () => (
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
-          <StatCard title="Clientes Ativos" value={clients.length} sub={`${clients.filter(c => c.tier === "elite").length} elite`} icon={Users} color="bg-primary" href={createPageUrl("ClientPortfolio")} />
-          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => window.location.href = createPageUrl("Jobs")}>
-            <div className="flex items-center gap-2">
-              <div className={`w-9 h-9 ${allOverdueJobs.length > 0 ? "bg-destructive" : "bg-green-500"} rounded-xl flex items-center justify-center`}>
-                <AlertCircle className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Atrasados</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-2xl font-black text-foreground">{overdueJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed","scheduled","cancelled"].includes(j.status)).length}</p>
-                  <span className="text-[10px] text-muted-foreground font-medium">jobs</span>
-                  <span className="text-muted-foreground">|</span>
-                  <p className="text-2xl font-black text-foreground">{teamOverdueSubtasks.length}</p>
-                  <span className="text-[10px] text-muted-foreground font-medium">tarefas</span>
-                </div>
-              </div>
-            </div>
-            {isAdmin && (
-              <select className="w-full h-7 mt-2 rounded-lg border border-input bg-background px-2 text-xs" value={overdueFilter} onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); setOverdueFilter(e.target.value); }}>
-                <option value="all">Toda equipe</option>
-                {collaborators.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            )}
-          </div>
-          <StatCard title="NPS Médio" value={clients.length > 0 ? Math.round(clients.reduce((s, c) => s + (c.nps_score ?? 100), 0) / clients.length) : "—"} sub="média dos clientes" icon={Users} color={clients.length > 0 && (clients.reduce((s,c)=>s+(c.nps_score??100),0)/clients.length) >= 90 ? "bg-emerald-500" : (clients.reduce((s,c)=>s+(c.nps_score??100),0)/clients.length) >= 70 ? "bg-amber-500" : "bg-destructive"} href={createPageUrl("ClientPortfolio")} />
-        </div>
-      ),
-      adminOnly: false,
-    },
-    alert_banners_team: {
       render: () => {
-        const postOverdue = overdueJobs.filter(j => j.post_date && j.post_date <= todayStr && !["completed","scheduled","cancelled"].includes(j.status));
-        const taskOverdue = teamOverdueSubtasks.length;
-        const next5NS = overdueJobs.filter(j => j.post_date && j.post_date > todayStr && j.post_date <= in5DaysStr && !["scheduled","completed","cancelled"].includes(j.status));
+        const activeClients = clients.filter(client => client.status === "active");
+        const npsAverage = activeClients.length > 0
+          ? activeClients.reduce((sum, client) => sum + (client.nps_score ?? 100), 0) / activeClients.length
+          : null;
+        const npsColor = npsAverage == null ? "bg-destructive" : npsAverage >= 90 ? "bg-emerald-500" : npsAverage >= 70 ? "bg-amber-500" : "bg-destructive";
         return (
-          <div className="flex flex-wrap gap-3">
-            <AlertBanner count={postOverdue.length} label={`post${postOverdue.length !== 1 ? "s" : ""} com data atrasada`} color={postOverdue.length > 0 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-900/20 dark:border-red-800" : "border-border bg-muted/40 text-muted-foreground"} icon={XCircle} />
-            <AlertBanner count={taskOverdue} label={`tarefa${taskOverdue !== 1 ? "s" : ""} atrasada${taskOverdue !== 1 ? "s" : ""}`} color={taskOverdue > 0 ? "border-orange-200 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
-            <AlertBanner count={next5NS.length} label={`post${next5NS.length !== 1 ? "s" : ""} próx. 5 dias não agendado${next5NS.length !== 1 ? "s" : ""}`} color={next5NS.length > 0 ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800" : "border-border bg-muted/40 text-muted-foreground"} icon={AlertTriangle} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="w-full max-w-sm">
+              <StatCard title="NPS dos clientes" value={npsAverage == null ? "—" : Math.round(npsAverage)} sub={`${activeClients.length} clientes ativos`} icon={Users} color={npsColor} href={createPageUrl("ClientPortfolio")} />
+            </div>
           </div>
         );
       },
-      adminOnly: true,
+      adminOnly: false,
     },
     financial_section: {
       render: () => (
@@ -529,9 +490,9 @@ export default function Dashboard() {
       render: () => <ScheduleTrustWidget scheduleBreaches={scheduleBreaches} />,
       adminOnly: true,
     },
-  }), [myCollabId, mySubtasks, myJobs, myOverdueJobs, jobs, subtasks, clients, allOverdueJobs, overdueJobs, overdueFilter, collaborators, isAdmin, totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries, dayGroups, scheduledNext5, notScheduledNext5, todayStr, topClients, agendaEvents, currentMonth, timesheetByCollab, resolvedCollaborator, clientsAtRisk, scheduleBreaches, teamOverdueSubtasks]);
+  }), [myCollabId, mySubtasks, myJobs, jobs, subtasks, clients, collaborators, isAdmin, totalRevenue, totalExpense, profitability, monthlyRevenueForecast, entries, dayGroups, scheduledNext5, notScheduledNext5, todayStr, topClients, agendaEvents, currentMonth, timesheetByCollab, resolvedCollaborator, clientsAtRisk, scheduleBreaches]);
 
-  const isMasterUser = sessionCollaborator?.access_level === "admin" || sessionCollaborator?.access_level === "master";
+  const isMasterUser = isMaster(sessionCollaborator);
 
   // ── Visible ordered widgets ──
   const visibleOrderedWidgets = useMemo(() => {
@@ -574,24 +535,24 @@ export default function Dashboard() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Carregando dashboard...</span>
-        </div>
-      </div>
-    );
+    return <DashboardLoadingState />;
   }
 
   const widgetLabel = (id) => WIDGET_OPTIONS.find(w => w.id === id)?.label || id;
 
   return (
-    <div ref={containerRef} data-main-scroll className="p-6 max-w-[1600px] mx-auto space-y-6 overflow-auto" style={{ WebkitOverflowScrolling: "touch" }} {...handlers}>
+    <div ref={containerRef} data-main-scroll className="mx-auto max-w-[1600px] space-y-4 overflow-auto px-4 py-4 sm:space-y-6 sm:p-6" style={{ WebkitOverflowScrolling: "touch" }} {...handlers}>
       <PullIndicator />
 
+      {dashboardError && (
+        <div role="alert" aria-live="assertive" className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span>{dashboardError}</span>
+          <Button variant="outline" size="sm" onClick={load}>Tentar novamente</Button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">
             Olá, {resolvedCollaborator?.name?.split(" ")[0] || sessionCollaborator?.name?.split(" ")[0] || "Bem-vindo"} 👋
@@ -600,13 +561,16 @@ export default function Dashboard() {
             {format(today, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {isAdmin && resolvedCollaborator?.id && (
             <>
+              {isDevelopmentEnvironment && sessionCollaborator?.access_level !== "gestor" && <SnapshotSyncButton />}
               <Button
                 variant={editMode ? "default" : "outline"}
                 size="sm"
                 onClick={() => setEditMode(v => !v)}
+                aria-pressed={editMode}
+                aria-label={editMode ? "Concluir reorganização do dashboard" : "Reorganizar widgets do dashboard"}
                 className="gap-2 h-8 text-xs"
               >
                 {editMode ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}

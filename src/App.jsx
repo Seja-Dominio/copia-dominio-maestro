@@ -61,8 +61,8 @@ class SafeBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 p-8">
-          <p className="text-destructive font-semibold">Erro ao carregar</p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 p-8">
+          <p role="alert" className="text-destructive font-semibold">Erro ao carregar</p>
           <p className="text-sm text-muted-foreground text-center max-w-md">{this.state.error?.message}</p>
           <button
             onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
@@ -78,8 +78,9 @@ class SafeBoundary extends React.Component {
 }
 
 const LoadingFallback = () => (
-  <div className="flex items-center justify-center h-[60vh]">
+  <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground" role="status" aria-label="Carregando página">
     <div className="w-8 h-8 border-4 border-border border-t-primary rounded-full animate-spin" />
+    <span className="text-sm">Carregando...</span>
   </div>
 );
 

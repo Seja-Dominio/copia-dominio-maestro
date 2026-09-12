@@ -11,6 +11,7 @@ import { safeDelete } from "@/lib/safeDelete";
 import SendTaskForm from "./SendTaskForm";
 import TeamTasksTab from "./TeamTasksTab";
 import NotesTab from "./NotesTab";
+import { isAdminLevel } from "@/lib/accessControl";
 
 export default function FloatingTodoList() {
   const [open, setOpen] = useState(() => sessionStorage.getItem("todoListOpen") === "true");
@@ -27,7 +28,7 @@ export default function FloatingTodoList() {
   const collabSession = sessionStorage.getItem("collaborator");
   const collab = collabSession ? JSON.parse(collabSession) : null;
   const collabId = collab?.id;
-  const isAdmin = collab?.access_level === "admin";
+  const isAdmin = isAdminLevel(collab);
 
   const loadingRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -206,6 +207,12 @@ export default function FloatingTodoList() {
     });
   }
 
+  function closeTodoList() {
+    setOpen(false);
+    sessionStorage.setItem("todoListOpen", "false");
+    window.dispatchEvent(new CustomEvent("maestro:drawer-state", { detail: { source: "tasks", open: false } }));
+  }
+
   if (!collabId) return null;
 
   return (
@@ -226,14 +233,21 @@ export default function FloatingTodoList() {
 
       {/* Panel — fixed height from header (56px) to FAB */}
       {open && (
-        <div className="fixed right-[40px] z-[10070] w-[min(41vw,720px)] min-w-[360px] max-sm:min-w-0 max-sm:w-[92vw] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-slide-up overflow-hidden"
-          style={{ top: "calc(56px + env(safe-area-inset-top, 0px) + 8px)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}
+        <div
+          className="fixed inset-0 z-[10060]"
+          onClick={closeTodoList}
+          aria-label="Fechar Minhas Tarefas"
         >
+          <div
+            className="fixed right-[40px] z-[10070] w-[min(41vw,720px)] min-w-[360px] max-sm:min-w-0 max-sm:w-[92vw] bg-card border border-border rounded-2xl shadow-2xl flex flex-col animate-slide-up overflow-hidden"
+            style={{ top: "calc(56px + env(safe-area-inset-top, 0px) + 8px)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}
+            onClick={event => event.stopPropagation()}
+          >
           {/* Header */}
           <div className="px-3 pt-3 pb-2 border-b border-border bg-muted/30">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-foreground">Minhas Tarefas</h3>
-              <button onClick={() => { setOpen(false); sessionStorage.setItem("todoListOpen", "false"); }} className="text-muted-foreground hover:text-foreground p-1 no-touch-min">
+              <button onClick={closeTodoList} className="text-muted-foreground hover:text-foreground p-1 no-touch-min">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -432,6 +446,7 @@ export default function FloatingTodoList() {
               </div>
             </>
           )}
+          </div>
         </div>
       )}
     </>

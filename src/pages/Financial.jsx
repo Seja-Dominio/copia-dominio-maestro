@@ -26,6 +26,7 @@ import FinancialPieCharts from "@/components/financial/FinancialPieCharts";
 import FinancialForecastChart from "@/components/financial/FinancialForecastChart";
 import AccountBalancesTab from "@/components/financial/AccountBalancesTab";
 import { useFinancialDragDrop, FinancialEditBar, FinancialDragGrid } from "@/components/financial/FinancialWidgetGrid";
+import { isMaster } from "@/lib/accessControl";
 
 const TYPE_CONFIG = {
   revenue: { label: "Receita", icon: TrendingUp, color: "text-green-600", bg: "bg-green-100" },
@@ -63,7 +64,7 @@ export default function Financial() {
   const [jobs, setJobs] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const isAdmin = (() => { try { return JSON.parse(sessionStorage.getItem("collaborator") || "null")?.access_level === "admin"; } catch { return false; } })();
+  const isAdmin = (() => { try { return isMaster(JSON.parse(sessionStorage.getItem("collaborator") || "null")); } catch { return false; } })();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("pending");

@@ -3,6 +3,7 @@ import {
   Activity, BarChart3, CheckCircle2, ChevronDown,
   Facebook, Plus, RefreshCw,
   ShieldCheck, Sparkles, WalletCards, AlertCircle, Star, ChevronUp, ExternalLink,
+  Pin, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,13 @@ const channels = [
 
 const SYNC_INTERVAL_HOURS = 3;
 const periodOptions = ["Hoje", "Ontem", "Hoje e ontem", "Últimos 7 dias", "Últimos 14 dias", "Últimos 28 dias", "Últimos 30 dias", "Esta semana", "Semana passada", "Este mês", "Mês passado", "Máximo", "Personalizado"];
+const scoreCardTones = {
+  5: "border-amber-300 bg-gradient-to-br from-amber-50 via-yellow-50 to-card shadow-[0_8px_24px_rgba(217,119,6,0.16)]",
+  4: "border-amber-200 bg-gradient-to-br from-amber-50/80 via-card to-card shadow-[0_6px_18px_rgba(217,119,6,0.11)]",
+  3: "border-amber-100 bg-gradient-to-br from-amber-50/50 via-card to-card",
+  2: "border-yellow-100 bg-gradient-to-br from-yellow-50/35 via-card to-card",
+  1: "border-amber-100/70 bg-gradient-to-br from-amber-50/20 via-card to-card",
+};
 
 const metricCatalog = [
   { label: "CTR", key: "ctr", target: 1.5, unit: "%", direction: "above" },
@@ -76,9 +84,55 @@ function AccountMetrics({ account }) {
   return <div>{hasCardLimit && <div className="mb-4 rounded-lg border p-3"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Gasto no mês</span><span>{hasMonthlySpend ? format(monthlySpend, "money") : "—"} de {format(account.spendingLimit, "money")}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${limitProgress >= 100 ? "bg-red-500" : limitProgress >= 80 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${limitProgress}%` }} /></div><p className="mt-1 text-right text-[11px] text-muted-foreground">{hasMonthlySpend ? `${Math.round(limitProgress)}% do limite` : "Aguardando sincronização mensal"}</p></div>}<p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Métricas da conta</p><div className="grid grid-cols-2 gap-2">{values.map(([label, value, type]) => <div key={label} className="rounded-lg border p-2"><p className="text-[11px] text-muted-foreground">{label}</p><p className="text-sm font-semibold">{format(value, type)}</p></div>)}</div>{account.lastSyncedAt && <p className="mt-2 text-[11px] text-muted-foreground">Atualizado em {new Date(account.lastSyncedAt).toLocaleString("pt-BR")}</p>}</div>;
 }
 
-function CampaignTable({ campaigns = [] }) {
+function CampaignTable({ campaigns = [], accountId }) {
+  const storageKey = `ads-brain:campaign-preferences:${accountId}`;
+  const [preferences, setPreferences] = useState(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? JSON.parse(stored) : { pinnedIds: [], order: [], sort: "manual" };
+    } catch {
+      return { pinnedIds: [], order: [], sort: "manual" };
+    }
+  });
   const activeCampaigns = campaigns.filter((campaign) => (campaign.effective_status || campaign.status) === "ACTIVE");
-  return <div className="max-h-[340px] overflow-auto rounded-lg border"><table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 z-10 bg-muted text-muted-foreground"><tr><th className="p-3">Campanha</th><th className="p-3">Investimento</th><th className="p-3">Impressões</th><th className="p-3">Cliques</th><th className="p-3">CTR</th><th className="p-3">Status</th></tr></thead><tbody>{activeCampaigns.length ? activeCampaigns.map((campaign) => { const insight = campaign.insights?.data?.[0] || {}; return <tr key={campaign.id} className="h-[60px] border-t"><td className="p-3 font-medium">{campaign.name}</td><td className="p-3">{insight.spend ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(insight.spend)) : "—"}</td><td className="p-3">{insight.impressions ? Number(insight.impressions).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.clicks ? Number(insight.clicks).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.ctr ? `${Number(insight.ctr).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td><td className="p-3">Ativa</td></tr>; }) : <tr><td className="p-3 text-muted-foreground" colSpan="6">Nenhuma campanha ativa para o período.</td></tr>}</tbody></table></div>;
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(preferences));
+  }, [preferences, storageKey]);
+
+  const updatePreferences = (update) => setPreferences((current) => ({ ...current, ...update }));
+  const togglePinned = (campaignId) => {
+    const pinnedIds = preferences.pinnedIds.includes(campaignId)
+      ? preferences.pinnedIds.filter((id) => id !== campaignId)
+      : [...preferences.pinnedIds, campaignId];
+    updatePreferences({ pinnedIds });
+  };
+  const moveCampaign = (campaignId, direction) => {
+    const currentOrder = activeCampaigns
+      .map((campaign) => campaign.id)
+      .sort((left, right) => {
+        const leftIndex = preferences.order.indexOf(left);
+        const rightIndex = preferences.order.indexOf(right);
+        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      });
+    const index = currentOrder.indexOf(campaignId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= currentOrder.length) return;
+    [currentOrder[index], currentOrder[nextIndex]] = [currentOrder[nextIndex], currentOrder[index]];
+    updatePreferences({ order: currentOrder, sort: "manual" });
+  };
+  const orderedCampaigns = [...activeCampaigns].sort((left, right) => {
+    const leftPinned = preferences.pinnedIds.includes(left.id) ? 0 : 1;
+    const rightPinned = preferences.pinnedIds.includes(right.id) ? 0 : 1;
+    if (leftPinned !== rightPinned) return leftPinned - rightPinned;
+    if (preferences.sort === "name") return String(left.name || "").localeCompare(String(right.name || ""), "pt-BR");
+    if (preferences.sort === "spend") return Number(right.insights?.data?.[0]?.spend || 0) - Number(left.insights?.data?.[0]?.spend || 0);
+    if (preferences.sort === "ctr") return Number(right.insights?.data?.[0]?.ctr || 0) - Number(left.insights?.data?.[0]?.ctr || 0);
+    const leftIndex = preferences.order.indexOf(left.id);
+    const rightIndex = preferences.order.indexOf(right.id);
+    return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+  });
+  return <div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">Fixe as campanhas importantes para mantê-las no topo.</p><label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">Organizar<select aria-label="Organizar campanhas" value={preferences.sort} onChange={(event) => updatePreferences({ sort: event.target.value })} className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"><option value="manual">Manual</option><option value="name">Nome A–Z</option><option value="spend">Maior investimento</option><option value="ctr">Maior CTR</option></select></label></div><div className="max-h-[340px] overflow-auto rounded-lg border"><table className="w-full min-w-[760px] text-left text-xs"><thead className="sticky top-0 z-10 bg-muted text-muted-foreground"><tr><th className="w-20 p-3">Fixar</th><th className="p-3">Campanha</th><th className="p-3">Investimento</th><th className="p-3">Impressões</th><th className="p-3">Cliques</th><th className="p-3">CTR</th><th className="p-3">Status</th><th className="w-20 p-3">Ordem</th></tr></thead><tbody>{orderedCampaigns.length ? orderedCampaigns.map((campaign, index) => { const insight = campaign.insights?.data?.[0] || {}; const pinned = preferences.pinnedIds.includes(campaign.id); return <tr key={campaign.id} className={`h-[60px] border-t ${pinned ? "bg-primary/5" : ""}`}><td className="p-3"><button type="button" aria-label={pinned ? `Desafixar ${campaign.name}` : `Fixar ${campaign.name}`} title={pinned ? "Desafixar campanha" : "Fixar campanha"} onClick={(event) => { event.stopPropagation(); togglePinned(campaign.id); }} className={`rounded-md p-1.5 transition-colors ${pinned ? "text-primary hover:bg-primary/10" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Pin className={`h-4 w-4 ${pinned ? "fill-current" : ""}`} /></button></td><td className="p-3 font-medium">{campaign.name}</td><td className="p-3">{insight.spend ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(insight.spend)) : "—"}</td><td className="p-3">{insight.impressions ? Number(insight.impressions).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.clicks ? Number(insight.clicks).toLocaleString("pt-BR") : "—"}</td><td className="p-3">{insight.ctr ? `${Number(insight.ctr).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td><td className="p-3">Ativa</td><td className="p-3"><div className="flex items-center gap-1"><button type="button" aria-label={`Mover ${campaign.name} para cima`} title="Mover para cima" disabled={index === 0} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, -1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" aria-label={`Mover ${campaign.name} para baixo`} title="Mover para baixo" disabled={index === orderedCampaigns.length - 1} onClick={(event) => { event.stopPropagation(); moveCampaign(campaign.id, 1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button></div></td></tr>; }) : <tr><td className="p-3 text-muted-foreground" colSpan="8">Nenhuma campanha ativa para o período.</td></tr>}</tbody></table></div></div>;
 }
 
 export default function AdsBrain() {
@@ -103,7 +157,8 @@ export default function AdsBrain() {
   const [connectionStep, setConnectionStep] = useState("authorize");
   const [connectionNotice, setConnectionNotice] = useState("");
   const [availableAccounts, setAvailableAccounts] = useState([]);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedAccountIds, setSelectedAccountIds] = useState([]);
+  const [criteriaAccountIndex, setCriteriaAccountIndex] = useState(0);
   const [authorizationId, setAuthorizationId] = useState("");
   const [selectedMetrics, setSelectedMetrics] = useState({});
   const [metricToAdd, setMetricToAdd] = useState("ctr");
@@ -155,10 +210,12 @@ export default function AdsBrain() {
       setConnectionNotice("Autorização concluída. Buscando suas contas de anúncios...");
       invokeSupabaseFunction("meta-ads-oauth", { action: "complete", code, state })
         .then((response) => {
-          setAvailableAccounts(response.accounts || []);
+          const accounts = response.accounts || [];
+          setAvailableAccounts(accounts);
           setAuthorizationId(response.authorization_id || "");
-          setSelectedAccountId(response.accounts?.[0]?.id || "");
-          setConnectionNotice(response.accounts?.length ? "Contas encontradas. Escolha qual deseja vincular ao cliente." : "Nenhuma conta de anúncios foi encontrada para este acesso.");
+          setSelectedAccountIds([]);
+          setCriteriaAccountIndex(0);
+          setConnectionNotice(accounts.length ? "Contas encontradas. Selecione uma ou mais contas ainda não cadastradas." : "Nenhuma conta de anúncios foi encontrada para este acesso.");
         })
         .catch((oauthError) => setConnectionNotice(oauthError.message || "Não foi possível consultar as contas da Meta."));
     };
@@ -235,6 +292,18 @@ export default function AdsBrain() {
   const visibleClientAccounts = useMemo(() => selectedChannel === "Todos os canais"
     ? clientAccounts
     : clientAccounts.filter((account) => account.platform.split(" + ").includes(selectedChannel)), [clientAccounts, selectedChannel]);
+  const selectedConnectionAccounts = useMemo(
+    () => availableAccounts.filter((account) => selectedAccountIds.includes(account.id) && !clientAccounts.some((saved) => saved.platform === connectionNetwork && String(saved.externalAccountId).replace(/^act_/, "") === String(account.id).replace(/^act_/, ""))),
+    [availableAccounts, clientAccounts, connectionNetwork, selectedAccountIds],
+  );
+  const currentCriteriaAccount = selectedConnectionAccounts[criteriaAccountIndex] || null;
+  const existingAvailableAccounts = useMemo(
+    () => availableAccounts.map((account) => ({
+      account,
+      saved: clientAccounts.find((saved) => saved.platform === connectionNetwork && String(saved.externalAccountId).replace(/^act_/, "") === String(account.id).replace(/^act_/, "")),
+    })).filter((item) => item.saved),
+    [availableAccounts, clientAccounts, connectionNetwork],
+  );
   const lowBalanceAccounts = useMemo(() => visibleClientAccounts.filter((account) =>
     Number.isFinite(account.balanceValue) && Number.isFinite(account.minimumBalance) && account.balanceValue < account.minimumBalance
   ), [visibleClientAccounts]);
@@ -266,16 +335,50 @@ export default function AdsBrain() {
     setConnectionNotice("");
     setConnectionStep("authorize");
     setAvailableAccounts([]);
-    setSelectedAccountId("");
+    setSelectedAccountIds([]);
+    setCriteriaAccountIndex(0);
     setAuthorizationId("");
     setConnectionClient("");
     setConnectionMinimumBalance("");
     setSelectedMetrics({});
     setConnectionOpen(true);
   };
+  const startCriteria = () => {
+    const firstAccount = selectedConnectionAccounts[0];
+    if (!firstAccount) return;
+    setCriteriaAccountIndex(0);
+    setConnectionClient(firstAccount.name || "");
+    setConnectionMinimumBalance("");
+    setSelectedMetrics({});
+    setConnectionStep("criteria");
+    setConnectionNotice(`Configure os critérios para ${firstAccount.name || "a conta selecionada"}.`);
+  };
+  const toggleConnectionAccount = (accountId) => {
+    setSelectedAccountIds((current) => current.includes(accountId)
+      ? current.filter((id) => id !== accountId)
+      : [...current, accountId]);
+  };
+  const toggleAllConnectionAccounts = () => {
+    const selectableIds = availableAccounts
+      .filter((account) => !clientAccounts.some((saved) => saved.platform === connectionNetwork && String(saved.externalAccountId).replace(/^act_/, "") === String(account.id).replace(/^act_/, "")))
+      .map((account) => account.id);
+    setSelectedAccountIds((current) => selectableIds.length > 0 && current.length === selectableIds.length ? [] : selectableIds);
+  };
+  const removeConnectedAccount = async (savedAccount, availableAccountId) => {
+    if (!savedAccount?.id || !window.confirm(`Remover ${savedAccount.accountName || savedAccount.name || "esta conta"} do Ads Brain?`)) return;
+    setConnectionNotice("Removendo a conta do Ads Brain...");
+    try {
+      await invokeSupabaseFunction("meta-ads-oauth", { action: "remove", account_id: savedAccount.id });
+      setClientAccounts((current) => current.filter((account) => account.id !== savedAccount.id));
+      setSelectedAccountIds((current) => current.includes(availableAccountId) ? current : [...current, availableAccountId]);
+      setConnectionNotice("Conta removida. Ela já pode ser selecionada para um novo vínculo.");
+    } catch (error) {
+      setConnectionNotice(error.message || "Não foi possível remover a conta do Ads Brain.");
+    }
+  };
   const saveConnection = async () => {
     if (savingConnection) return;
-    const account = availableAccounts.find((item) => item.id === selectedAccountId);
+    const account = selectedConnectionAccounts[criteriaAccountIndex];
     const clientName = connectionClient.trim() || account?.name?.trim() || "";
     if (!clientName) {
       setConnectionNotice("Informe o nome do cliente antes de salvar.");
@@ -292,7 +395,17 @@ export default function AdsBrain() {
         const saved = normalizeStoredAccount(response.account);
         return [saved, ...current.filter((item) => item.id !== saved.id)];
       });
-      setConnectionOpen(false);
+      const nextIndex = criteriaAccountIndex + 1;
+      if (nextIndex < selectedConnectionAccounts.length) {
+        const nextAccount = selectedConnectionAccounts[nextIndex];
+        setCriteriaAccountIndex(nextIndex);
+        setConnectionClient(nextAccount.name || "");
+        setConnectionMinimumBalance("");
+        setSelectedMetrics({});
+        setConnectionNotice(`Conta salva (${nextIndex} de ${selectedConnectionAccounts.length}). Configure os critérios para ${nextAccount.name || "a próxima conta"}.`);
+      } else {
+        setConnectionOpen(false);
+      }
     } catch (error) {
       setConnectionNotice(error.message || "Não foi possível salvar a conta no Maestro.");
     } finally {
@@ -372,6 +485,7 @@ export default function AdsBrain() {
             {visibleClientAccounts.map((client) => {
               const expanded = expandedClient === client.id;
               const score = calculateHealthScore(client.metrics, client.metricsConfig);
+              const scoreCardTone = scoreCardTones[score] || "border-border bg-card";
               const accountNames = client.platform.split(" + ");
               const monthlySpend = Number.isFinite(client.monthlySpend) ? client.monthlySpend : null;
               const cardSpending = client.paymentMethod === "credit_card" && Number.isFinite(client.spendingLimit)
@@ -379,7 +493,7 @@ export default function AdsBrain() {
                 : client.balance;
               const accounts = accountNames.map((platform, index) => ({ platform, name: `${client.accountName} · ${platform}`, balance: index === 0 ? cardSpending : "Saldo não informado", url: platform === "Meta Ads" ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${String(client.externalAccountId).replace(/^act_/, "")}` : "#" }));
               const allMetrics = metricCatalog.map((metric) => ({ ...metric, value: client.metrics?.[metric.key] }));
-              return <Card key={client.id} role="button" tabIndex={0} aria-expanded={expanded} className="cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" onClick={() => setExpandedClient(expanded ? null : client.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setExpandedClient(expanded ? null : client.id); } }}><CardHeader className="flex-row items-start justify-between space-y-0"><div><CardTitle className="text-base">{client.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">ID da conta: {client.externalAccountId}</p><p className="mt-1 text-xs text-muted-foreground">{accounts.length} conta{accounts.length !== 1 ? "s" : ""} conectada{accounts.length !== 1 ? "s" : ""}</p></div><div className="flex flex-col items-end gap-3"><div className="flex items-center gap-1" aria-label={`${score} de 5 estrelas`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} className={`h-4 w-4 ${star <= score ? "fill-amber-400 text-amber-400" : "text-muted"}`} />)}</div><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openMetricEditor(client, client.platform.split(" + ")[0]); }}>Editar cliente</Button></div></CardHeader><CardContent className="space-y-4"><div className="flex items-end justify-between"><div><p className="text-xs text-muted-foreground">Contas de anúncios</p><div className="mt-2 flex flex-wrap gap-1.5">{accounts.map((account) => <span key={account.platform} className="rounded-full bg-muted px-2 py-1 text-xs">{account.platform}</span>)}</div></div><button type="button" aria-label={expanded ? `Recolher ${client.name}` : `Abrir ${client.name}`} onClick={(event) => { event.stopPropagation(); setExpandedClient(expanded ? null : client.id); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">{expanded ? "Recolher" : "Abrir cliente"} {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saldo por conta</p><div className="grid gap-2 sm:grid-cols-2">{accounts.map((account) => <div key={account.platform} className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs text-muted-foreground">{account.platform}</p><p className="font-semibold">{account.balance}</p></div><div className="flex items-center gap-3"><a href={account.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="flex items-center gap-1 text-xs font-medium text-primary no-underline">Abrir conta <ExternalLink className="h-3.5 w-3.5" /></a></div></div>)}</div></div>{expanded && <div className="space-y-5 border-t pt-4"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Campanhas e métricas completas</p><CampaignTable campaigns={client.campaigns} /></div><AccountMetrics account={client} /><p className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5 text-primary" /> Score ponderado: {score}/5</p></div>}</CardContent></Card>;
+              return <Card key={client.id} role="button" tabIndex={0} aria-expanded={expanded} className={`cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${scoreCardTone}`} onClick={() => setExpandedClient(expanded ? null : client.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setExpandedClient(expanded ? null : client.id); } }}><CardHeader className="flex-row items-start justify-between space-y-0"><div><CardTitle className="text-base">{client.name}</CardTitle><p className="mt-1 text-xs text-muted-foreground">ID da conta: {client.externalAccountId}</p><p className="mt-1 text-xs text-muted-foreground">{accounts.length} conta{accounts.length !== 1 ? "s" : ""} conectada{accounts.length !== 1 ? "s" : ""}</p></div><div className="flex flex-col items-end gap-3"><div className="flex items-center gap-1" aria-label={`${score} de 5 estrelas`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} className={`h-4 w-4 ${star <= score ? "fill-amber-400 text-amber-400" : "text-muted"}`} />)}</div><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openMetricEditor(client, client.platform.split(" + ")[0]); }}>Editar cliente</Button></div></CardHeader><CardContent className="space-y-4"><div className="flex items-end justify-between"><div><p className="text-xs text-muted-foreground">Contas de anúncios</p><div className="mt-2 flex flex-wrap gap-1.5">{accounts.map((account) => <span key={account.platform} className="rounded-full bg-muted px-2 py-1 text-xs">{account.platform}</span>)}</div></div><button type="button" aria-label={expanded ? `Recolher ${client.name}` : `Abrir ${client.name}`} onClick={(event) => { event.stopPropagation(); setExpandedClient(expanded ? null : client.id); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">{expanded ? "Recolher" : "Abrir cliente"} {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saldo por conta</p><div className="grid gap-2 sm:grid-cols-2">{accounts.map((account) => <div key={account.platform} className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs text-muted-foreground">{account.platform}</p><p className="font-semibold">{account.balance}</p></div><div className="flex items-center gap-3"><a href={account.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="flex items-center gap-1 text-xs font-medium text-primary no-underline">Abrir conta <ExternalLink className="h-3.5 w-3.5" /></a></div></div>)}</div></div>{expanded && <div className="space-y-5 border-t pt-4"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Campanhas e métricas completas</p><CampaignTable campaigns={client.campaigns} accountId={client.id} /></div><AccountMetrics account={client} /><p className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5 text-primary" /> Score ponderado: {score}/5</p></div>}</CardContent></Card>;
             })}
           </div>
         )}
@@ -414,12 +528,11 @@ export default function AdsBrain() {
         <DialogContent className="max-h-[90vh] overflow-y-auto overscroll-contain pb-24 sm:max-w-2xl">
           <DialogHeader><DialogTitle>Conectar conta de anúncios</DialogTitle><DialogDescription>Informe o cliente e a rede. O próximo passo será a autorização segura da plataforma.</DialogDescription></DialogHeader>
           <form onSubmit={submitConnection} className="space-y-4">
-            {connectionStep === "criteria" && <label className="block text-sm font-medium" htmlFor="ads-client">Nome do cliente<input id="ads-client" required value={connectionClient} onChange={(event) => setConnectionClient(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Nome do perfil da conta" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Será salvo como: {(connectionClient.trim() || availableAccounts.find((account) => account.id === selectedAccountId)?.name || "Nome do cliente")} - {connectionNetwork}</span></label>}
             <label className="block text-sm font-medium" htmlFor="ads-network">Rede<select id="ads-network" value={connectionNetwork} onChange={(event) => setConnectionNetwork(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"><option>Meta Ads</option><option>Google Ads</option><option>TikTok Ads</option></select></label>
-            {connectionStep === "select" && <div className="rounded-lg border border-dashed p-4"><p className="text-sm font-medium">Escolha a conta de anúncios</p><p className="mt-1 text-xs text-muted-foreground">A lista foi carregada após a autorização na {connectionNetwork}.</p><select aria-label="Conta de anúncios encontrada" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)} className="mt-3 h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Selecione uma conta</option>{availableAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.id} · {account.currency}</option>)}</select></div>}
-            {connectionStep === "criteria" && <div className="space-y-3"><label className="block text-sm font-medium">Saldo mínimo para alerta<input type="number" min="0" step="0.01" value={connectionMinimumBalance} onChange={(event) => setConnectionMinimumBalance(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Ex.: 500,00" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Você poderá alterar esse valor depois em Editar.</span></label><div><p className="text-sm font-medium">Critérios de saúde da conta</p><p className="mt-1 text-xs text-muted-foreground">Inclua apenas as métricas da Meta que devem compor as estrelas desta conta.</p></div><MetricPicker catalog={metricCatalog} metricKey={metricToAdd} setMetricKey={setMetricToAdd} target={metricTarget} setTarget={setMetricTarget} weight={metricWeight} setWeight={setMetricWeight} onAdd={() => addMetric()} /><MetricList metrics={scoreRules} onRemove={(key) => setSelectedMetrics((current) => { const next = { ...current }; delete next[key]; return next; })} /></div>}
+            {connectionStep === "select" && <div className="rounded-lg border border-dashed p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium">Escolha as contas de anúncios</p><p className="mt-1 text-xs text-muted-foreground">Selecione várias contas para cadastrá-las em sequência.</p></div><button type="button" onClick={toggleAllConnectionAccounts} className="text-xs font-medium text-primary hover:underline">{availableAccounts.length > 0 && selectedAccountIds.length === availableAccounts.filter((account) => !existingAvailableAccounts.some((item) => item.account.id === account.id)).length ? "Limpar seleção" : "Selecionar todas"}</button></div>{existingAvailableAccounts.length > 0 && <div role="alert" className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p className="font-medium">Conta{existingAvailableAccounts.length === 1 ? " já ativa" : "s já ativas"} no Ads Brain</p><p className="mt-1 text-xs">A duplicação está bloqueada. Remova o vínculo abaixo para poder cadastrá-la novamente.</p><div className="mt-2 space-y-2">{existingAvailableAccounts.map(({ account, saved }) => <div key={account.id} className="flex items-center justify-between gap-3 rounded-md border border-destructive/20 bg-background p-2"><span className="min-w-0 truncate text-xs font-medium">{account.name}</span><Button type="button" size="sm" variant="outline" onClick={() => removeConnectedAccount(saved, account.id)} className="shrink-0 text-xs">Remover do Ads Brain</Button></div>)}</div></div>}<div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">{availableAccounts.map((account) => { const existing = existingAvailableAccounts.find((item) => item.account.id === account.id)?.saved; const checked = selectedAccountIds.includes(account.id) && !existing; return <div key={account.id} className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${checked ? "border-primary bg-primary/5" : existing ? "border-destructive/20 bg-muted/30" : "hover:bg-muted/50"}`}><label className={`flex min-w-0 flex-1 items-start gap-3 ${existing ? "cursor-not-allowed" : "cursor-pointer"}`}><input type="checkbox" disabled={Boolean(existing)} checked={checked} onChange={() => toggleConnectionAccount(account.id)} className="mt-0.5 h-4 w-4 accent-primary" /><span className="min-w-0 text-sm"><span className="block truncate font-medium">{account.name}</span><span className="mt-0.5 block text-xs text-muted-foreground">{account.id} · {account.currency}</span></span></label>{existing && <span className="shrink-0 text-[11px] font-medium text-destructive">Já ativa</span>}</div>; })}</div><p className="mt-3 text-xs font-medium text-muted-foreground">{selectedConnectionAccounts.length} conta{selectedConnectionAccounts.length === 1 ? " selecionada" : "s selecionadas"}</p></div>}
+            {connectionStep === "criteria" && <div className="space-y-3"><div className="rounded-lg border border-primary/20 bg-primary/5 p-3"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold uppercase tracking-wide text-primary">Critérios da conta {criteriaAccountIndex + 1} de {selectedConnectionAccounts.length}</p><span className="text-xs text-muted-foreground">{currentCriteriaAccount?.id}</span></div><p className="mt-1 truncate text-sm font-medium">{currentCriteriaAccount?.name}</p><p className="mt-1 text-xs text-muted-foreground">Salve esta conta para avançar automaticamente para a próxima selecionada.</p></div><label className="block text-sm font-medium">Nome do cliente<input id="ads-client" required value={connectionClient} onChange={(event) => setConnectionClient(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Nome do perfil da conta" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Será salvo como: {(connectionClient.trim() || currentCriteriaAccount?.name || "Nome do cliente")} - {connectionNetwork}</span></label><label className="block text-sm font-medium">Saldo mínimo para alerta<input type="number" min="0" step="0.01" value={connectionMinimumBalance} onChange={(event) => setConnectionMinimumBalance(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" placeholder="Ex.: 500,00" /><span className="mt-1 block text-xs font-normal text-muted-foreground">Você poderá alterar esse valor depois em Editar.</span></label><div><p className="text-sm font-medium">Critérios de saúde da conta</p><p className="mt-1 text-xs text-muted-foreground">Inclua apenas as métricas da Meta que devem compor as estrelas desta conta.</p></div><MetricPicker catalog={metricCatalog} metricKey={metricToAdd} setMetricKey={setMetricToAdd} target={metricTarget} setTarget={setMetricTarget} weight={metricWeight} setWeight={setMetricWeight} onAdd={() => addMetric()} /><MetricList metrics={scoreRules} onRemove={(key) => setSelectedMetrics((current) => { const next = { ...current }; delete next[key]; return next; })} /></div>}
             {connectionNotice && <p role="status" className="rounded-md bg-primary/10 p-3 text-sm text-primary">{connectionNotice}</p>}
-            <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-background px-6 py-4"><Button type="button" variant="outline" onClick={() => setConnectionOpen(false)} disabled={savingConnection}>Cancelar</Button>{connectionStep === "authorize" ? <Button type="submit">Entrar e buscar contas</Button> : connectionStep === "select" ? <Button type="button" disabled={!selectedAccountId} onClick={() => { const account = availableAccounts.find((item) => item.id === selectedAccountId); setConnectionClient(account?.name || ""); setConnectionStep("criteria"); setConnectionNotice("Conta selecionada. Confirme o nome e configure as métricas para concluir."); }}>Continuar para critérios</Button> : <Button type="button" disabled={savingConnection || !(connectionClient.trim() || availableAccounts.find((account) => account.id === selectedAccountId)?.name?.trim()) || !authorizationId} onClick={saveConnection}>{savingConnection ? "Salvando..." : "Salvar conta"}</Button>}</DialogFooter>
+            <DialogFooter className="sticky bottom-0 z-20 -mx-6 border-t bg-background px-6 py-4"><Button type="button" variant="outline" onClick={() => setConnectionOpen(false)} disabled={savingConnection}>Cancelar</Button>{connectionStep === "authorize" ? <Button type="submit">Entrar e buscar contas</Button> : connectionStep === "select" ? <Button type="button" disabled={!selectedConnectionAccounts.length} onClick={startCriteria}>Continuar para critérios ({selectedConnectionAccounts.length})</Button> : <Button type="button" disabled={savingConnection || !(connectionClient.trim() || currentCriteriaAccount?.name?.trim()) || !authorizationId} onClick={saveConnection}>{savingConnection ? "Salvando..." : criteriaAccountIndex + 1 < selectedConnectionAccounts.length ? "Salvar e próxima conta" : "Salvar conta"}</Button>}</DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
