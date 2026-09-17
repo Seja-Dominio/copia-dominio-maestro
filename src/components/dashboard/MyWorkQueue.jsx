@@ -40,7 +40,7 @@ function QueueItem({ item, responsibleName, onJobClick }) {
   );
 }
 
-function QueueSection({ title, count, icon: Icon, tone, items, collaboratorsById, onJobClick }) {
+function QueueSection({ title, count, icon: Icon, tone, items, collaboratorsById, onJobClick, progress }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? items : items.slice(0, MAX_VISIBLE);
   if (!items.length) return null;
@@ -51,6 +51,23 @@ function QueueSection({ title, count, icon: Icon, tone, items, collaboratorsById
         <h4 className="text-xs font-bold text-foreground">{title}</h4>
         <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{count}</span>
       </div>
+      {progress && (
+        <div className="space-y-1.5" aria-label={`${progress.completed} de ${progress.total} postagens do dia concluídas ou agendadas`}>
+          <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-muted-foreground">
+            <span>Progresso do dia</span>
+            <span className="font-semibold text-foreground">{progress.completed}/{progress.total}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin="0" aria-valuemax={progress.total} aria-valuenow={progress.completed} aria-label="Progresso das postagens de hoje">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {progress.completed === progress.total ? "Todas organizadas para hoje." : `${progress.remaining} ${progress.remaining === 1 ? "postagem pendente" : "postagens pendentes"}.`}
+          </p>
+        </div>
+      )}
       <div className="space-y-1.5">
         {visible.map(item => (
           <QueueItem
@@ -101,6 +118,16 @@ export default function MyWorkQueue({ subtasks, allSubtasks, jobs, collaborators
     () => new Set([...queue.overdue, ...queue.today].map(item => item.job.id)).size,
     [queue],
   );
+  const todayProgress = useMemo(() => {
+    const total = queue.today.length;
+    const completed = queue.today.filter(({ job }) => ["scheduled", "completed"].includes(normalizeWorkflowStatus(job.status))).length;
+    return {
+      total,
+      completed,
+      remaining: total - completed,
+      percent: total ? Math.round((completed / total) * 100) : 0,
+    };
+  }, [queue.today]);
   const hasUpcomingPosts = upcomingPosts?.dayGroups?.length > 0;
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -132,7 +159,7 @@ export default function MyWorkQueue({ subtasks, allSubtasks, jobs, collaborators
       ) : (
         <div className="grid gap-5 p-5 lg:grid-cols-2">
           <QueueSection title="Postagens atrasadas" count={queue.overdue.length} icon={AlertTriangle} tone="danger" items={queue.overdue} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
-          <QueueSection title="Postagens hoje" count={queue.today.length} icon={Clock3} tone="warning" items={queue.today} collaboratorsById={collaboratorsById} onJobClick={onJobClick} />
+          <QueueSection title="Postagens hoje" count={queue.today.length} icon={Clock3} tone="warning" items={queue.today} collaboratorsById={collaboratorsById} onJobClick={onJobClick} progress={todayProgress} />
           {upcomingPosts && (
             <div className="lg:col-span-2">
               <NextPostsPanel {...upcomingPosts} onJobClick={onJobClick} />

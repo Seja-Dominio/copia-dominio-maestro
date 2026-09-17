@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dominus-core"
+version = "0.1.0"
+description = "Hermes bridge with read-only Maestro tools for Dominus"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[tool.setuptools]
+py-modules = ["hermes_bridge", "maestro_adapter"]

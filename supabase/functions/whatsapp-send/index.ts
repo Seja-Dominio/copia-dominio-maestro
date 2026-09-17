@@ -217,6 +217,12 @@ function manausNow() {
   return { date, time: String(values.hour) + ":" + String(values.minute), weekday: new Date(date + "T12:00:00").getDay() || 7 };
 }
 
+function isDominusSummaryWindow(now: { time: string }) {
+  // The scheduler runs every five minutes. Keep a short tolerance so a small
+  // scheduler delay does not skip the daily 20:00 Manaus delivery.
+  return now.time >= "20:00" && now.time < "20:10";
+}
+
 function automationIsDue(automation: any, now: { date: string; time: string; weekday: number }) {
   if (automation.active === false) return false;
   const scheduleDate = String(automation.schedule_date || "");
@@ -239,6 +245,45 @@ async function loadEntityPayloads(entity: string) {
   const { data, error } = await supabase.from("legacy_records").select("record_id,payload").eq("entity", entity).limit(10000);
   if (error) throw error;
   return (data || []).map((row: any) => ({ id: row.record_id, ...(row.payload || {}) }));
+}
+
+async function runDominusAuditScheduled(cronSecret: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/$/, "");
+  if (!supabaseUrl || !cronSecret) return { status: "skipped", reason: "configuração ausente" };
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/dominus-audit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-dominus-audit-secret": cronSecret },
+      body: JSON.stringify({ action: "run" }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { status: "failed", error: data?.error || `HTTP ${response.status}` };
+    return data;
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : "Não foi possível executar a auditoria" };
+  }
+}
+
+async function sendDominusDailySummary(config: EvolutionConfig | null, automations: any[], audit: any) {
+  if (audit?.status !== "completed" || !String(audit.summary_text || "").trim()) return { status: "skipped", reason: "auditoria já executada ou sem resumo" };
+  if (!config) return { status: "skipped", reason: "Evolution API não configurada" };
+  const groupIds = [...new Set(automations
+    .filter((item) => item.kind === "dominus" && item.active !== false)
+    .map((item) => item.summary_group_id)
+    .map(String)
+    .filter((id) => id && id !== "undefined" && id.endsWith("@g.us")))];
+  if (!groupIds.length) return { status: "skipped", reason: "nenhum grupo autorizado para o Dominus" };
+  const sent: string[] = [];
+  const failed: Array<{ group_id: string; error: string }> = [];
+  for (const groupId of groupIds) {
+    const result = await evolutionRequest(config, "/message/sendText/" + encodeURIComponent(config.instance), {
+      method: "POST",
+      body: JSON.stringify({ number: groupId, text: audit.summary_text }),
+    });
+    if (result.response.ok) sent.push(groupId);
+    else failed.push({ group_id: groupId, error: String(result.data?.message || "Falha ao enviar o resumo") });
+  }
+  return { status: failed.length ? "partial" : "sent", sent, failed };
 }
 
 function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], clients: any[], miniTasks: any[] = []) {
@@ -384,7 +429,7 @@ async function sendDailyOverdueNotifications(config: EvolutionConfig | null, now
   return results;
 }
 
-async function processScheduled(config: EvolutionConfig | null) {
+async function processScheduled(config: EvolutionConfig | null, cronSecret: string) {
   const [automations, jobs, subtasks, clients, collaborators, projects, miniTasks] = await Promise.all([
     loadEntityPayloads("WhatsappAutomation"),
     loadEntityPayloads("Job"),
@@ -395,6 +440,13 @@ async function processScheduled(config: EvolutionConfig | null) {
     loadEntityPayloads("MiniTask"),
   ]);
   const now = manausNow();
+  const dominusDue = isDominusSummaryWindow(now);
+  const dominusAudit = dominusDue
+    ? await runDominusAuditScheduled(cronSecret)
+    : { status: "waiting", scheduled_for: now.date + " 20:00", timezone: "America/Manaus" };
+  const dominusSummary = dominusDue
+    ? await sendDominusDailySummary(config, automations, dominusAudit)
+    : { status: "waiting", scheduled_for: now.date + " 20:00", timezone: "America/Manaus" };
   const dailyNotifications = await sendDailyOverdueNotifications(config, now, collaborators, jobs, subtasks, clients, projects);
   const results = [];
   for (const automation of automations.filter((item) => item.kind !== "dominus" && automationIsDue(item, now))) {
@@ -411,7 +463,7 @@ async function processScheduled(config: EvolutionConfig | null) {
     });
     results.push({ id: automation.id, name: automation.name, sent: true, updated });
   }
-  return { processed: results.length, results, dailyNotifications, checkedAt: new Date().toISOString() };
+  return { processed: results.length, results, dailyNotifications, dominusAudit, dominusSummary, checkedAt: new Date().toISOString() };
 }
 
 function json(body: Record<string, unknown>, status = 200, origin = "") {
@@ -431,7 +483,7 @@ Deno.serve(async (request) => {
     if (payload.action === "processScheduled") {
       const { data: cronSecret } = await supabase.rpc("get_whatsapp_automation_cron_secret");
       if (!cronSecret || request.headers.get("x-maestro-cron-secret") !== cronSecret) return json({ error: "Acesso interno não autorizado" }, 401, origin);
-      return json(await processScheduled(config), 200, origin);
+      return json(await processScheduled(config, String(cronSecret)), 200, origin);
     }
 
     if (!config) return json({ error: "Evolution API não configurada no servidor" }, 503, origin);
@@ -522,8 +574,12 @@ Deno.serve(async (request) => {
         if (!canManageDominus(session)) return json({ error: "A configuração do Dominus exige perfil Gestor ou Master." }, 403, origin);
         const groupIds = validGroupIds(automation.group_ids || (automation.group_id ? [automation.group_id] : []));
         if (!groupIds.length) return json({ error: "Selecione pelo menos um grupo WhatsApp para o Dominus." }, 400, origin);
+        const summaryGroupId = validGroupIds([automation.summary_group_id])[0] || "";
+        if (!summaryGroupId) return json({ error: "Selecione o grupo que receberá o resumo diário das 20h." }, 400, origin);
+        if (!groupIds.includes(summaryGroupId)) return json({ error: "O grupo do resumo diário precisa estar entre os grupos autorizados." }, 400, origin);
         automation.group_ids = groupIds;
         automation.group_id = groupIds[0];
+        automation.summary_group_id = summaryGroupId;
         automation.agent_name = "Dominus";
       } else if (!String(automation.group_id || "")) return json({ error: "Selecione um grupo WhatsApp" }, 400, origin);
       if (automation.kind === "text" && !String(automation.message || "").trim()) return json({ error: "Informe a mensagem" }, 400, origin);

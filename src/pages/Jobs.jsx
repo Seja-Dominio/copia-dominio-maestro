@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
 import { useStatusConfig } from "@/lib/AppConfigContext";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh.jsx";
@@ -72,7 +72,7 @@ export default function Jobs() {
   useEffect(() => {
     loadData();
     maestro.entities.Collaborator.filter({ is_active: true }, "name", 100).then(setActiveCollaborators);
-    maestro.entities.Client.filter({ status: "active" }, "name", 500).then(setActiveClients);
+    maestro.entities.Client.filter({ status: "active" }, "name", 200).then(setActiveClients);
   }, []);
 
   // Salvar view quando mudar
@@ -84,10 +84,26 @@ export default function Jobs() {
     setLoading(true);
     setLoadError("");
     try {
+      const loadVisibleJobs = async () => {
+        // Filter cancelled jobs in the data layer so the page does not fetch
+        // an arbitrary first slice and then show incomplete totals.
+        const filteredJobs = await maestro.entities.Job.filter(
+          { status: { not_in: ["cancelled"] } },
+          "-post_date",
+          5000,
+        );
+
+        // Keep the UI compatible with an older deployed Maestro function that
+        // may not understand the operator syntax yet.
+        return filteredJobs.length > 0
+          ? filteredJobs
+          : maestro.entities.Job.list("-post_date", 5000);
+      };
+
       const [j, s, p] = await Promise.all([
-        maestro.entities.Job.list("-post_date", 5000),
-        maestro.entities.Subtask.list("-created_date", 5000),
-        maestro.entities.Project.list("-created_date", 5000),
+        loadVisibleJobs(),
+        maestro.entities.Subtask.list("-created_date", 2000),
+        maestro.entities.Project.list("-created_date", 500),
       ]);
       // Keep completed jobs visible so the external app preserves the historical
       // pauta from Base44. Only cancelled jobs stay out of the main job views.
@@ -158,14 +174,37 @@ export default function Jobs() {
     return new Set(subtasks.filter(s => s.responsible_id === collabId).map(s => s.job_id).filter(Boolean));
   }, [subtasks, collabId]);
 
-  const isMyJob = (j) => j.responsible_id === collabId || (j.involved || []).includes(collabId) || mySubtaskJobIds.has(j.id);
+  const subtaskResponsibleIdsByJob = useMemo(() => {
+    const map = new Map();
+    subtasks.forEach(subtask => {
+      if (!subtask.job_id || !subtask.responsible_id) return;
+      const responsibleIds = map.get(subtask.job_id) || new Set();
+      responsibleIds.add(subtask.responsible_id);
+      map.set(subtask.job_id, responsibleIds);
+    });
+    return map;
+  }, [subtasks]);
+
+  const isMyJob = (j) => subtaskResponsibleIdsByJob.get(j.id)?.has(collabId) || false;
 
   // Map project_id -> teams for team filtering
   const projectTeamsMap = useMemo(() => {
     const map = {};
-    projects.forEach(p => { map[p.id] = p.teams || []; });
+    projects.forEach(p => {
+      const teams = Array.isArray(p.teams) && p.teams.length > 0
+        ? p.teams
+        : (p.team ? [p.team] : []);
+      map[p.id] = teams;
+    });
     return map;
   }, [projects]);
+
+  function normalizeTeamName(value) {
+    return String(value || "")
+      .trim()
+      .replace(/^Equipe\s+/i, "")
+      .toLocaleLowerCase();
+  }
 
   const [availableTeams, setAvailableTeams] = useState([]);
   useEffect(() => {
@@ -181,11 +220,12 @@ export default function Jobs() {
       }
       if (teamFilter !== "all") {
         const teams = projectTeamsMap[j.project_id] || [];
-        const match = teams.some(t => t === teamFilter || t === `Equipe ${teamFilter}` || teamFilter === `Equipe ${t}`);
+        const selectedTeam = normalizeTeamName(teamFilter);
+        const match = teams.some(t => normalizeTeamName(t) === selectedTeam);
         if (!match) return false;
       }
       if (collaboratorFilter !== "all") {
-        if (j.responsible_id !== collaboratorFilter && !(j.involved || []).includes(collaboratorFilter)) return false;
+        if (!subtaskResponsibleIdsByJob.get(j.id)?.has(collaboratorFilter)) return false;
       }
       return true;
     });
@@ -450,7 +490,7 @@ export default function Jobs() {
             setSelectedJob(updated);
           }}
           onSubtasksChange={async () => {
-            const s = await maestro.entities.Subtask.list("-created_date", 5000);
+            const s = await maestro.entities.Subtask.list("-created_date", 2000);
             setSubtasks(s);
           }}
         />,
@@ -472,7 +512,7 @@ export default function Jobs() {
 
 function TimesheetView() {
   const [timesheets, setTimesheets] = useState([]);
-  const [timerId, setTimerId] = useState(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     const loadTimesheets = async () => {
@@ -481,11 +521,12 @@ function TimesheetView() {
     };
     
     loadTimesheets();
-    // Atualizar a cada 10 segundos para sincronizar timers
-    setTimerId(setInterval(loadTimesheets, 10000));
+    // Atualizar a cada 30 segundos; a referência evita intervalos órfãos ao
+    // trocar de aba ou desmontar a tela.
+    timerRef.current = setInterval(loadTimesheets, 30000);
     
     return () => {
-      if (timerId) clearInterval(timerId);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 

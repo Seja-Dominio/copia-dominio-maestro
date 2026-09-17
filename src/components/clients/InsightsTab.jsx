@@ -3,9 +3,9 @@ import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  Users, Eye, Heart, TrendingUp, TrendingDown, Trash2,
-  RefreshCw, Sparkles, ExternalLink, BarChart3, Loader2,
-  Image, Film, LayoutGrid, Calendar as CalendarIcon
+  Users, Eye, Heart, TrendingUp, Trash2,
+  RefreshCw, Sparkles, ExternalLink, Loader2,
+  Image, Film, LayoutGrid, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,26 @@ const PERIOD_OPTIONS = [
   { value: "90", label: "90 dias" },
 ];
 
+function comparisonRange(days) {
+  const length = Number(days) + 1;
+  return {
+    from: format(subDays(new Date(), length + Number(days)), "yyyy-MM-dd"),
+    to: format(subDays(new Date(), length), "yyyy-MM-dd"),
+  };
+}
+
+function variation(current, previous) {
+  if (!Number.isFinite(Number(current)) || !Number.isFinite(Number(previous))) return null;
+  if (Number(previous) === 0) return Number(current) === 0 ? 0 : null;
+  return ((Number(current) - Number(previous)) / Math.abs(Number(previous))) * 100;
+}
+
+function VariationLabel({ current, previous, suffix = "%" }) {
+  const delta = variation(current, previous);
+  if (delta == null) return <span className="text-[10px] text-muted-foreground">sem base anterior</span>;
+  return <span className={`text-[10px] font-bold ${delta >= 0 ? "text-green-600" : "text-red-600"}`}>{delta >= 0 ? "+" : ""}{delta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}{suffix} vs. período anterior</span>;
+}
+
 export default function InsightsTab({ client }) {
   const [insights, setInsights] = useState([]);
   const [posts, setPosts] = useState([]);
@@ -42,6 +62,7 @@ export default function InsightsTab({ client }) {
 
   const dateFrom = format(subDays(new Date(), Number(period)), "yyyy-MM-dd");
   const dateTo = format(new Date(), "yyyy-MM-dd");
+  const previousRange = comparisonRange(period);
 
   async function loadData() {
     setLoading(true);
@@ -105,6 +126,11 @@ export default function InsightsTab({ client }) {
   );
 
   const activePosts = filteredPosts.filter(p => !p.is_excluded);
+  const previousInsights = useMemo(() => insights.filter(i => !i.is_excluded && i.date >= previousRange.from && i.date <= previousRange.to).sort((a, b) => a.date.localeCompare(b.date)), [insights, previousRange.from, previousRange.to]);
+  const previousPosts = useMemo(() => posts.filter(p => {
+    const d = p.published_at?.split("T")[0] || "";
+    return d >= previousRange.from && d <= previousRange.to && !p.is_excluded;
+  }), [posts, previousRange.from, previousRange.to]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -119,6 +145,17 @@ export default function InsightsTab({ client }) {
     const totalSaves = activePosts.reduce((s, p) => s + (p.saves || 0), 0);
     return { lastFollowers, followerGrowth, totalReach, avgEngagement, totalEngagement, totalSaves };
   }, [filteredInsights, activePosts]);
+
+  const previousKpis = useMemo(() => {
+    const lastFollowers = previousInsights[previousInsights.length - 1]?.followers_count || 0;
+    const firstFollowers = previousInsights[0]?.followers_count || lastFollowers;
+    const totalReach = previousPosts.reduce((s, p) => s + (p.reach || 0), 0);
+    const avgEngagement = previousPosts.length > 0
+      ? (previousPosts.reduce((s, p) => s + (p.engagement_rate || 0), 0) / previousPosts.length).toFixed(2)
+      : 0;
+    const totalSaves = previousPosts.reduce((s, p) => s + (p.saves || 0), 0);
+    return { lastFollowers, followerGrowth: lastFollowers - firstFollowers, totalReach, avgEngagement, totalSaves };
+  }, [previousInsights, previousPosts]);
 
   // Chart data
   const chartData = filteredInsights.map(i => ({
@@ -182,10 +219,10 @@ export default function InsightsTab({ client }) {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-2">
         {[
-          { label: "Seguidores", value: kpis.lastFollowers.toLocaleString("pt-BR"), sub: kpis.followerGrowth, icon: Users, color: "text-primary" },
-          { label: "Alcance Total", value: kpis.totalReach.toLocaleString("pt-BR"), icon: Eye, color: "text-blue-600" },
-          { label: "Engajamento Médio", value: `${kpis.avgEngagement}%`, icon: Heart, color: "text-pink-600" },
-          { label: "Salvamentos", value: kpis.totalSaves.toLocaleString("pt-BR"), icon: TrendingUp, color: "text-green-600" },
+          { label: "Seguidores", value: kpis.lastFollowers.toLocaleString("pt-BR"), previous: previousKpis.lastFollowers, sub: kpis.followerGrowth, icon: Users, color: "text-primary" },
+          { label: "Alcance Total", value: kpis.totalReach.toLocaleString("pt-BR"), previous: previousKpis.totalReach, icon: Eye, color: "text-blue-600" },
+          { label: "Engajamento Médio", value: `${kpis.avgEngagement}%`, previous: previousKpis.avgEngagement, icon: Heart, color: "text-pink-600" },
+          { label: "Salvamentos", value: kpis.totalSaves.toLocaleString("pt-BR"), previous: previousKpis.totalSaves, icon: TrendingUp, color: "text-green-600" },
         ].map(k => (
           <div key={k.label} className="bg-muted/40 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
@@ -193,6 +230,7 @@ export default function InsightsTab({ client }) {
               <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{k.label}</span>
             </div>
             <p className="text-lg font-black text-foreground">{k.value}</p>
+            <VariationLabel current={Number.parseFloat(String(k.value).replace(/[^\d,-]/g, "").replace(".", "").replace(",", "."))} previous={k.previous} />
             {k.sub !== undefined && (
               <span className={`text-[10px] font-bold ${k.sub >= 0 ? "text-green-600" : "text-red-600"}`}>
                 {k.sub >= 0 ? "+" : ""}{k.sub} no período
@@ -200,6 +238,10 @@ export default function InsightsTab({ client }) {
             )}
           </div>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-xs text-blue-950">
+        <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><p className="font-semibold">Comparação competitiva</p><p className="mt-1 leading-5">Os insights da conta e a variação do período anterior estão disponíveis. A API oficial do Instagram não entrega métricas privadas de concorrentes; este bloco só será preenchido quando houver uma fonte oficial autorizada ou um benchmark interno cadastrado.</p></div></div>
       </div>
 
       {/* Charts */}

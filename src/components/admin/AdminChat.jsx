@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { maestro } from "@/api/maestroClient";
-import { MessageCircle, X, Send, Loader2, Sparkles } from "lucide-react";
+import { invokeMaestroGpt } from "@/lib/maestroGpt";
+import { X, Send, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 const SUGGESTIONS = [
@@ -72,7 +73,7 @@ export default function AdminChat() {
 
       const today = new Date().toISOString().split("T")[0];
 
-      const response = await maestro.integrations.Core.InvokeLLM({
+      const response = await invokeMaestroGpt({
         prompt: `Você é o assistente administrativo da agência de marketing "Domínio Performance", integrado ao sistema AgênciaOS.
 
 Você tem acesso aos DADOS REAIS do sistema abaixo. Use APENAS estes dados para responder — nunca invente informações.

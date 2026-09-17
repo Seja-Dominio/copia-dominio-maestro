@@ -11,7 +11,23 @@ const origins = new Set([
   "https://www.dominiomaestro.com.br",
 ]);
 const allowedScopes = new Set(["account_identity", "account_metrics", "campaigns", "budget_limits"]);
-const managerRoles = new Set(["master", "admin", "gestor", "manager", "traffic_manager"]);
+
+function currentManausDate() {
+  const now = new Date();
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Manaus",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now).filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+  return {
+    isoDate: `${parts.year}-${parts.month}-${parts.day}`,
+    display: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Manaus", dateStyle: "full", timeStyle: "short" }).format(now),
+  };
+}
 
 function decode(value: string) {
   return atob(value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "="));
@@ -39,8 +55,28 @@ async function getSession(token: string) {
     full_name: profile.full_name || profile.name || "",
     role: profile.role || "",
     access_level: profile.access_level || "collaborator",
+    permissions: profile.permissions && typeof profile.permissions === "object" && !Array.isArray(profile.permissions)
+      ? profile.permissions
+      : {},
     is_active: collaborator.is_active,
   };
+}
+
+function hasAdsBrainAccess(collaborator: Record<string, any>) {
+  const rawLevel = String(collaborator.access_level || collaborator.role || "collaborator").toLowerCase();
+  const accessLevel = rawLevel === "admin" ? "master" : rawLevel;
+  const permissions = collaborator.permissions;
+  const tabs = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? permissions.tabs
+    : null;
+
+  // An explicit tab decision is authoritative. Legacy collaborators without
+  // a tab map keep the historical Ads Brain access for all three levels.
+  if (tabs && typeof tabs === "object" && !Array.isArray(tabs) && Object.prototype.hasOwnProperty.call(tabs, "AdsBrain")) {
+    return (tabs as Record<string, unknown>).AdsBrain === true;
+  }
+
+  return ["master", "gestor", "collaborator"].includes(accessLevel);
 }
 
 function json(body: Record<string, unknown>, status: number, origin: string) {
@@ -100,7 +136,7 @@ async function askOpenAI(message: string, context: unknown) {
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: Deno.env.get("OPENAI_MODEL") || "gpt-5.6-luna",
-      instructions: "Você é o Copiloto de Tráfego da Domínio Performance. Responda em português, usando somente os dados recebidos. Separe fatos observados, hipóteses e recomendações. Não invente números, não diga que executou ações e nunca recomende alterar orçamento sem explicar o risco e pedir validação do gestor.",
+      instructions: "Você é o Copiloto de Tráfego da Domínio Performance. A data e o horário atuais de referência são informados nos dados recebidos no fuso America/Manaus. Use essa data para interpretar Hoje, Ontem, prazos e comparativos; nunca use a data do seu treinamento nem confunda UTC com o horário local. Responda em português, usando somente os dados recebidos. Apresente a resposta em Markdown legível: comece com um título curto, use subtítulos (##), listas curtas e destaque os alertas mais importantes. Use tabela Markdown somente quando houver comparação entre pelo menos 3 itens e 2 colunas; alinhe cada linha e não use tabela para texto corrido. Separe fatos observados, hipóteses e recomendações. Formate datas no padrão dd/MM/yyyy e valores em reais quando aplicável. Nunca retorne JSON, código ou parágrafos longos sem quebras. Não invente números, não diga que executou ações e nunca recomende alterar orçamento sem explicar o risco e pedir validação do gestor.",
       input: `${message}\n\nDados autorizados pelo usuário:\n${JSON.stringify(context)}`,
     }),
   });
@@ -118,21 +154,21 @@ Deno.serve(async request => {
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
     const collaborator = token ? await getSession(token) : null;
     if (!collaborator) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
+    if (!hasAdsBrainAccess(collaborator)) return json({ error: "A aba Ads Brain não está habilitada para este usuário." }, 403, origin);
     const body = await request.json();
     const action = body.action === "mcp_query" ? "mcp_query" : "daily_analysis";
     const requestedScopes = Array.isArray(body.scopes) ? body.scopes.map(String).filter(scope => allowedScopes.has(scope)) : ["account_identity", "account_metrics", "campaigns"];
     const scopes = [...new Set(requestedScopes)];
-    const role = String(collaborator.access_level || collaborator.role || "").toLowerCase();
-    if (scopes.includes("budget_limits") && !managerRoles.has(role)) return json({ error: "Seu perfil não tem permissão para consultar limites e orçamento." }, 403, origin);
     if (action === "mcp_query" && !String(body.question || "").trim()) return json({ error: "Informe o que deseja consultar." }, 400, origin);
     const accountIds = Array.isArray(body.account_ids) ? body.account_ids.map(String).filter(Boolean) : [];
     let query = db.from("maestro_ads_accounts").select("id,network,client_name,display_name,currency,balance,minimum_balance,spending_limit,amount_spent,metrics_data,campaigns_data,last_synced_at");
     if (accountIds.length) query = query.in("id", accountIds);
     const { data: accounts, error } = await query.order("updated_at", { ascending: false });
     if (error) throw error;
-    const safeContext = { period: String(body.period || "Hoje"), generatedAt: new Date().toISOString(), scopes, accounts: buildContext(accounts || [], scopes) };
+    const currentDate = currentManausDate();
+    const safeContext = { period: String(body.period || "Hoje"), currentDate: currentDate.isoDate, currentDateDisplay: currentDate.display, timeZone: "America/Manaus", generatedAt: new Date().toISOString(), scopes, accounts: buildContext(accounts || [], scopes) };
     const prompt = action === "daily_analysis"
-      ? "Faça a análise diária das contas selecionadas. Entregue: 1) resumo executivo, 2) principais sinais positivos, 3) alertas e riscos, 4) três sugestões priorizadas para o gestor validar. Se não houver dados suficientes, diga exatamente o que falta."
+      ? `Faça a análise diária das contas selecionadas considerando que hoje é ${currentDate.display} (${currentDate.isoDate}, fuso America/Manaus). Entregue em blocos curtos: 1) resumo executivo, 2) principais sinais positivos, 3) alertas e riscos, 4) três sugestões priorizadas para o gestor validar. Se houver várias contas, use uma tabela curta para comparar somente os indicadores mais importantes. Se não houver dados suficientes, diga exatamente o que falta.`
       : String(body.question).trim();
     const output = await askOpenAI(prompt, safeContext);
     return json({ output, scopes, accountCount: (accounts || []).length, generatedAt: safeContext.generatedAt }, 200, origin);

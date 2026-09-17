@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { maestro } from "@/api/maestroClient";
+import { invokeMaestroGpt } from "@/lib/maestroGpt";
 import { Search, Loader2, Save, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +33,7 @@ export default function InstagramSetupForm({ client, onSaved }) {
     setError("");
     setFetchedData(null);
     try {
-      const res = await maestro.integrations.Core.InvokeLLM({
+      const res = await invokeMaestroGpt({
         prompt: `Acesse o perfil do Instagram https://www.instagram.com/${username}/ e extraia as informações públicas visíveis na página do perfil:
 - Nome de exibição do perfil
 - Biografia/descrição
@@ -43,8 +44,7 @@ export default function InstagramSetupForm({ client, onSaved }) {
 
 Importante: o perfil existe, o username é "${username}". Retorne found: true e os dados encontrados.
 Se realmente não conseguir acessar nenhuma informação, retorne found: false.`,
-        add_context_from_internet: true,
-        model: "gemini_3_flash",
+        context: { task: "instagram_profile_lookup", allow_web_search: true },
         response_json_schema: {
           type: "object",
           properties: {

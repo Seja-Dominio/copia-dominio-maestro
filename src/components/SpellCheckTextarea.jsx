@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { maestro } from "@/api/maestroClient";
-import { Check, X } from "lucide-react";
+import { invokeMaestroGpt } from "@/lib/maestroGpt";
+import { X } from "lucide-react";
 
 const spellCache = new Map();
 const globalDismissed = new Set();
@@ -37,7 +37,7 @@ export default function SpellCheckTextarea({
 
     setChecking(true);
     try {
-      const result = await maestro.integrations.Core.InvokeLLM({
+      const result = await invokeMaestroGpt({
         prompt: `Analise o seguinte texto em português e encontre APENAS erros ortográficos e gramaticais claros. Não sugira mudanças de estilo. Retorne um array de erros encontrados.
 
 Texto: "${text}"

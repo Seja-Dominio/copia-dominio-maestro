@@ -57,6 +57,10 @@ const STATUS_CONFIG = {
 export { STATUS_CONFIG };
 
 export default function Agenda() {
+  const currentCollaborator = (() => {
+    try { return JSON.parse(sessionStorage.getItem("collaborator") || "null"); } catch { return null; }
+  })();
+  const canDeleteAgendaEvent = ["gestor", "master"].includes(String(currentCollaborator?.access_level || "").toLowerCase());
   const [activityConfig, setActivityConfig] = useState(() => getActivityConfig());
   const [events, setEvents] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
@@ -368,6 +372,7 @@ export default function Agenda() {
         collaborators={collaborators.filter(c => c.is_active !== false)}
         clients={clients}
         activityConfig={activityConfig}
+        canDelete={canDeleteAgendaEvent}
         onClose={() => {setShowDrawer(false);setEditingEvent(null);setDefaultDate(null);}}
         onSaved={() => {loadAll();setShowDrawer(false);setEditingEvent(null);setDefaultDate(null);}} />
 

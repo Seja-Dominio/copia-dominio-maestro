@@ -22,6 +22,7 @@ import ClientProfitabilityReport from "@/components/reports/ClientProfitabilityR
 import ClientCostReport from "@/components/reports/ClientCostReport";
 import ProductivityDailyReport from "@/components/reports/ProductivityDailyReport";
 import DeliveryReport from "@/components/reports/DeliveryReport";
+import PaidTrafficReport from "@/components/reports/PaidTrafficReport";
 import { calculateDeliveryMetrics } from "@/lib/deliveryMetrics";
 import ActivityVolumeChart from "@/components/agenda/ActivityVolumeChart";
 import ClientKeyActivities from "@/components/agenda/ClientKeyActivities";
@@ -134,11 +135,11 @@ export default function Reports() {
   const [section, setSection] = useState(initialSection);
   const requestedReport = searchParams.get("report");
   const [activeReport, setActiveReport] = useState(
-    requestedReport || (initialSection === "timesheet" ? "by_user" : initialSection === "productivity" ? "daily" : initialSection === "jobs" ? "delivery" : "cashflow")
+    requestedReport || (initialSection === "timesheet" ? "by_user" : initialSection === "productivity" ? "daily" : initialSection === "jobs" ? "delivery" : initialSection === "media" ? "campaigns" : "cashflow")
   );
   const initialPeriod = searchParams.get("start") && searchParams.get("end")
     ? { start: searchParams.get("start"), end: searchParams.get("end") }
-    : initialSection === "jobs" && (requestedReport === "delivery" || !requestedReport)
+    : ((initialSection === "jobs" && (requestedReport === "delivery" || !requestedReport)) || (initialSection === "media" && (requestedReport === "campaigns" || !requestedReport)))
       ? getCurrentMonthPeriod(getTodayStr())
       : null;
   const [period, setPeriod] = useState(initialPeriod);
@@ -472,6 +473,11 @@ export default function Reports() {
               </div>
             )}
 
+            {/* PAID TRAFFIC */}
+            {section === "media" && activeReport === "campaigns" && (
+              <PaidTrafficReport period={period} />
+            )}
+
             {/* CONTRACTS */}
             {section === "contracts" && activeReport === "expiry" && (
               <FeeContractsReport entries={entries} clients={clients} period={period} />
@@ -486,7 +492,7 @@ export default function Reports() {
             )}
 
             {/* OTHER MODULES — placeholder */}
-            {!(["financial", "timesheet", "jobs", "productivity", "agenda"].includes(section) || (section === "contracts" && activeReport === "expiry")) && (
+            {!(["financial", "timesheet", "jobs", "productivity", "agenda", "media"].includes(section) || (section === "contracts" && activeReport === "expiry")) && (
               <div className="glass-card p-12 text-center">
                 <BarChart3 className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
                 <p className="text-muted-foreground font-medium">Relatório em desenvolvimento</p>

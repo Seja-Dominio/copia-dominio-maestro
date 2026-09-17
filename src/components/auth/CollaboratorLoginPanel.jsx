@@ -3,7 +3,7 @@ import { loginCollaborator } from "@/api/maestroClient";
 import { storeCollaboratorSession, supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, MessageCircle, User } from "lucide-react";
+import { AlertCircle, ArrowRight, Download, Eye, EyeOff, Lock, MessageCircle, User } from "lucide-react";
 
 export default function CollaboratorLoginPanel({ onLoginSuccess }) {
   const [login, setLogin] = useState("");
@@ -13,6 +13,8 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoginHovered, setIsLoginHovered] = useState(false);
   const [isLoginExpanded, setIsLoginExpanded] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installMessage, setInstallMessage] = useState("");
 
   const whatsappNumber = String(import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER || "92984523753").replace(/\D/g, "");
   const whatsappMessage = encodeURIComponent("Olá! Preciso de ajuda para recuperar meu acesso ao Domínio Maestro.");
@@ -39,6 +41,41 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
     }
   }, [login, password, isLoginHovered]);
 
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+      setInstallMessage("App instalado no computador.");
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    setInstallMessage("");
+
+    if (installPrompt) {
+      installPrompt.prompt();
+      const result = await installPrompt.userChoice;
+      if (result.outcome === "accepted") {
+        setInstallMessage("Instalação iniciada.");
+      }
+      setInstallPrompt(null);
+      return;
+    }
+
+    setInstallMessage("No Chrome ou Edge, abra o menu do navegador e escolha “Instalar Domínio Maestro”.");
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
@@ -60,6 +97,8 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
           setError("Confirme seu e-mail antes de entrar.");
           return;
         }
+        setError(error?.message || "Não foi possível validar seu e-mail. Tente novamente.");
+        return;
       }
       const response = await loginCollaborator({ login, password });
       const data = response.data;
@@ -209,6 +248,25 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
             </a>
           </div>
           </form>
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-white/20 bg-slate-950/45 p-2.5 text-white shadow-xl shadow-black/20 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={handleInstall}
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 text-xs font-semibold transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Baixar app para desktop
+          </button>
+          <p className="mt-1.5 text-center text-[10px] leading-4 text-white/65">
+            Instale o Domínio Maestro como aplicativo no seu computador.
+          </p>
+          {installMessage && (
+            <p role="status" className="mt-1 text-center text-[10px] leading-4 text-white/90">
+              {installMessage}
+            </p>
+          )}
         </div>
       </div>
     </main>);

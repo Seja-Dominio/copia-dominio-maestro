@@ -1,0 +1,23 @@
+[Unit]
+Description=Dominus Hermes bridge
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes/projects/dominus
+EnvironmentFile=/opt/hermes/run/bridge.env
+ExecStart=/opt/hermes/.hermes/hermes-agent/venv/bin/uvicorn bridge_api:app --host 127.0.0.1 --port 8787 --workers 1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/hermes/run /opt/hermes/.hermes /opt/hermes/projects/dominus
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

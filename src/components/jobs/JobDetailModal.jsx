@@ -167,9 +167,11 @@ function AddHoursPanel({ job, collaboratorId, collaboratorName, onClose, onSucce
 }
 
 // Status dropdown
-function StatusDropdown({ value, onChange }) {
+function StatusDropdown({ value, onChange, canCancel = true }) {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
-  const STATUSES = Object.entries(STATUS_CONFIG).map(([v, cfg]) => ({ value: v, ...cfg }));
+  const STATUSES = Object.entries(STATUS_CONFIG)
+    .filter(([v]) => canCancel || v !== "cancelled")
+    .map(([v, cfg]) => ({ value: v, ...cfg }));
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const sc = STATUS_CONFIG[value] || STATUS_CONFIG.pending_briefing || {};
@@ -437,6 +439,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
   // Get session collaborator (custom auth)
   const sessionCollaborator = getStoredCollaborator();
+  const canCancelJob = ["gestor", "master"].includes(String(sessionCollaborator?.access_level || "").toLowerCase());
 
   // The collaborator identity for timesheets
   const collabId = sessionCollaborator?.id || null;
@@ -1065,7 +1068,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-white dark:bg-card flex-shrink-0 flex-wrap">
 
           {/* Status */}
-          <StatusDropdown value={job.status} onChange={v => update("status", v)} />
+          <StatusDropdown value={job.status} canCancel={canCancelJob} onChange={v => update("status", v)} />
 
           {/* Post date with calendar */}
           <PostDateDropdown value={job.post_date} onChange={v => update("post_date", v)} onRepeat={repeatJob} />
@@ -1114,7 +1117,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               </div>
             )}
             {/* Cancel job button */}
-            {job.status !== "cancelled" ? (
+            {job.status !== "cancelled" && canCancelJob ? (
               <button
                 onClick={() => setCancelJobConfirm(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200 transition-colors"
@@ -1634,7 +1637,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           setCancelJobConfirm(false);
           await stopTimer();
           // Save immediately (bypass debounce) so the job moves to Cancelled section
-          const saved = await maestro.entities.Job.update(job.id, { ...job, status: "cancelled" });
+          const saved = await maestro.entities.Job.update(job.id, { status: "cancelled" });
           setJob(j => ({ ...j, status: "cancelled" }));
           onUpdate(saved);
           addHistory("change", `Status: ${STATUS_CONFIG[job.status]?.label || job.status} → ${STATUS_CONFIG.cancelled?.label || "Cancelado"}`, { field: "status", old_value: STATUS_CONFIG[job.status]?.label || job.status, new_value: STATUS_CONFIG.cancelled?.label || "Cancelado" });

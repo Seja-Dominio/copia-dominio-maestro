@@ -25,6 +25,12 @@ verify_jwt = false
 [functions.dominus-webhook]
 verify_jwt = false
 
+[functions.dominus-memory]
+verify_jwt = false
+
+[functions.dominus-audit]
+verify_jwt = false
+
 [functions.team-chat]
 verify_jwt = false
 
@@ -35,4 +41,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sync-prod-snapshot]
+verify_jwt = false
+
+[functions.marketing-mix-snapshot]
 verify_jwt = false

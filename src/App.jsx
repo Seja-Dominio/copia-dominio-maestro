@@ -15,17 +15,45 @@ import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
 import { logoutCollaborator } from '@/api/maestroClient';
 
-// Lazy imports with built-in retry to handle Vite HMR / recompilation failures
+// Lazy imports with a cache-busting recovery for stale Vite chunks.
+function isChunkLoadError(error) {
+  const message = String(error?.message || error || "");
+  return message.includes("dynamically imported module")
+    || message.includes("Failed to fetch")
+    || message.includes("Loading chunk")
+    || message.includes("Loading CSS chunk");
+}
+
+function reloadWithFreshAssets() {
+  const key = `lazy_reload_${window.location.pathname}`;
+  const now = Date.now();
+  const lastReload = Number(sessionStorage.getItem(key) || 0);
+
+  if (now - lastReload > 15000) {
+    sessionStorage.setItem(key, String(now));
+    const url = new URL(window.location.href);
+    url.searchParams.set("_cb", String(now));
+    window.location.replace(url.toString());
+    return new Promise(() => {});
+  }
+
+  return null;
+}
+
 function lazyWithRetry(factory) {
-  return lazy(() =>
-    factory().catch(() =>
-      new Promise(resolve => setTimeout(resolve, 1500)).then(() =>
-        factory().catch(() =>
-          new Promise(resolve => setTimeout(resolve, 2000)).then(() => factory())
-        )
-      )
-    )
-  );
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (error) {
+      if (isChunkLoadError(error)) {
+        const recovery = reloadWithFreshAssets();
+        if (recovery) return recovery;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return factory();
+    }
+  });
 }
 
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard.jsx'));
@@ -66,7 +94,7 @@ class SafeBoundary extends React.Component {
           <p role="alert" className="text-destructive font-semibold">Erro ao carregar</p>
           <p className="text-sm text-muted-foreground text-center max-w-md">{this.state.error?.message}</p>
           <button
-            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.replace(`${window.location.pathname}?_cb=${Date.now()}`); }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
           >
             Recarregar

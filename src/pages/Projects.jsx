@@ -183,9 +183,9 @@ export default function Projects() {
     try {
       const [data, jobs, clients, timesheets] = await Promise.all([
         maestro.entities.Project.list("-created_date", 100),
-        maestro.entities.Job.list("-created_date", 500),
+        maestro.entities.Job.list("-created_date", 300),
         maestro.entities.Client.list("name", 200),
-        maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 2000),
+        maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 500),
       ]);
       setProjects(data);
       const grouped = {};

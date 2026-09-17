@@ -2,6 +2,16 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { clearStoredCollaboratorSession, getStoredCollaborator, getStoredSessionToken, supabase } from '@/api/supabaseClient';
 
 const AuthContext = createContext();
+const AUTH_SESSION_TIMEOUT_MS = 5000;
+
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error('A verificação da sessão demorou mais que o esperado.')), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -40,8 +50,15 @@ export const AuthProvider = ({ children }) => {
 
         // Supabase Auth remains available for native email-based accounts.
         if (supabase) {
-          const { data, error } = await supabase.auth.getSession();
-          if (!error && applySession(data.session)) return;
+          try {
+            const { data, error } = await withTimeout(supabase.auth.getSession(), AUTH_SESSION_TIMEOUT_MS);
+            if (!error && applySession(data.session)) return;
+          } catch (error) {
+            // A sessão nativa é opcional para o login de colaboradores. Se a
+            // rede ou o serviço estiver indisponível, a tela de login deve
+            // continuar acessível em vez de permanecer no carregamento.
+            console.warn('[Auth] Não foi possível verificar a sessão nativa:', error?.message);
+          }
         }
 
         // Salva a rota atual para redirecionar após login

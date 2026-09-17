@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { maestro } from "@/api/maestroClient";
+import { invokeMaestroGpt } from "@/lib/maestroGpt";
 import { AlertTriangle, Loader2, RefreshCw, ExternalLink, Camera, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -34,7 +34,7 @@ export default function ClientAttentionWidget({ clientsAtRisk, scheduleBreaches 
         };
       });
 
-      const res = await maestro.integrations.Core.InvokeLLM({
+      const res = await invokeMaestroGpt({
         prompt: `Você é um consultor de gestão de agências de marketing digital. Analise estes clientes que precisam de atenção urgente e dê recomendações práticas para o administrador.
 
 Dados dos clientes em risco:

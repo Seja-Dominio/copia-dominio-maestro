@@ -17,6 +17,9 @@ export const isDevelopmentEnvironment = appEnvironment !== 'production' && url =
 
 const COLLABORATOR_STORAGE_KEY = 'collaborator';
 const COLLABORATOR_TOKEN_STORAGE_KEY = 'collaborator_session_token';
+const ENTITY_READ_CACHE_TTL = 15_000;
+const entityReadCache = new Map();
+const entityReadInflight = new Map();
 
 function getStoredValue(key) {
   return sessionStorage.getItem(key) || localStorage.getItem(key);
@@ -65,6 +68,48 @@ export function clearStoredCollaboratorSession() {
   localStorage.removeItem(COLLABORATOR_TOKEN_STORAGE_KEY);
 }
 
+function getEntityReadIdentity() {
+  try {
+    return String(JSON.parse(getStoredValue(COLLABORATOR_STORAGE_KEY) || '{}')?.id || 'anonymous');
+  } catch {
+    return 'anonymous';
+  }
+}
+
+function getEntityReadKey(body) {
+  return `${getEntityReadIdentity()}:${JSON.stringify(body)}`;
+}
+
+function invalidateEntityReads(entity) {
+  for (const key of entityReadCache.keys()) {
+    if (key.includes(`"entity":"${entity}"`)) entityReadCache.delete(key);
+  }
+  for (const key of entityReadInflight.keys()) {
+    if (key.includes(`"entity":"${entity}"`)) entityReadInflight.delete(key);
+  }
+}
+
+async function readEntity(body, { cache = true } = {}) {
+  const key = getEntityReadKey(body);
+  const now = Date.now();
+  if (cache) {
+    const cached = entityReadCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.value;
+    if (cached) entityReadCache.delete(key);
+    const inflight = entityReadInflight.get(key);
+    if (inflight) return inflight;
+  }
+
+  const request = callMaestroData(body).then((result) => {
+    const value = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
+    if (cache) entityReadCache.set(key, { value, expiresAt: Date.now() + ENTITY_READ_CACHE_TTL });
+    return value;
+  }).finally(() => entityReadInflight.delete(key));
+
+  if (cache) entityReadInflight.set(key, request);
+  return request;
+}
+
 function assertSafeTarget() {
   if (unsafeTarget) {
     throw new Error(`Ambiente ${appEnvironment} apontado para o projeto Supabase incorreto. Dev usa tqmf... e produção usa fwpis... Configure a URL correspondente antes de continuar.`);
@@ -111,9 +156,9 @@ export async function invokeSupabaseFunction(name, body = {}, options = {}) {
   return data;
 }
 
-export async function askMaestroAI({ message, history = [], context = {} }) {
+export async function askMaestroAI({ message, history = [], context = {}, response_json_schema }) {
   try {
-    const data = await invokeSupabaseFunction('maestro-ai', { message, history, context });
+    const data = await invokeSupabaseFunction('maestro-ai', { message, history, context, response_json_schema });
     return data.output || '';
   } catch (error) {
     return error?.message || 'Não foi possível consultar o ChatGPT agora.';
@@ -132,6 +177,14 @@ export function invokeAdminTimesheetFunction(action, payload = {}) {
 
 export function invokeSystemReportFunction(action) {
   return invokeSupabaseFunction('system-reports', { action });
+}
+
+export function invokeDominusMemoryFunction(action, payload = {}) {
+  return invokeSupabaseFunction('dominus-memory', { action, ...payload });
+}
+
+export function invokeDominusAuditFunction(action, payload = {}) {
+  return invokeSupabaseFunction('dominus-audit', { action, ...payload });
 }
 
 export function invokeSnapshotSync({ force = true, entities } = {}) {
@@ -233,27 +286,22 @@ export async function callMaestroData(body) {
 
 function createEntityApi(entity) {
   return {
-    // Keep list reads resilient while older deployed functions may wrap rows
-    // as { data: [...] } instead of returning the array directly.
-    list: async (sort, limit) => {
-      const result = await callMaestroData({ operation: 'list', entity, sort, limit });
-      return Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
-    },
-    filter: async (filters, sort, limit) => {
-      const result = await callMaestroData({ operation: 'filter', entity, filters, sort, limit });
-      return Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
-    },
-    create: (data) => callMaestroData({ operation: 'create', entity, data }),
-    update: (id, data) => callMaestroData({ operation: 'update', entity, id, data }),
-    delete: (id) => callMaestroData({ operation: 'delete', entity, id }),
-    bulkCreate: (data) => callMaestroData({ operation: 'bulkCreate', entity, data }),
-    subscribe: (callback) => {
+    list: (sort, limit, options = {}) => readEntity({ operation: 'list', entity, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) }),
+    filter: (filters, sort, limit, options = {}) => readEntity({ operation: 'filter', entity, filters, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) }),
+    create: async (data) => { const result = await callMaestroData({ operation: 'create', entity, data }); invalidateEntityReads(entity); return result; },
+    update: async (id, data) => { const result = await callMaestroData({ operation: 'update', entity, id, data }); invalidateEntityReads(entity); return result; },
+    delete: async (id) => { const result = await callMaestroData({ operation: 'delete', entity, id }); invalidateEntityReads(entity); return result; },
+    bulkCreate: async (data) => { const result = await callMaestroData({ operation: 'bulkCreate', entity, data }); invalidateEntityReads(entity); return result; },
+    subscribe: (callback, { intervalMs = 30_000, limit = 1000, filters, sort = '-created_date' } = {}) => {
       let stopped = false;
       let snapshot = new Map();
 
       const poll = async () => {
         try {
-          const rows = await callMaestroData({ operation: 'list', entity, sort: '-created_date', limit: 1000 });
+          const body = filters
+            ? { operation: 'filter', entity, filters, sort, limit }
+            : { operation: 'list', entity, sort, limit };
+          const rows = await readEntity(body, { cache: false });
           const next = new Map(rows.map((row) => [row.id, row]));
           if (snapshot.size) {
             next.forEach((row, id) => {
@@ -271,7 +319,7 @@ function createEntityApi(entity) {
       };
 
       poll();
-      const interval = window.setInterval(() => { if (!stopped) poll(); }, 10000);
+      const interval = window.setInterval(() => { if (!stopped) poll(); }, intervalMs);
       return () => { stopped = true; window.clearInterval(interval); };
     },
   };

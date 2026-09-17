@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { maestro } from "@/api/maestroClient";
+import { invokeMaestroGpt } from "@/lib/maestroGpt";
 import { X, FileText, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +73,7 @@ A proposta deve conter:
 7. Assinatura de ambas as partes
 8. Retorne APENAS o HTML, sem markdown, sem blocos de código.`;
 
-    const result = await maestro.integrations.Core.InvokeLLM({ prompt, model: "gemini_3_flash" });
+    const result = await invokeMaestroGpt({ prompt, context: { task: "generate_proposal" } });
     let html = result;
     if (typeof html === "object") html = html.text || html.content || JSON.stringify(html);
     // Strip markdown code blocks if present

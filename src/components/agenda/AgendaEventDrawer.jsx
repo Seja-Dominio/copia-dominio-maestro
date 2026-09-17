@@ -30,7 +30,7 @@ function getDefaultDuration(activityType) {
   return 60; // fallback 1h
 }
 
-export default function AgendaEventDrawer({ event, defaultDate, collaborators, clients, activityConfig = {}, onClose, onSaved }) {
+export default function AgendaEventDrawer({ event, defaultDate, collaborators, clients, activityConfig = {}, canDelete = false, onClose, onSaved }) {
   const now = new Date();
   const todayStr = format(now, "yyyy-MM-dd");
   const nowTime = format(now, "HH:mm");
@@ -55,6 +55,7 @@ export default function AgendaEventDrawer({ event, defaultDate, collaborators, c
     notes: event?.notes || "",
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const confirmDelete = useConfirmDelete();
 
   useEffect(() => {
@@ -96,13 +97,19 @@ export default function AgendaEventDrawer({ event, defaultDate, collaborators, c
   async function handleSave() {
     if (!form.title || !form.date || !form.activity_type) return;
     setSaving(true);
-    if (event) {
-      await maestro.entities.AgendaEvent.update(event.id, form);
-    } else {
-      await maestro.entities.AgendaEvent.create(form);
+    setSaveError("");
+    try {
+      if (event) {
+        await maestro.entities.AgendaEvent.update(event.id, form);
+      } else {
+        await maestro.entities.AgendaEvent.create(form);
+      }
+      onSaved();
+    } catch (error) {
+      setSaveError(error?.message || "Não foi possível salvar o evento. Tente novamente.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   }
 
   async function handleDelete() {
@@ -248,9 +255,15 @@ export default function AgendaEventDrawer({ event, defaultDate, collaborators, c
 
         </div>
 
+        {saveError && (
+          <div role="alert" className="mx-5 mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {saveError}
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-5 py-4 border-t border-border flex gap-2 flex-shrink-0 bg-card">
-          {event && (
+          {event && canDelete && (
             <Button variant="outline" size="icon" onClick={handleDelete} className="text-destructive hover:bg-destructive/10 border-destructive/30">
               <Trash2 className="w-4 h-4" />
             </Button>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, LayoutTemplate, Layers, RotateCcw, Calendar, Briefcase, FolderTree, Settings2, History, ShieldCheck } from "lucide-react";
+import { Users, LayoutTemplate, Layers, RotateCcw, Calendar, Briefcase, FolderTree, Settings2, History, ShieldCheck, Brain } from "lucide-react";
 import Records from "./Records";
 import Templates from "./Templates";
 import JobStatusesConfig from "../components/settings/JobStatusesConfig";
@@ -11,11 +11,13 @@ import TimezoneConfig from "../components/settings/TimezoneConfig";
 import SystemExportPanel from "../components/settings/SystemExportPanel";
 import JobAuditLog from "../components/settings/JobAuditLog";
 import MasterRequestsPanel from "../components/MasterRequestsPanel";
+import DominusMemoryReviewPanel from "../components/settings/DominusMemoryReviewPanel";
 import { isMaster } from "@/lib/accessControl";
 
 const ALL_TABS = [
   { id: "system",       label: "Sistema",         icon: Settings2 },
   { id: "requests",     label: "Requisições",     icon: ShieldCheck, masterOnly: true },
+  { id: "dominus_memory", label: "Aprendizados do Dominus", icon: Brain, masterOnly: true },
   { id: "records",      label: "Cadastros",       icon: Users },
   { id: "roles",        label: "Cargos",          icon: Briefcase },
   { id: "templates",    label: "Templates",       icon: LayoutTemplate },
@@ -62,6 +64,7 @@ export default function Configuracoes() {
       <div className="flex-1 overflow-y-auto">
         {tab === "system"        && <div><TimezoneConfig /><SystemExportPanel /></div>}
         {tab === "requests"      && <div className="p-6 max-w-3xl"><MasterRequestsPanel /></div>}
+        {tab === "dominus_memory" && <div className="p-6 max-w-5xl"><DominusMemoryReviewPanel /></div>}
         {tab === "records"       && <Records />}
         {tab === "roles"         && <RolesConfig />}
         {tab === "templates"     && <Templates />}

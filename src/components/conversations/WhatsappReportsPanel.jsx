@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Bot, CalendarClock, GripVertical, Pause, Play, RefreshCw, Save, Send, ShieldCheck, Trash2, Users } from "lucide-react";
+import { BarChart3, Bot, CalendarClock, GripVertical, Pause, Play, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, Users } from "lucide-react";
 
 export const REPORT_METRICS = [
   { id: "overdue_posts", label: "Posts atrasados", description: "Jobs com data de postagem vencida e ainda não concluídos." },
@@ -118,24 +118,38 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
     ? automation.group_ids
     : automation?.group_id ? [automation.group_id] : [];
   const [selectedGroupIds, setSelectedGroupIds] = useState(initialGroups.map(String));
+  const [summaryGroupId, setSummaryGroupId] = useState(String(automation?.summary_group_id || initialGroups[0] || ""));
   const [active, setActive] = useState(automation?.active !== false);
   const [saving, setSaving] = useState(false);
+  const [groupQuery, setGroupQuery] = useState("");
 
   useEffect(() => {
     const next = Array.isArray(automation?.group_ids) && automation.group_ids.length
       ? automation.group_ids
       : automation?.group_id ? [automation.group_id] : [];
     setSelectedGroupIds(next.map(String));
+    setSummaryGroupId(String(automation?.summary_group_id || next[0] || ""));
     setActive(automation?.active !== false);
-  }, [automation?.id, automation?.active, automation?.group_id, automation?.group_ids]);
+  }, [automation?.id, automation?.active, automation?.group_id, automation?.group_ids, automation?.summary_group_id]);
 
-  const toggleGroup = (groupId) => setSelectedGroupIds((current) => current.includes(String(groupId))
-    ? current.filter((id) => id !== String(groupId))
-    : [...current, String(groupId)]);
+  const toggleGroup = (groupId) => setSelectedGroupIds((current) => {
+    const id = String(groupId);
+    if (!current.includes(id)) return [...current, id];
+    const next = current.filter((item) => item !== id);
+    if (summaryGroupId === id) setSummaryGroupId(next[0] || "");
+    return next;
+  });
+  const normalizedGroupQuery = groupQuery.trim().toLowerCase();
+  const visibleGroups = groups.filter((group) => `${group.name || ""} ${group.id || ""}`.toLowerCase().includes(normalizedGroupQuery));
+  const selectedGroups = groups.filter((group) => selectedGroupIds.includes(String(group.id)));
 
   const save = async () => {
     if (!selectedGroupIds.length) {
       onNotice({ type: "info", text: "Selecione pelo menos um grupo para o Dominus." });
+      return;
+    }
+    if (!summaryGroupId || !selectedGroupIds.includes(summaryGroupId)) {
+      onNotice({ type: "info", text: "Selecione o grupo que receberá o resumo diário das 20h." });
       return;
     }
     setSaving(true);
@@ -147,6 +161,7 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
         agent_name: "Dominus",
         group_id: selectedGroupIds[0],
         group_ids: selectedGroupIds,
+        summary_group_id: summaryGroupId,
         active,
       });
       onSaved(result.data?.automation);
@@ -182,15 +197,27 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
     <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800"><div className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" /><span>O Dominus ignora mensagens privadas e grupos não selecionados. Usuários inativos não recebem respostas, e Financeiro, Comercial e Configurações continuam protegidos pelas permissões individuais.</span></div></div>
     <div>
       <p className="mb-2 text-xs font-semibold text-muted-foreground">Grupos autorizados</p>
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input type="search" value={groupQuery} onChange={(event) => setGroupQuery(event.target.value)} placeholder="Buscar grupo por nome ou ID..." aria-label="Buscar grupo autorizado" className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm font-normal text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {groups.map((group) => {
+        {visibleGroups.map((group) => {
           const selected = selectedGroupIds.includes(String(group.id));
           return <button type="button" key={group.id} onClick={() => toggleGroup(group.id)} className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left transition-colors ${selected ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}><span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border ${selected ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{selected && <span className="text-xs">✓</span>}</span><span className="min-w-0"><span className="block truncate text-sm font-medium text-foreground">{group.name}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{group.id}</span></span></button>;
         })}
       </div>
+      {!visibleGroups.length && <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">Nenhum grupo encontrado.</p>}
       <p className="mt-2 text-xs text-muted-foreground">{selectedGroupIds.length} grupo(s) selecionado(s). O nome de ativação é sempre Dominus.</p>
     </div>
-    <div className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={saving || busy || !selectedGroupIds.length} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar configuração"}</Button><Button type="button" variant="outline" onClick={configureWebhook} disabled={saving || busy} className="gap-2">Ativar recebimento</Button></div>
+    <div>
+      <label className="block text-xs font-semibold text-muted-foreground">Grupo do resumo diário (20h)<select value={summaryGroupId} onChange={(event) => setSummaryGroupId(event.target.value)} disabled={!selectedGroups.length} className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal text-foreground">
+        <option value="">Selecione o grupo do resumo...</option>
+        {selectedGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+      </select></label>
+      <p className="mt-2 text-xs text-muted-foreground">O resumo da auditoria será enviado uma vez por dia, às 20h de Manaus, somente para este grupo.</p>
+    </div>
+    <div className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={saving || busy || !selectedGroupIds.length || !summaryGroupId} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar configuração"}</Button><Button type="button" variant="outline" onClick={configureWebhook} disabled={saving || busy} className="gap-2">Ativar recebimento</Button></div>
   </div>;
 }
 

@@ -1,0 +1,19 @@
+{
+  "name": "Domínio Maestro",
+  "short_name": "Maestro",
+  "description": "Gerenciamento de projetos e colaboradores da Domínio Performance.",
+  "start_url": "/Dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d3b6e",
+  "theme_color": "#0d3b6e",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/assets/maestro-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -45,7 +45,7 @@ export default function NotificationBell({ collaboratorId }) {
       } else if (event.type === "update") {
         setNotifications(prev => prev.map(n => n.id === event.id ? event.data : n));
       }
-    });
+    }, { filters: { user_id: collaboratorId }, limit: 30, intervalMs: 60_000 });
     return unsub;
   }, [collaboratorId]);
 

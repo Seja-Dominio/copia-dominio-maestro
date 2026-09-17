@@ -62,6 +62,75 @@ function parseFundingSourceAmount(displayString: unknown) {
   return Number.isFinite(amount) ? amount : null;
 }
 
+function hasAdsBrainAccess(profile: Record<string, unknown>) {
+  const rawLevel = String(profile.access_level || "collaborator").toLowerCase();
+  const accessLevel = rawLevel === "admin" ? "master" : rawLevel;
+  const permissions = profile.permissions;
+  const tabs = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? (permissions as Record<string, unknown>).tabs
+    : null;
+
+  // Ads Brain is available by default to every access level. When the
+  // collaborator has an explicit tab configuration, that choice is the
+  // source of truth for every operation in this module.
+  if (tabs && typeof tabs === "object" && !Array.isArray(tabs) && Object.prototype.hasOwnProperty.call(tabs, "AdsBrain")) {
+    return (tabs as Record<string, unknown>).AdsBrain === true;
+  }
+
+  return ["master", "gestor", "collaborator"].includes(accessLevel);
+}
+
+function shiftDate(dateString: string, days: number) {
+  const date = new Date(`${dateString}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function previousPeriod(since: string, until: string) {
+  const start = new Date(`${since}T12:00:00Z`);
+  const end = new Date(`${until}T12:00:00Z`);
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  return { since: shiftDate(since, -days), until: shiftDate(since, -1) };
+}
+
+function actionTotal(actions: unknown, matcher: (type: string) => boolean) {
+  if (!Array.isArray(actions)) return null;
+  const total = actions
+    .filter((item: any) => matcher(String(item?.action_type || "")))
+    .reduce((sum, item: any) => sum + Number(item?.value || 0), 0);
+  return Number.isFinite(total) ? total : null;
+}
+
+function normalizeReportMetrics(insight: Record<string, unknown> = {}) {
+  return {
+    spend: Number.isFinite(Number(insight.spend)) ? Number(insight.spend) : null,
+    impressions: Number.isFinite(Number(insight.impressions)) ? Number(insight.impressions) : null,
+    reach: Number.isFinite(Number(insight.reach)) ? Number(insight.reach) : null,
+    clicks: Number.isFinite(Number(insight.clicks)) ? Number(insight.clicks) : null,
+    ctr: Number.isFinite(Number(insight.ctr)) ? Number(insight.ctr) : null,
+    cpc: Number.isFinite(Number(insight.cpc)) ? Number(insight.cpc) : null,
+    cpm: Number.isFinite(Number(insight.cpm)) ? Number(insight.cpm) : null,
+    frequency: Number.isFinite(Number(insight.frequency)) ? Number(insight.frequency) : null,
+    leads: actionTotal(insight.actions, (type) => /(^|[._])lead(s)?($|[._])|lead/i.test(type)),
+    purchases: actionTotal(insight.actions, (type) => /purchase/i.test(type)),
+    messages: actionTotal(insight.actions, (type) => /messaging|message/i.test(type)),
+  };
+}
+
+async function fetchReportMetrics(accessToken: string, accountId: string, range: { since: string; until: string }) {
+  const query = new URLSearchParams({
+    time_range: JSON.stringify(range),
+    fields: "spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions",
+    time_increment: "all_days",
+    limit: "1",
+    access_token: accessToken,
+  });
+  const response = await fetch(`https://graph.facebook.com/v24.0/${accountId}/insights?${query}`);
+  const payload = await response.json();
+  if (payload.error) throw new Error(payload.error.error_user_msg || payload.error.message || "Falha ao consultar insights da Meta");
+  return normalizeReportMetrics(payload.data?.[0] || {});
+}
+
 Deno.serve(async (request) => {
   try {
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -70,8 +139,11 @@ Deno.serve(async (request) => {
     const auth = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
     const session = auth ? await verifySession(auth) : null;
     if (!session?.sub) return json({ error: "Sessão inválida" }, 401);
-    const { data: collaborator } = await supabase.from("maestro_collaborators").select("id,is_active").eq("id", session.sub).maybeSingle();
+    const { data: collaborator } = await supabase.from("maestro_collaborators").select("id,is_active,profile").eq("id", session.sub).maybeSingle();
     if (!collaborator?.is_active) return json({ error: "Sessão inválida" }, 401);
+    if (!hasAdsBrainAccess((collaborator.profile || {}) as Record<string, unknown>)) {
+      return json({ error: "A aba Ads Brain não está habilitada para este usuário." }, 403);
+    }
     const body = await request.json();
     if (body.action === "list") {
       const { data, error } = await supabase.from("maestro_ads_accounts")
@@ -127,6 +199,70 @@ Deno.serve(async (request) => {
       const { data, error } = await supabase.from("maestro_ads_accounts").insert({ collaborator_id: collaborator.id, ...accountPayload }).select().single();
       if (error) throw error;
       return json({ account: data });
+    }
+    if (body.action === "report") {
+      const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "";
+      const until = /^\d{4}-\d{2}-\d{2}$/.test(String(body.until || "")) ? String(body.until) : "";
+      if (!since || !until || since > until) return json({ error: "Informe um intervalo válido para o relatório." }, 400);
+      const previous = previousPeriod(since, until);
+      const requestedIds = Array.isArray(body.account_ids) ? body.account_ids.map(String).filter(Boolean) : [];
+      let accountsQuery = supabase.from("maestro_ads_accounts")
+        .select("id,authorization_id,network,external_account_id,external_account_name,client_name,display_name,currency,last_synced_at")
+        .order("client_name", { ascending: true });
+      if (requestedIds.length) accountsQuery = accountsQuery.in("id", requestedIds);
+      const { data: savedAccounts, error: savedAccountsError } = await accountsQuery;
+      if (savedAccountsError) throw savedAccountsError;
+
+      const reports = [];
+      for (const savedAccount of savedAccounts || []) {
+        const base = {
+          id: savedAccount.id,
+          client_name: savedAccount.client_name || savedAccount.display_name || "Cliente não identificado",
+          network: savedAccount.network,
+          currency: savedAccount.currency || "BRL",
+          last_synced_at: savedAccount.last_synced_at,
+        };
+        if (savedAccount.network !== "Meta Ads") {
+          reports.push({ ...base, status: "unsupported", error: "Esta rede ainda não possui conexão oficial configurada no Ads Brain." });
+          continue;
+        }
+        if (!savedAccount.authorization_id) {
+          reports.push({ ...base, status: "error", error: "Conta sem autorização oficial vinculada." });
+          continue;
+        }
+        const { data: authorization } = await supabase.from("maestro_ads_authorizations")
+          .select("access_token_encrypted,token_expires_at")
+          .eq("id", savedAccount.authorization_id)
+          .maybeSingle();
+        if (!authorization) {
+          reports.push({ ...base, status: "error", error: "Autorização oficial não encontrada." });
+          continue;
+        }
+        if (authorization.token_expires_at && new Date(authorization.token_expires_at).getTime() < Date.now()) {
+          reports.push({ ...base, status: "error", error: "Autorização Meta expirada. Reconecte a conta." });
+          continue;
+        }
+        try {
+          const accessToken = await decryptSecret(authorization.access_token_encrypted);
+          const accountId = savedAccount.external_account_id.startsWith("act_")
+            ? savedAccount.external_account_id
+            : `act_${savedAccount.external_account_id}`;
+          const [current, previousMetrics] = await Promise.all([
+            fetchReportMetrics(accessToken, accountId, { since, until }),
+            fetchReportMetrics(accessToken, accountId, previous),
+          ]);
+          reports.push({ ...base, status: "ok", current, previous: previousMetrics });
+        } catch (error) {
+          reports.push({ ...base, status: "error", error: error instanceof Error ? error.message : "Falha ao consultar a Meta." });
+        }
+      }
+      return json({
+        reports,
+        requested_period: { since, until },
+        previous_period: previous,
+        source: "Meta Graph API v24.0",
+        generated_at: new Date().toISOString(),
+      });
     }
     if (body.action === "sync") {
       const datePresetByPeriod: Record<string, string> = {

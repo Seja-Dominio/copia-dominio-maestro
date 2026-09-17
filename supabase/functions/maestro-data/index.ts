@@ -14,7 +14,7 @@ function corsHeaders(origin = "") {
   };
 }
 
-type Session = { sub: string; exp: number; access_level?: string };
+type Session = { sub: string; exp: number; access_level?: string; scope?: "user" | "group"; group_id?: string };
 type LegacyRow = {
   entity: string;
   record_id: string;
@@ -54,6 +54,13 @@ async function verifySession(token: string): Promise<Session | null> {
 
   const session = JSON.parse(decode(body)) as Session;
   if (!session.sub || !session.exp || session.exp < Math.floor(Date.now() / 1000)) return null;
+
+  if (session.scope === "group" && typeof session.group_id === "string" && session.group_id.endsWith("@g.us")) {
+    return {
+      ...session,
+      access_level: "collaborator",
+    };
+  }
 
   const { data } = await supabase
     .from("maestro_collaborators")
@@ -103,43 +110,81 @@ function compactDashboardPayload(entity: string, payload: Record<string, unknown
     .map((field) => [field, payload[field]]));
 }
 
-function matches(payload: Record<string, unknown>, filters: Record<string, unknown>) {
-  return Object.entries(filters || {}).every(([field, expected]) => {
-    const actual = payload[field];
-    if (Array.isArray(expected)) return JSON.stringify(actual) === JSON.stringify(expected);
-    return actual === expected;
-  });
+const SAFE_PAYLOAD_FIELD = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+type ListRowsOptions = {
+  filters?: Record<string, unknown>;
+  sort?: string;
+  offset?: number;
+  limit?: number;
+};
+
+type FilterOperator = {
+  eq?: unknown;
+  gt?: unknown;
+  gte?: unknown;
+  lt?: unknown;
+  lte?: unknown;
+  in?: unknown[];
+  not_in?: unknown[];
+};
+
+function normalizePageValue(value: unknown, fallback: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(0, Math.floor(parsed)));
 }
 
-function sortRows(rows: LegacyRow[], sort?: string) {
-  if (!sort) return rows;
+async function listRows(entity: string, options: ListRowsOptions = {}) {
+  const offset = normalizePageValue(options.offset, 0, 1_000_000);
+  const limit = normalizePageValue(options.limit, 100, 10_000);
+  const filters = options.filters || {};
+  const sort = typeof options.sort === "string" ? options.sort : "";
   const descending = sort.startsWith("-");
-  const field = descending ? sort.slice(1) : sort;
-  return [...rows].sort((left, right) => {
-    const a = left.payload[field];
-    const b = right.payload[field];
-    if (a === b) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    const result = String(a).localeCompare(String(b), undefined, { numeric: true });
-    return descending ? -result : result;
-  });
-}
+  const sortField = descending ? sort.slice(1) : sort;
 
-async function listRows(entity: string) {
-  const rows: LegacyRow[] = [];
-  const pageSize = 1000;
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("legacy_records")
-      .select("entity, record_id, payload, source_created_at, source_updated_at")
-      .eq("entity", entity)
-      .range(offset, offset + pageSize - 1);
-    if (error) throw error;
-    rows.push(...((data || []) as LegacyRow[]));
-    if (!data || data.length < pageSize) break;
+  let query = supabase
+    .from("legacy_records")
+    .select("entity, record_id, payload, source_created_at, source_updated_at")
+    .eq("entity", entity);
+
+  // Filter inside Postgres so the Edge Function does not download the full
+  // entity before applying a small UI limit.
+  for (const [field, expected] of Object.entries(filters)) {
+    if (!SAFE_PAYLOAD_FIELD.test(field)) continue;
+    const isOperator = expected && typeof expected === "object" && !Array.isArray(expected);
+    if (isOperator) {
+      const operator = expected as FilterOperator;
+      if (operator.eq !== undefined) query = query.eq(`payload->>${field}`, String(operator.eq));
+      if (operator.gt !== undefined) query = query.gt(`payload->>${field}`, String(operator.gt));
+      if (operator.gte !== undefined) query = query.gte(`payload->>${field}`, String(operator.gte));
+      if (operator.lt !== undefined) query = query.lt(`payload->>${field}`, String(operator.lt));
+      if (operator.lte !== undefined) query = query.lte(`payload->>${field}`, String(operator.lte));
+      if (Array.isArray(operator.in)) query = query.in(`payload->>${field}`, operator.in.map(String));
+      if (Array.isArray(operator.not_in)) query = query.not(`payload->>${field}`, "in", `(${operator.not_in.map((value) => `"${String(value).replaceAll('"', '\\"')}"`).join(",")})`);
+    } else if (expected === null) {
+      query = query.is(`payload->>${field}`, null);
+    } else if (Array.isArray(expected)) {
+      query = query.filter(`payload->${field}`, "eq", JSON.stringify(expected));
+    } else {
+      query = query.eq(`payload->>${field}`, String(expected));
+    }
   }
-  return rows;
+
+  if (sortField && SAFE_PAYLOAD_FIELD.test(sortField)) {
+    query = query.order(`payload->>${sortField}`, {
+      ascending: !descending,
+      nullsFirst: false,
+    });
+  } else {
+    query = query.order("source_updated_at", { ascending: false, nullsFirst: false });
+  }
+
+  const { data, error } = await query
+    .order("record_id", { ascending: true })
+    .range(offset, Math.max(offset, offset + limit - 1));
+  if (error) throw error;
+  return (data || []) as LegacyRow[];
 }
 
 function collaboratorAccessLevel(collaborator: Record<string, unknown>) {
@@ -171,7 +216,7 @@ async function dashboardData(session?: Session) {
   ] as const;
 
   const values = await Promise.all(requests.map(async ([key, entity, sort, limit]) => {
-    const rows = sortRows(await listRows(entity), sort);
+    const rows = await listRows(entity, { sort, limit });
     return [key, rows.slice(0, limit).map((row) => compactDashboardPayload(entity, row.payload))] as const;
   }));
 
@@ -191,10 +236,7 @@ async function dashboardData(session?: Session) {
 
   const myId = String(session?.sub || "");
   const mySubtasks = (allData.subtasks || []).filter((subtask) => String(subtask.responsible_id || "") === myId);
-  const myJobIds = new Set([
-    ...mySubtasks.map((subtask) => String(subtask.job_id || "")).filter(Boolean),
-    ...(allData.jobs || []).filter((job) => String(job.responsible_id || "") === myId).map((job) => String(job.id || "")).filter(Boolean),
-  ]);
+  const myJobIds = new Set(mySubtasks.map((subtask) => String(subtask.job_id || "")).filter(Boolean));
   const jobs = (allData.jobs || []).filter((job) => myJobIds.has(String(job.id || "")));
   const projectIds = new Set(jobs.map((job) => String(job.project_id || "")).filter(Boolean));
   const projects = (allData.projects || []).filter((project) => projectIds.has(String(project.id || "")));
@@ -224,25 +266,72 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   const entity = String(body.entity || "");
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(entity)) return json({ error: "Entidade inválida" }, 400, origin);
+  const isGroupSession = session?.scope === "group";
+  if (isGroupSession && !["Job", "Subtask", "AgendaEvent"].includes(entity)) {
+    return json({ error: "A sessão do grupo só pode consultar dados operacionais" }, 403, origin);
+  }
 
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);
   const accessLevel = String(body.__access_level || "").toLowerCase();
   const canCreateMiniTask = operation === "create" && entity === "MiniTask";
+  const updateKeys = body.data && typeof body.data === "object" && !Array.isArray(body.data)
+    ? Object.keys(body.data as Record<string, unknown>)
+    : [];
+  const canMarkOwnNotificationRead = operation === "update"
+    && entity === "Notification"
+    && session?.scope !== "group"
+    && Boolean(session?.sub)
+    && updateKeys.length === 1
+    && updateKeys[0] === "is_read"
+    && typeof (body.data as Record<string, unknown>)?.is_read === "boolean";
+  const canUpdateJobStatus = operation === "update"
+    && entity === "Job"
+    && accessLevel === "collaborator"
+    && updateKeys.length === 1
+    && updateKeys[0] === "status"
+    && typeof (body.data as Record<string, unknown>)?.status === "string"
+    && String((body.data as Record<string, unknown>).status).trim().length > 0
+    && String((body.data as Record<string, unknown>).status).trim().toLowerCase() !== "cancelled";
+  const canWriteJob = ["create", "update"].includes(operation)
+    && entity === "Job"
+    && ["collaborator", "gestor", "master"].includes(accessLevel);
+  const canWriteAgendaEvent = ["create", "update"].includes(operation)
+    && entity === "AgendaEvent"
+    && ["collaborator", "gestor", "master"].includes(accessLevel);
+  // Cada usuário autenticado precisa conseguir iniciar e encerrar o próprio
+  // timer ao abrir um job. A validação de propriedade acontece no bloco de
+  // escrita, depois que o registro atual é carregado.
+  const canWriteTimesheet = ["create", "update"].includes(operation)
+    && entity === "Timesheet"
+    && Boolean(session?.sub);
+  const canDeleteAgendaEvent = operation === "delete"
+    && entity === "AgendaEvent"
+    && ["gestor", "master"].includes(accessLevel);
+  const canDeleteJob = operation === "delete"
+    && entity === "Job"
+    && ["gestor", "master"].includes(accessLevel);
+  const canCreateDeleteLog = operation === "create"
+    && entity === "DeleteLog"
+    && ["gestor", "master"].includes(accessLevel);
   const gestorWritableEntities = ["Client", "Project", "Job", "Subtask", "AgendaEvent", "JobTemplate", "Squad"];
-  if (isWrite && !canCreateMiniTask && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
+  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteJob && !canCreateDeleteLog && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
     return json({ error: "O Gestor não pode alterar este tipo de dado" }, 403, origin);
   }
-  if (isWrite && !canCreateMiniTask && !["master", "gestor"].includes(accessLevel)) {
+  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteAgendaEvent && !canDeleteJob && !canCreateDeleteLog && !["master", "gestor"].includes(accessLevel)) {
     return json({ error: "Apenas gestores e masters podem alterar dados" }, 403, origin);
   }
-  if (["delete", "transferSubtasks"].includes(operation) && accessLevel !== "master") {
+  if (["delete", "transferSubtasks"].includes(operation) && !canDeleteAgendaEvent && !canDeleteJob && accessLevel !== "master") {
     return json({ error: "Apenas o Master pode excluir ou transferir tarefas" }, 403, origin);
   }
   if (["list", "filter"].includes(operation)) {
-    let rows = await listRows(entity);
-    if (operation === "filter") rows = rows.filter((row) => matches(row.payload, (body.filters || {}) as Record<string, unknown>));
-    rows = sortRows(rows, typeof body.sort === "string" ? body.sort : undefined);
-    const limit = Number(body.limit || 100);
+    const limit = normalizePageValue(body.limit, 100, 10_000);
+    const offset = normalizePageValue(body.offset, 0, 1_000_000);
+    const rows = await listRows(entity, {
+      filters: operation === "filter" ? (body.filters || {}) as Record<string, unknown> : {},
+      sort: typeof body.sort === "string" ? body.sort : undefined,
+      offset,
+      limit,
+    });
     return json({ data: rows.slice(0, Math.max(0, limit)).map((row) => sanitizePayload(entity, row.payload)) }, 200, origin);
   }
 
@@ -255,8 +344,8 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
     }
 
     const [subtaskRows, collaboratorRows] = await Promise.all([
-      listRows("Subtask"),
-      listRows("Collaborator"),
+      listRows("Subtask", { filters: { responsible_id: sourceUserId }, limit: 10_000 }),
+      listRows("Collaborator", { limit: 100 }),
     ]);
     const target = collaboratorRows.find((row) => row.record_id === targetUserId && row.payload?.is_active !== false);
     if (!target) return json({ error: "Usuário de destino não encontrado ou inativo" }, 404, origin);
@@ -285,6 +374,13 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   if (operation === "create" || operation === "update") {
     const payload = { ...((body.data || {}) as Record<string, unknown>) };
+    if (entity === "Timesheet" && !["master", "gestor"].includes(accessLevel)) {
+      if (operation === "create") {
+        // Colaboradores só podem abrir o próprio apontamento; gestores e
+        // masters mantêm a capacidade de registrar horas para terceiros.
+        payload.collaborator_id = session?.sub;
+      }
+    }
     if (operation === "create" && entity === "MiniTask") {
       const collaboratorId = String(payload.collaborator_id || "");
       if (!collaboratorId) return json({ error: "A tarefa precisa de um responsável" }, 400, origin);
@@ -320,7 +416,29 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
         .eq("record_id", recordId)
         .maybeSingle();
       if (currentError) throw currentError;
-      nextPayload = { ...(current?.payload || {}), ...payload, id: recordId };
+      if (canMarkOwnNotificationRead) {
+        const ownerId = current?.payload?.user_id || current?.payload?.collaborator_id;
+        if (String(ownerId || "") !== String(session?.sub || "")) {
+          return json({ error: "Você só pode marcar as próprias notificações como lidas" }, 403, origin);
+        }
+        // Keep this exception intentionally narrow: the authenticated user
+        // may change only is_read on a notification that belongs to them.
+        nextPayload = { ...(current?.payload || {}), is_read: payload.is_read, id: recordId };
+      }
+      if (
+        entity === "Timesheet"
+        && !["master", "gestor"].includes(accessLevel)
+        && String(current?.payload?.collaborator_id || "") !== String(session?.sub || "")
+      ) {
+        return json({ error: "Você só pode atualizar o próprio Timesheet" }, 403, origin);
+      }
+      if (entity === "Timesheet" && !["master", "gestor"].includes(accessLevel)) {
+        payload.collaborator_id = current?.payload?.collaborator_id;
+        payload.collaborator_name = current?.payload?.collaborator_name;
+      }
+      if (!canMarkOwnNotificationRead) {
+        nextPayload = { ...(current?.payload || {}), ...payload, id: recordId };
+      }
     }
 
     const now = new Date().toISOString();

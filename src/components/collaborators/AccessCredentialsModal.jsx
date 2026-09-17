@@ -90,8 +90,8 @@ export default function AccessCredentialsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-md flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Credenciais de Acesso</DialogTitle>
           <DialogDescription>
             {collaborator?.id
@@ -100,7 +100,7 @@ export default function AccessCredentialsModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain py-4 pr-1">
           {/* Login */}
           <div>
             <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">
@@ -264,7 +264,7 @@ export default function AccessCredentialsModal({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t pt-4">
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancelar
           </Button>
