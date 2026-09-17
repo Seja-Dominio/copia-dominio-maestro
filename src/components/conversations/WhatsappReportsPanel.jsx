@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
+import { enrichReportJobs, isCancelledReportJob, isClosedReportJob, isReportPostOverdue, isReportSubtaskOverdue, normalizeReportStatus } from "@/lib/reportMetrics";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Bot, CalendarClock, GripVertical, Pause, Play, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, Users } from "lucide-react";
 
@@ -51,30 +52,29 @@ function reportLine(id, row, jobs, clientNames) {
 function rowsForMetric(id, jobs, subtasks, myTasks = []) {
   const today = todayKey();
   const next = plusDays(today, 5);
-  const excluded = ["completed", "scheduled", "cancelled"];
-  if (id === "overdue_posts") return jobs.filter((job) => job.post_date && job.post_date <= today && !excluded.includes(job.status)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
-  if (id === "next_5_unplanned") return jobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= next && !excluded.includes(job.status)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
-  if (id === "today_posts") return jobs.filter((job) => job.post_date === today && job.status !== "cancelled").sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
-  if (id === "my_tasks") return myTasks.filter((task) => !task.is_completed && task.status !== "completed").sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
-  if (id === "missing_content") return jobs.filter((job) => !excluded.includes(job.status) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim())).sort((a, b) => String(a.post_date || "9999").localeCompare(String(b.post_date || "9999")));
+  if (id === "overdue_posts") return jobs.filter((job) => isReportPostOverdue(job, today)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
+  if (id === "next_5_unplanned") return jobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= next && !isClosedReportJob(job)).sort((a, b) => String(a.post_date).localeCompare(String(b.post_date)));
+  if (id === "today_posts") return jobs.filter((job) => job.post_date === today && !isCancelledReportJob(job)).sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  if (id === "my_tasks") return myTasks.filter((task) => !task.is_completed && normalizeReportStatus(task.status) !== "completed").sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+  if (id === "missing_content") return jobs.filter((job) => !isClosedReportJob(job) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim())).sort((a, b) => String(a.post_date || "9999").localeCompare(String(b.post_date || "9999")));
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
   return subtasks.filter((task) => {
     const job = jobsById.get(task.job_id);
-    const deadline = task.deadline || job?.post_date;
-    return deadline && deadline <= today && !task.is_completed && task.status !== "completed" && job && !excluded.includes(job.status);
+    return isReportSubtaskOverdue(task, job, today);
   }).sort((a, b) => String(a.deadline || "9999").localeCompare(String(b.deadline || "9999")));
 }
 
 export function formatDashboardReport(metricIds, jobs, subtasks, clientNames, myTasks = []) {
+  const reportJobs = enrichReportJobs(jobs, subtasks);
   const sections = metricIds.map((id) => {
     const metric = REPORT_METRICS.find((item) => item.id === id);
-    const rows = rowsForMetric(id, jobs, subtasks, myTasks);
-    const lines = rows.map((row) => reportLine(id, row, jobs, clientNames));
+    const rows = rowsForMetric(id, reportJobs, subtasks, myTasks);
+    const lines = rows.map((row) => reportLine(id, row, reportJobs, clientNames));
     if (!rows.length) return "✅ *" + metric.label + "*\n\nNenhum item encontrado.";
     const emoji = id === "overdue_posts" ? "⚠️" : id === "next_5_unplanned" ? "📅" : id === "overdue_tasks" ? "🧩" : id === "today_posts" ? "🗓️" : id === "my_tasks" ? "✅" : "📝";
     return emoji + " *" + metric.label + "*\nTotal: " + rows.length + " item(ns)\n\n" + lines.join("\n");
   });
-  return "*Resumo do Maestro*\n📅 " + new Date().toLocaleDateString("pt-BR") + "\n\n" + sections.join("\n\n━━━━━━━━━━━━\n\n");
+  return "*Resumo do Maestro*\n📅 " + todayKey().split("-").reverse().join("/") + "\n\n" + sections.join("\n\n━━━━━━━━━━━━\n\n");
 }
 
 function scheduleLabel(item) {

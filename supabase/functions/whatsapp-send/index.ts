@@ -1,4 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  enrichReportJobs,
+  isCancelledReportJob,
+  isClosedReportJob,
+  isReportPostOverdue,
+  isReportSubtaskOverdue,
+  normalizeReportStatus,
+} from "./reportMetrics.ts";
 
 type Session = { sub: string; exp: number; access_level?: string; permissions?: Record<string, unknown> };
 type WhatsappPayload = {
@@ -287,25 +295,24 @@ async function sendDominusDailySummary(config: EvolutionConfig | null, automatio
 }
 
 function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], clients: any[], miniTasks: any[] = []) {
+  const reportJobs = enrichReportJobs(jobs, subtasks);
   const clientNames = new Map(clients.map((client) => [client.id, client.name]));
-  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const jobsById = new Map(reportJobs.map((job) => [job.id, job]));
   const selected = Array.isArray(automation.metrics) && automation.metrics.length ? automation.metrics : ["overdue_posts", "next_5_unplanned"];
   const today = manausNow().date;
   const next = new Date(today + "T12:00:00");
   next.setDate(next.getDate() + 5);
   const nextKey = next.toISOString().slice(0, 10);
-  const excluded = ["completed", "scheduled", "cancelled"];
   const rowsFor = (id: string) => {
-    if (id === "overdue_posts") return jobs.filter((job) => job.post_date && job.post_date <= today && !excluded.includes(job.status));
-    if (id === "next_5_unplanned") return jobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= nextKey && !excluded.includes(job.status));
-    if (id === "today_posts") return jobs.filter((job) => job.post_date === today && job.status !== "cancelled");
-    if (id === "my_tasks") return miniTasks.filter((task) => (!automation.collaborator_id || task.collaborator_id === automation.collaborator_id) && !task.is_completed && task.status !== "completed");
-    if (id === "missing_content") return jobs.filter((job) => !excluded.includes(job.status) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim()));
-    const byId = new Map(jobs.map((job) => [job.id, job]));
+    if (id === "overdue_posts") return reportJobs.filter((job) => isReportPostOverdue(job, today));
+    if (id === "next_5_unplanned") return reportJobs.filter((job) => job.post_date && job.post_date > today && job.post_date <= nextKey && !isClosedReportJob(job));
+    if (id === "today_posts") return reportJobs.filter((job) => job.post_date === today && !isCancelledReportJob(job));
+    if (id === "my_tasks") return miniTasks.filter((task) => (!automation.collaborator_id || task.collaborator_id === automation.collaborator_id) && !task.is_completed && normalizeReportStatus(task.status) !== "completed");
+    if (id === "missing_content") return reportJobs.filter((job) => !isClosedReportJob(job) && (!String(job.briefing || "").trim() || !String(job.caption || "").trim()));
+    const byId = new Map(reportJobs.map((job) => [job.id, job]));
     return subtasks.filter((task) => {
       const job = byId.get(task.job_id);
-      const deadline = task.deadline || job?.post_date;
-      return deadline && deadline <= today && !task.is_completed && task.status !== "completed" && job && !excluded.includes(job.status);
+      return isReportSubtaskOverdue(task, job, today);
     });
   };
   const labels: Record<string, [string, string]> = { overdue_posts: ["⚠️", "Posts atrasados"], next_5_unplanned: ["📅", "Próximos 5 dias sem agendamento"], overdue_tasks: ["🧩", "Tarefas atrasadas"], today_posts: ["🗓️", "Postagens de hoje"], my_tasks: ["✅", "Minhas tarefas"], missing_content: ["📝", "Jobs com briefing e/ou legenda vazio"] };
@@ -325,7 +332,7 @@ function scheduledDashboardText(automation: any, jobs: any[], subtasks: any[], c
     });
     return label[0] + " *" + label[1] + "*\nTotal: " + rows.length + " item(ns)\n\n" + lines.join("\n");
   });
-  return "*Resumo do Maestro*\n📅 " + new Date().toLocaleDateString("pt-BR") + "\n\n" + sections.join("\n\n━━━━━━━━━━━━\n\n");
+  return "*Resumo do Maestro*\n📅 " + today.split("-").reverse().join("/") + "\n\n" + sections.join("\n\n━━━━━━━━━━━━\n\n");
 }
 
 function formatDateBR(value: string) {
