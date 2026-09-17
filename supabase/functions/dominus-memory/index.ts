@@ -23,6 +23,8 @@ type Session = {
 const VALID_SCOPES = new Set(["agency", "team", "user", "group"]);
 const REVIEW_COLUMNS = "id,memory_key,status,proposed_rule,rationale,scope,scope_id,evidence,source_refs,proposed_at,proposed_by,reviewed_at,reviewed_by,review_note,created_at,updated_at";
 const MEMORY_COLUMNS = "id,memory_key,rule,scope,scope_id,status,version,source_review_id,approved_at,approved_by,retired_at,retired_by,created_at,updated_at";
+const COMMENT_COLUMNS = "id,review_id,author_id,body,created_at,updated_at";
+const EVENT_COLUMNS = "id,review_id,event_type,actor_id,note,snapshot,created_at";
 
 function decode(value: string) {
   return atob(value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "="));
@@ -104,7 +106,37 @@ async function listMemory() {
   ]);
   if (reviews.error) throw reviews.error;
   if (memories.error) throw memories.error;
-  return { reviews: reviews.data || [], memories: memories.data || [] };
+  const reviewIds = (reviews.data || []).map((item: any) => String(item.id)).filter(Boolean);
+  const [comments, events] = await Promise.all([
+    reviewIds.length
+      ? db.from("dominus_learning_review_comments").select(COMMENT_COLUMNS).in("review_id", reviewIds).order("created_at", { ascending: true })
+      : { data: [], error: null },
+    reviewIds.length
+      ? db.from("dominus_learning_review_events").select(EVENT_COLUMNS).in("review_id", reviewIds).order("created_at", { ascending: false })
+      : { data: [], error: null },
+  ]);
+  if (comments.error) throw comments.error;
+  if (events.error) throw events.error;
+  const authorIds = [...new Set((comments.data || []).map((item: any) => String(item.author_id || "")).filter(Boolean))];
+  const authors = authorIds.length
+    ? await db.from("maestro_collaborators").select("id,profile").in("id", authorIds)
+    : { data: [], error: null };
+  if (authors.error) throw authors.error;
+  const authorNames = new Map((authors.data || []).map((item: any) => [String(item.id), String(item.profile?.full_name || item.profile?.name || item.profile?.display_name || item.id)]));
+  const commentsWithAuthors = (comments.data || []).map((item: any) => ({ ...item, author_name: authorNames.get(String(item.author_id)) || "Master" }));
+  const eventsWithAuthors = (events.data || []).map((item: any) => ({ ...item, actor_name: authorNames.get(String(item.actor_id)) || (item.actor_id === "dominus-audit" ? "Auditoria do Dominus" : "Master") }));
+  return { reviews: reviews.data || [], memories: memories.data || [], comments: commentsWithAuthors, events: eventsWithAuthors };
+}
+
+async function recordEvent(reviewId: string, eventType: string, session: Session, note = "", snapshot: Record<string, unknown> = {}) {
+  const { error } = await db.from("dominus_learning_review_events").insert({
+    review_id: reviewId,
+    event_type: eventType,
+    actor_id: session.sub,
+    note: text(note, 4000),
+    snapshot,
+  });
+  if (error) throw error;
 }
 
 async function approveReview(body: Record<string, any>, session: Session) {
@@ -208,10 +240,17 @@ async function approveReview(body: Record<string, any>, session: Session) {
     .select(REVIEW_COLUMNS)
     .single();
   if (updateReviewError) throw updateReviewError;
+  await recordEvent(review.id, changed ? "edited" : "approved", session, note, {
+    rule,
+    rationale,
+    scope,
+    scope_id: scopeId,
+    status: changed ? "edited" : "approved",
+  });
   return { review: updatedReview, memory };
 }
 
-async function editReview(body: Record<string, any>) {
+async function editReview(body: Record<string, any>, session: Session) {
   const reviewId = text(body.review_id, 100);
   const rule = text(body.rule, 4000);
   const rationale = text(body.rationale, 4000);
@@ -227,6 +266,7 @@ async function editReview(body: Record<string, any>) {
     .select(REVIEW_COLUMNS)
     .single();
   if (error) throw error;
+  await recordEvent(reviewId, "edited", session, text(body.note, 4000), { rule, rationale, scope, scope_id: scopeId, status: "pending" });
   return { review: data };
 }
 
@@ -242,7 +282,28 @@ async function rejectReview(body: Record<string, any>, session: Session) {
     .select(REVIEW_COLUMNS)
     .single();
   if (error) throw error;
+  await recordEvent(reviewId, "rejected", session, text(body.note, 4000), { status: "rejected" });
   return { review: data };
+}
+
+async function addComment(body: Record<string, any>, session: Session) {
+  const reviewId = text(body.review_id, 100);
+  const commentBody = text(body.body ?? body.note, 4000);
+  if (!reviewId || !commentBody) throw new Error("Escreva um apontamento antes de enviar.");
+  const { data: review, error: reviewError } = await db
+    .from("dominus_learning_reviews")
+    .select("id")
+    .eq("id", reviewId)
+    .maybeSingle();
+  if (reviewError) throw reviewError;
+  if (!review) throw new Error("Aprendizado não encontrado.");
+  const { data, error } = await db
+    .from("dominus_learning_review_comments")
+    .insert({ review_id: reviewId, author_id: session.sub, body: commentBody })
+    .select(COMMENT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return { comment: data };
 }
 
 async function revertMemory(body: Record<string, any>, session: Session) {
@@ -321,8 +382,9 @@ Deno.serve(async (request) => {
     const action = text(body.action, 30);
     if (action === "list") return json(await listMemory(), 200, origin);
     if (action === "approve") return json(await approveReview(body, session), 200, origin);
-    if (action === "edit") return json(await editReview(body), 200, origin);
+    if (action === "edit") return json(await editReview(body, session), 200, origin);
     if (action === "reject") return json(await rejectReview(body, session), 200, origin);
+    if (action === "comment") return json(await addComment(body, session), 200, origin);
     if (action === "revert") return json(await revertMemory(body, session), 200, origin);
     return json({ error: "Ação não suportada" }, 400, origin);
   } catch (error) {

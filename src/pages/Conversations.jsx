@@ -140,7 +140,7 @@ function MediaPicker({ media, onChange, disabled = false }) {
     try {
       const uploaded = await uploadMaestroFile(file);
       if (!uploaded?.file_url) throw new Error("O arquivo não foi carregado.");
-      onChange({ name: file.name, type: file.type || "application/octet-stream", url: uploaded.file_url });
+      onChange({ name: file.name, type: file.type || "application/octet-stream", url: uploaded.file_url, path: uploaded.path });
     } catch (uploadError) {
       setError(uploadError.message || "Não foi possível anexar a mídia.");
     } finally {

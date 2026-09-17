@@ -13,6 +13,9 @@ verify_jwt = false
 [functions.upload-file]
 verify_jwt = false
 
+[functions.refresh-file-url]
+verify_jwt = false
+
 [functions.admin-timesheets]
 verify_jwt = false
 

@@ -4,6 +4,7 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+const attachmentBucket = "job-attachments";
 const allowedOrigins = new Set(["http://127.0.0.1:4173", "http://localhost:4173", "https://dominiomaestro.com.br"]);
 function corsHeaders(origin = "") {
   return {
@@ -97,6 +98,30 @@ async function createRecord(entity: string, payload: Record<string, unknown>) {
   return nextPayload;
 }
 
+function attachmentPath(attachment: Record<string, unknown>) {
+  if (attachment.path) return String(attachment.path);
+  const url = String(attachment.url || "");
+  const marker = `/storage/v1/object/sign/${attachmentBucket}/`;
+  if (!url.includes(marker)) return "";
+  const rawPath = url.slice(url.indexOf(marker) + marker.length).split("?")[0];
+  try {
+    return decodeURIComponent(rawPath);
+  } catch {
+    return rawPath;
+  }
+}
+
+async function refreshJobAttachments(job: Record<string, unknown>) {
+  if (!Array.isArray(job.attachments)) return job;
+  const attachments = await Promise.all((job.attachments as Record<string, unknown>[]).map(async (attachment) => {
+    const path = attachmentPath(attachment);
+    if (!path) return attachment;
+    const { data, error } = await supabase.storage.from(attachmentBucket).createSignedUrl(path, 60 * 60 * 24);
+    return error ? attachment : { ...attachment, path, url: data.signedUrl };
+  }));
+  return { ...job, attachments };
+}
+
 Deno.serve(async (request) => {
   const origin = request.headers.get("Origin") || "";
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
@@ -121,7 +146,7 @@ Deno.serve(async (request) => {
     const job = await readRecord("Job", String(jobId));
     if (!job) return json({ error: "Job não encontrado" }, 404, origin);
 
-    if (action === "load") return json({ job }, 200, origin);
+    if (action === "load") return json({ job: await refreshJobAttachments(job) }, 200, origin);
     if (job.status !== "internal_approval" && job.status !== "client_approval") {
       return json({ error: "Este job não está mais aguardando aprovação", currentStatus: job.status }, 400, origin);
     }

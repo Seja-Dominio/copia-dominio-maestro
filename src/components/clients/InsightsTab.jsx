@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { maestro, invokeMaestroFunction } from "@/api/maestroClient";
+import { maestro, invokeCompetitiveReport, invokeMaestroFunction } from "@/api/maestroClient";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Users, Eye, Heart, TrendingUp, Trash2,
   RefreshCw, Sparkles, ExternalLink, Loader2,
-  Image, Film, LayoutGrid, AlertCircle
+  Image, Film, LayoutGrid, AlertCircle, Link2, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +28,17 @@ const PERIOD_OPTIONS = [
   { value: "60", label: "60 dias" },
   { value: "90", label: "90 dias" },
 ];
+
+function extractInstagramUsername(input) {
+  const trimmed = String(input || "").trim();
+  const urlMatch = trimmed.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?/i);
+  const username = (urlMatch?.[1] || trimmed.replace(/^@/, "")).toLowerCase();
+  return /^[a-z0-9._]{1,30}$/.test(username) ? username : "";
+}
+
+function compactNumber(value) {
+  return value == null ? "—" : Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+}
 
 function comparisonRange(days) {
   const length = Number(days) + 1;
@@ -59,6 +70,11 @@ export default function InsightsTab({ client }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [sortBy, setSortBy] = useState("engagement");
   const [sortDir, setSortDir] = useState("desc");
+  const [competitors, setCompetitors] = useState([]);
+  const [competitorInput, setCompetitorInput] = useState("");
+  const [competitiveReport, setCompetitiveReport] = useState(null);
+  const [competitiveLoading, setCompetitiveLoading] = useState(false);
+  const [competitiveError, setCompetitiveError] = useState("");
 
   const dateFrom = format(subDays(new Date(), Number(period)), "yyyy-MM-dd");
   const dateTo = format(new Date(), "yyyy-MM-dd");
@@ -66,12 +82,14 @@ export default function InsightsTab({ client }) {
 
   async function loadData() {
     setLoading(true);
-    const [ins, pts] = await Promise.all([
+    const [ins, pts, competitorRows] = await Promise.all([
       maestro.entities.ClientInsight.filter({ client_id: client.id }, "-date", 200),
       maestro.entities.PostMetric.filter({ client_id: client.id }, "-published_at", 200),
+      maestro.entities.ClientCompetitor.filter({ client_id: client.id }, "name", 50),
     ]);
     setInsights(ins);
     setPosts(pts);
+    setCompetitors(competitorRows);
     setLoading(false);
   }
 
@@ -108,6 +126,57 @@ export default function InsightsTab({ client }) {
   async function handleRestorePost(postId) {
     await maestro.entities.PostMetric.update(postId, { is_excluded: false });
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, is_excluded: false } : p));
+  }
+
+  async function handleAddCompetitor() {
+    const username = extractInstagramUsername(competitorInput);
+    if (!username) {
+      setCompetitiveError("Informe um link válido de um perfil do Instagram.");
+      return;
+    }
+    if (competitors.some((competitor) => extractInstagramUsername(competitor.username || competitor.profile_url) === username)) {
+      setCompetitiveError("Este perfil já está cadastrado para o cliente.");
+      return;
+    }
+    setCompetitiveError("");
+    try {
+      const saved = await maestro.entities.ClientCompetitor.create({
+        client_id: client.id,
+        client_name: client.name,
+        username,
+        profile_url: `https://www.instagram.com/${username}/`,
+        network: "instagram",
+        status: "active",
+        created_date: new Date().toISOString(),
+      });
+      setCompetitors((current) => [...current, saved?.data || saved]);
+      setCompetitorInput("");
+    } catch (error) {
+      setCompetitiveError(error.message || "Não foi possível salvar o perfil concorrente.");
+    }
+  }
+
+  async function handleRemoveCompetitor(competitor) {
+    try {
+      await maestro.entities.ClientCompetitor.delete(competitor.id);
+      setCompetitors((current) => current.filter((item) => item.id !== competitor.id));
+      setCompetitiveReport(null);
+    } catch (error) {
+      setCompetitiveError(error.message || "Não foi possível remover o perfil concorrente.");
+    }
+  }
+
+  async function handleCompetitiveReport() {
+    setCompetitiveLoading(true);
+    setCompetitiveError("");
+    try {
+      const response = await invokeCompetitiveReport({ client_id: client.id, since: dateFrom, until: dateTo });
+      setCompetitiveReport(response.report || response.data?.report || response.data || null);
+    } catch (error) {
+      setCompetitiveError(error.message || "Não foi possível gerar a comparação competitiva.");
+    } finally {
+      setCompetitiveLoading(false);
+    }
   }
 
   // Filtered data
@@ -241,7 +310,14 @@ export default function InsightsTab({ client }) {
       </div>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-xs text-blue-950">
-        <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div><p className="font-semibold">Comparação competitiva</p><p className="mt-1 leading-5">Os insights da conta e a variação do período anterior estão disponíveis. A API oficial do Instagram não entrega métricas privadas de concorrentes; este bloco só será preenchido quando houver uma fonte oficial autorizada ou um benchmark interno cadastrado.</p></div></div>
+        <div className="flex items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" /><div className="min-w-0 flex-1"><p className="font-semibold">Comparação competitiva</p><p className="mt-1 leading-5">Cadastre perfis públicos para comparar seguidores, volume de posts e engajamento observado. Alcance, impressões e salvamentos de concorrentes não são inventados: a Meta não os disponibiliza nessa consulta.</p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={competitorInput} onChange={(event) => setCompetitorInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && handleAddCompetitor()} placeholder="https://instagram.com/concorrente" className="h-9 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-400" /><Button type="button" size="sm" variant="outline" className="h-9 gap-1.5 border-blue-300 bg-white text-blue-800" onClick={handleAddCompetitor}><Link2 className="h-3.5 w-3.5" /> Adicionar perfil</Button><Button type="button" size="sm" className="h-9 gap-1.5" disabled={competitiveLoading || !competitors.length} onClick={handleCompetitiveReport}>{competitiveLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}{competitiveLoading ? "Consultando..." : "Atualizar comparação"}</Button></div>
+          {competitors.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{competitors.map((competitor) => <span key={competitor.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">@{competitor.username || extractInstagramUsername(competitor.profile_url)}<button type="button" aria-label={`Remover @${competitor.username || extractInstagramUsername(competitor.profile_url)}`} onClick={() => handleRemoveCompetitor(competitor)} className="text-blue-500 hover:text-red-600"><X className="h-3 w-3" /></button></span>)}</div>}
+          {competitiveError && <p role="alert" className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">{competitiveError}</p>}
+          {competitiveReport && <div className="mt-4 overflow-x-auto rounded-lg border border-blue-200 bg-white"><table className="min-w-[620px] w-full text-left"><thead className="bg-blue-50 text-[10px] uppercase tracking-wide text-blue-900"><tr><th className="px-3 py-2">Perfil</th><th className="px-3 py-2">Seguidores</th><th className="px-3 py-2">Posts no período</th><th className="px-3 py-2">Engajamento observado</th><th className="px-3 py-2">Taxa observada</th></tr></thead><tbody><tr className="border-t border-blue-100 font-semibold"><td className="px-3 py-2">{competitiveReport.client_name} (cliente)</td><td className="px-3 py-2">{compactNumber(competitiveReport.own?.followers)}</td><td className="px-3 py-2">{compactNumber(competitiveReport.own?.posts)}</td><td className="px-3 py-2">{compactNumber(competitiveReport.own?.engagement)}</td><td className="px-3 py-2">{competitiveReport.own?.engagement_rate == null ? "—" : `${Number(competitiveReport.own.engagement_rate).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`}</td></tr>{(competitiveReport.competitors || []).filter((item) => item.status === "ok").map((item) => <tr key={item.id} className="border-t border-blue-100"><td className="px-3 py-2">@{item.profile?.username || "—"}</td><td className="px-3 py-2">{compactNumber(item.profile?.followers)}</td><td className="px-3 py-2">{compactNumber(item.profile?.posts_in_period)}</td><td className="px-3 py-2">{compactNumber(item.profile?.engagement_in_period)}</td><td className="px-3 py-2">{item.profile?.engagement_rate == null ? "—" : `${Number(item.profile.engagement_rate).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`}</td></tr>)}</tbody></table></div>}
+          {competitiveReport?.competitors?.some((item) => item.status === "error") && <p className="mt-2 text-[10px] text-amber-800">Alguns perfis não puderam ser consultados pela autorização oficial atual. Verifique a permissão do Instagram e tente novamente.</p>}
+          {!competitiveReport && !competitors.length && <p className="mt-3 text-[10px] text-blue-800">Nenhum perfil cadastrado ainda.</p>}
+        </div></div>
       </div>
 
       {/* Charts */}

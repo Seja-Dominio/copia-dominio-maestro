@@ -313,14 +313,17 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   const canCreateDeleteLog = operation === "create"
     && entity === "DeleteLog"
     && ["gestor", "master"].includes(accessLevel);
+  const canManageCompetitor = ["create", "update", "delete"].includes(operation)
+    && entity === "ClientCompetitor"
+    && ["gestor", "master"].includes(accessLevel);
   const gestorWritableEntities = ["Client", "Project", "Job", "Subtask", "AgendaEvent", "JobTemplate", "Squad"];
-  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteJob && !canCreateDeleteLog && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
+  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteJob && !canCreateDeleteLog && !canManageCompetitor && accessLevel === "gestor" && !gestorWritableEntities.includes(entity)) {
     return json({ error: "O Gestor não pode alterar este tipo de dado" }, 403, origin);
   }
-  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteAgendaEvent && !canDeleteJob && !canCreateDeleteLog && !["master", "gestor"].includes(accessLevel)) {
+  if (isWrite && !canMarkOwnNotificationRead && !canCreateMiniTask && !canUpdateJobStatus && !canWriteJob && !canWriteAgendaEvent && !canWriteTimesheet && !canDeleteAgendaEvent && !canDeleteJob && !canCreateDeleteLog && !canManageCompetitor && !["master", "gestor"].includes(accessLevel)) {
     return json({ error: "Apenas gestores e masters podem alterar dados" }, 403, origin);
   }
-  if (["delete", "transferSubtasks"].includes(operation) && !canDeleteAgendaEvent && !canDeleteJob && accessLevel !== "master") {
+  if (["delete", "transferSubtasks"].includes(operation) && !canDeleteAgendaEvent && !canDeleteJob && !canManageCompetitor && accessLevel !== "master") {
     return json({ error: "Apenas o Master pode excluir ou transferir tarefas" }, 403, origin);
   }
   if (["list", "filter"].includes(operation)) {

@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { maestro, uploadMaestroFile } from "@/api/maestroClient";
+import { refreshMaestroFileUrl, uploadMaestroFile } from "@/api/maestroClient";
+import { getAttachmentPath } from "@/lib/attachmentUrls";
 import { Upload, Trash2, Download, FileText, Image, Film, Archive, File, X, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
 import ImageAnnotations from "./ImageAnnotations";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ function formatBytes(bytes) {
 }
 
 // Full-screen lightbox with navigation and annotations
-function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allImages, currentIndex, onNavigate, annotations, onAnnotationsChange, currentUser, isAdmin }) {
+function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allImages, currentIndex, onNavigate, annotations, onAnnotationsChange, currentUser, isAdmin, onRefreshUrl }) {
   const imgContainerRef = useRef(null);
 
   // Keyboard nav via window listener — doesn't steal focus from other inputs
@@ -49,14 +50,20 @@ function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allIma
   }, [currentIndex, allImages, onNavigate, onClose]);
 
   async function handleDownload() {
-    const res = await fetch(item.url);
+    let res = await fetch(item.url);
+    let url = item.url;
+    if (!res.ok && onRefreshUrl) {
+      url = await onRefreshUrl(item);
+      if (url) res = await fetch(url);
+    }
+    if (!res.ok) throw new Error("Não foi possível abrir o anexo.");
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
+    a.href = objectUrl;
     a.download = item.name || "arquivo";
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(objectUrl);
   }
 
   const hasPrev = allImages && currentIndex > 0;
@@ -108,7 +115,7 @@ function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allIma
 
         {isImg ? (
           <div className="relative max-w-full max-h-full" ref={imgContainerRef}>
-            <img src={item.url} alt={item.name || "imagem"} className="max-w-full max-h-[calc(100vh-140px)] object-contain rounded-lg shadow-2xl" />
+            <img src={item.url} alt={item.name || "imagem"} onError={() => onRefreshUrl?.(item)} className="max-w-full max-h-[calc(100vh-140px)] object-contain rounded-lg shadow-2xl" />
             {/* Annotations overlay — always active: click to add, hover to view */}
             {onAnnotationsChange && (
               <div className="absolute inset-0" style={{ pointerEvents: "auto" }}>
@@ -171,7 +178,39 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
   const [uploadProgress, setUploadProgress] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [freshUrls, setFreshUrls] = useState({});
+  const [refreshingPaths, setRefreshingPaths] = useState({});
   const fileInputRef = useRef(null);
+
+  function resolveUrl(item) {
+    const path = getAttachmentPath(item);
+    return (path && freshUrls[path]) || item?.url || "";
+  }
+
+  async function refreshAttachmentUrl(item) {
+    const path = getAttachmentPath(item);
+    if (!path) return "";
+    if (freshUrls[path]) return freshUrls[path];
+    if (refreshingPaths[path]) return "";
+    setRefreshingPaths((current) => ({ ...current, [path]: true }));
+    try {
+      const url = await refreshMaestroFileUrl(path);
+      if (url) setFreshUrls((current) => ({ ...current, [path]: url }));
+      setLightbox((current) => current && getAttachmentPath(current.item) === path && url
+        ? { ...current, item: { ...current.item, url } }
+        : current);
+      return url;
+    } catch (error) {
+      console.warn("Não foi possível renovar o anexo:", error);
+      return "";
+    } finally {
+      setRefreshingPaths((current) => {
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+    }
+  }
 
   function getFileNameForDelete() {
     if (deleteConfirm?.type === "attachment") {
@@ -193,12 +232,13 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
       setUploadProgress(`${i + 1}/${total} — ${file.name}`);
 
       try {
-        const { file_url } = await uploadMaestroFile(file);
+        const { file_url, path } = await uploadMaestroFile(file);
         if (!file_url) throw new Error("URL não retornada");
 
         uploaded.push({
           name: file.name,
           url: file_url,
+          path,
           size: file.size,
           type: file.type,
           uploaded_at: new Date().toISOString(),
@@ -269,7 +309,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
 
         return (
           <Lightbox
-            item={item}
+            item={{ ...item, url: resolveUrl(item) }}
             currentIndex={lightbox.index}
             allImages={allImages}
             currentUser={currentUser}
@@ -285,6 +325,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
               setLightbox({ item: img, index: newIndex });
             }}
             onClose={() => setLightbox(null)}
+            onRefreshUrl={refreshAttachmentUrl}
             fullscreen={fullscreenLightbox}
             onDelete={attachIdx != null ? () => {
               handleDelete(attachIdx);
@@ -329,7 +370,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
               {allImages.map((img, i) => (
                 <div key={i} className="relative group rounded-xl overflow-hidden border border-border cursor-pointer bg-muted/30"
                   onClick={() => setLightbox({ item: img, index: i })}>
-                  <img src={img.url} alt={img.name} className="w-full h-auto max-h-[300px] object-cover transition-transform group-hover:scale-[1.02]" />
+                  <img src={resolveUrl(img)} alt={img.name} onError={() => refreshAttachmentUrl(img)} className="w-full h-auto max-h-[300px] object-cover transition-transform group-hover:scale-[1.02]" />
                   {img.fromComment && (
                     <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md font-semibold">💬 Comentário</div>
                   )}
@@ -357,7 +398,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
                 const { Icon, color } = getFileIcon(att.name);
                 return (
                   <div key={i} className="group flex items-center gap-2.5 p-2.5 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer"
-                    onClick={() => setLightbox({ item: { url: att.url, name: att.name, attachIndex: realIndex }, index: -1 })}>
+                    onClick={() => setLightbox({ item: { ...att, url: resolveUrl(att), attachIndex: realIndex }, index: -1 })}>
                     <Icon className={`w-5 h-5 flex-shrink-0 ${color}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-foreground truncate">{att.name}</p>

@@ -241,6 +241,10 @@ export async function uploadFileToSupabase(file) {
   return data;
 }
 
+export function refreshFileUrlFromSupabase(path) {
+  return invokeSupabaseFunction('refresh-file-url', { path }).then((data) => data.file_url || '');
+}
+
 export async function loginCollaboratorWithSupabase({ login, password }) {
   assertSafeTarget();
   if (!supabase) throw new Error('Supabase não está configurado neste ambiente.');

@@ -17,7 +17,7 @@ import { isMaster } from "@/lib/accessControl";
 const ALL_TABS = [
   { id: "system",       label: "Sistema",         icon: Settings2 },
   { id: "requests",     label: "Requisições",     icon: ShieldCheck, masterOnly: true },
-  { id: "dominus_memory", label: "Aprendizados do Dominus", icon: Brain, masterOnly: true },
+  { id: "dominus_memory", label: "Aprovação do Dominus", icon: Brain, masterOnly: true },
   { id: "records",      label: "Cadastros",       icon: Users },
   { id: "roles",        label: "Cargos",          icon: Briefcase },
   { id: "templates",    label: "Templates",       icon: LayoutTemplate },

@@ -118,7 +118,7 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
     ? automation.group_ids
     : automation?.group_id ? [automation.group_id] : [];
   const [selectedGroupIds, setSelectedGroupIds] = useState(initialGroups.map(String));
-  const [summaryGroupId, setSummaryGroupId] = useState(String(automation?.summary_group_id || initialGroups[0] || ""));
+  const [summaryGroupId, setSummaryGroupId] = useState(String(automation?.summary_group_id || ""));
   const [active, setActive] = useState(automation?.active !== false);
   const [saving, setSaving] = useState(false);
   const [groupQuery, setGroupQuery] = useState("");
@@ -128,7 +128,7 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
       ? automation.group_ids
       : automation?.group_id ? [automation.group_id] : [];
     setSelectedGroupIds(next.map(String));
-    setSummaryGroupId(String(automation?.summary_group_id || next[0] || ""));
+    setSummaryGroupId(String(automation?.summary_group_id || ""));
     setActive(automation?.active !== false);
   }, [automation?.id, automation?.active, automation?.group_id, automation?.group_ids, automation?.summary_group_id]);
 
@@ -142,6 +142,7 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
   const normalizedGroupQuery = groupQuery.trim().toLowerCase();
   const visibleGroups = groups.filter((group) => `${group.name || ""} ${group.id || ""}`.toLowerCase().includes(normalizedGroupQuery));
   const selectedGroups = groups.filter((group) => selectedGroupIds.includes(String(group.id)));
+  const summaryGroup = selectedGroups.find((group) => String(group.id) === summaryGroupId);
 
   const save = async () => {
     if (!selectedGroupIds.length) {
@@ -196,7 +197,8 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
     </div>
     <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800"><div className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" /><span>O Dominus ignora mensagens privadas e grupos não selecionados. Usuários inativos não recebem respostas, e Financeiro, Comercial e Configurações continuam protegidos pelas permissões individuais.</span></div></div>
     <div>
-      <p className="mb-2 text-xs font-semibold text-muted-foreground">Grupos autorizados</p>
+      <p className="text-sm font-bold text-foreground">1. Onde o Dominus pode responder</p>
+      <p className="mt-1 mb-2 text-xs text-muted-foreground">Clique nos cartões para selecionar um ou mais grupos. O Dominus só responderá nesses grupos.</p>
       <div className="relative mb-2">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input type="search" value={groupQuery} onChange={(event) => setGroupQuery(event.target.value)} placeholder="Buscar grupo por nome ou ID..." aria-label="Buscar grupo autorizado" className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm font-normal text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
@@ -208,14 +210,23 @@ function DominusAutomationPanel({ automation, groups, busy, onSaved, onNotice })
         })}
       </div>
       {!visibleGroups.length && <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">Nenhum grupo encontrado.</p>}
-      <p className="mt-2 text-xs text-muted-foreground">{selectedGroupIds.length} grupo(s) selecionado(s). O nome de ativação é sempre Dominus.</p>
+      <p className="mt-2 text-xs text-muted-foreground">{selectedGroupIds.length} grupo(s) selecionado(s). O nome de ativação é sempre <strong>Dominus</strong>.</p>
     </div>
-    <div>
-      <label className="block text-xs font-semibold text-muted-foreground">Grupo do resumo diário (20h)<select value={summaryGroupId} onChange={(event) => setSummaryGroupId(event.target.value)} disabled={!selectedGroups.length} className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal text-foreground">
-        <option value="">Selecione o grupo do resumo...</option>
-        {selectedGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-      </select></label>
-      <p className="mt-2 text-xs text-muted-foreground">O resumo da auditoria será enviado uma vez por dia, às 20h de Manaus, somente para este grupo.</p>
+    <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+      <div className="flex items-start gap-3">
+        <CalendarClock className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" />
+        <div>
+          <p className="text-sm font-bold text-foreground">2. Escolha o grupo do resumo das 20h</p>
+          <p className="mt-1 text-xs text-muted-foreground">Este é um grupo separado da lista acima: o resumo diário será enviado somente para o grupo escolhido aqui.</p>
+        </div>
+      </div>
+      <label className="mt-3 block text-xs font-semibold text-foreground">Enviar o resumo diário para
+        <select value={summaryGroupId} onChange={(event) => setSummaryGroupId(event.target.value)} disabled={!selectedGroups.length} className="mt-1 h-10 w-full rounded-lg border border-amber-300 bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+          <option value="">Selecione um grupo para o resumo...</option>
+          {selectedGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+        </select>
+      </label>
+      {summaryGroup ? <p className="mt-2 text-xs font-semibold text-green-700">✓ Resumo das 20h: {summaryGroup.name}</p> : <p className="mt-2 text-xs font-medium text-amber-800">Primeiro selecione um grupo acima e depois escolha aqui o destino do resumo.</p>}
     </div>
     <div className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={saving || busy || !selectedGroupIds.length || !summaryGroupId} className="gap-2"><Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar configuração"}</Button><Button type="button" variant="outline" onClick={configureWebhook} disabled={saving || busy} className="gap-2">Ativar recebimento</Button></div>
   </div>;

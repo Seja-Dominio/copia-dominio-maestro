@@ -6,7 +6,7 @@
  * incrementally, keeping the application runnable during the transition.
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
-import { callMaestroData, createSupabaseEntities, getStoredCollaborator, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase, clearStoredCollaboratorSession } from '@/api/supabaseClient';
+import { callMaestroData, createSupabaseEntities, getStoredCollaborator, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, refreshFileUrlFromSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase, clearStoredCollaboratorSession } from '@/api/supabaseClient';
 
 const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
 
@@ -92,6 +92,11 @@ export async function uploadMaestroFile(file) {
   return maestro.integrations.Core.UploadFile({ file });
 }
 
+export function refreshMaestroFileUrl(path) {
+  if (dataProvider !== 'supabase' || !path) return Promise.resolve('');
+  return refreshFileUrlFromSupabase(path);
+}
+
 export async function transferSubtasks(payload) {
   if (dataProvider === 'supabase') return transferSubtasksSupabase(payload);
   return maestro.functions.invoke('transferSubtasks', payload);
@@ -122,6 +127,13 @@ export function invokeMaestroFunction(name, payload) {
     if (name === 'exportSystemBlueprint') return invokeSystemReportFunction('blueprint').then((data) => ({ data }));
   }
   return maestro.functions.invoke(name, payload);
+}
+
+export function invokeCompetitiveReport(payload = {}) {
+  if (dataProvider === 'supabase') {
+    return invokeSupabaseFunction('meta-ads-oauth', { action: 'competitor_report', ...payload });
+  }
+  return maestro.functions.invoke('getCompetitiveReport', payload);
 }
 
 export function getCurrentCollaborator() {

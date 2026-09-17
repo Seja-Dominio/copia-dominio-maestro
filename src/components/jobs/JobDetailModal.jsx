@@ -928,11 +928,12 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         for (const file of files) {
           if (file.size > 50 * 1024 * 1024) continue;
           try {
-            const { file_url } = await uploadMaestroFile(file);
+            const { file_url, path } = await uploadMaestroFile(file);
             if (!file_url) continue;
             uploaded.push({
               name: file.name || `colagem-${Date.now()}.png`,
               url: file_url,
+              path,
               size: file.size,
               type: file.type,
               uploaded_at: new Date().toISOString(),
@@ -979,10 +980,10 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     for (const file of files) {
       if (file.size > 50 * 1024 * 1024) continue;
       try {
-        const { file_url } = await uploadMaestroFile(file);
+        const { file_url, path } = await uploadMaestroFile(file);
         if (!file_url) continue;
         uploaded.push({
-          name: file.name, url: file_url,
+          name: file.name, url: file_url, path,
           size: file.size, type: file.type, uploaded_at: new Date().toISOString(),
         });
       } catch (err) {

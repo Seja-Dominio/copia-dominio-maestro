@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildCompetitiveReport } from "./competitiveMetrics.ts";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -131,6 +132,59 @@ async function fetchReportMetrics(accessToken: string, accountId: string, range:
   return normalizeReportMetrics(payload.data?.[0] || {});
 }
 
+async function loadCompetitiveContext(clientId: string, clientName = "") {
+  const clientQuery = supabase
+    .from("legacy_records")
+    .select("record_id,payload")
+    .eq("entity", "Client");
+  const { data: clientRows, error: clientError } = clientId
+    ? await clientQuery.eq("record_id", clientId).limit(1)
+    : await clientQuery.filter("payload->>name", "eq", clientName).limit(1);
+  if (clientError) throw clientError;
+  const clientRow = clientRows?.[0];
+  if (!clientRow) return null;
+  const resolvedClientId = String(clientRow.record_id || clientId || "");
+  const resolvedClientName = String(clientRow.payload?.name || clientName || "Cliente não identificado");
+  const [competitorRows, insightRows, postRows] = await Promise.all([
+    supabase.from("legacy_records").select("record_id,payload").eq("entity", "ClientCompetitor").filter("payload->>client_id", "eq", resolvedClientId).limit(50),
+    supabase.from("legacy_records").select("payload").eq("entity", "ClientInsight").filter("payload->>client_id", "eq", resolvedClientId).limit(200),
+    supabase.from("legacy_records").select("payload").eq("entity", "PostMetric").filter("payload->>client_id", "eq", resolvedClientId).limit(200),
+  ]);
+  if (competitorRows.error) throw competitorRows.error;
+  if (insightRows.error) throw insightRows.error;
+  if (postRows.error) throw postRows.error;
+  return {
+    clientId: resolvedClientId,
+    clientName: resolvedClientName,
+    instagramAccountId: String(clientRow.payload?.instagram_account_id || ""),
+    competitors: (competitorRows.data || []).map((row) => ({ id: row.record_id, ...(row.payload || {}) })),
+    ownInsights: (insightRows.data || []).map((row) => row.payload || {}),
+    ownPosts: (postRows.data || []).map((row) => row.payload || {}),
+  };
+}
+
+async function loadMetaAccessForClient(context: { clientName: string }) {
+  const { data: account, error: accountError } = await supabase
+    .from("maestro_ads_accounts")
+    .select("authorization_id")
+    .eq("network", "Meta Ads")
+    .eq("client_name", context.clientName)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (accountError) throw accountError;
+  if (!account?.authorization_id) return null;
+  const { data: authorization, error: authorizationError } = await supabase
+    .from("maestro_ads_authorizations")
+    .select("access_token_encrypted,token_expires_at")
+    .eq("id", account.authorization_id)
+    .maybeSingle();
+  if (authorizationError) throw authorizationError;
+  if (!authorization) return null;
+  if (authorization.token_expires_at && new Date(authorization.token_expires_at).getTime() < Date.now()) return null;
+  return decryptSecret(authorization.access_token_encrypted);
+}
+
 Deno.serve(async (request) => {
   try {
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -200,6 +254,19 @@ Deno.serve(async (request) => {
       if (error) throw error;
       return json({ account: data });
     }
+    if (body.action === "competitor_report") {
+      const clientId = String(body.client_id || "").trim();
+      const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "";
+      const until = /^\d{4}-\d{2}-\d{2}$/.test(String(body.until || "")) ? String(body.until) : "";
+      if (!clientId || !since || !until || since > until) return json({ error: "Informe cliente e intervalo válidos para a comparação." }, 400);
+      const context = await loadCompetitiveContext(clientId);
+      if (!context) return json({ error: "Cliente não encontrado." }, 404);
+      if (!context.instagramAccountId) return json({ error: "Cadastre o Instagram oficial do cliente antes de consultar a comparação." }, 400);
+      if (!context.competitors.length) return json({ error: "Cadastre ao menos um perfil concorrente no bloco de Comparação competitiva." }, 400);
+      const accessToken = await loadMetaAccessForClient(context);
+      if (!accessToken) return json({ error: "A conta Meta do cliente não possui uma autorização oficial válida para Business Discovery. Reconecte a conta com a permissão do Instagram." }, 403);
+      return json({ report: await buildCompetitiveReport(accessToken, context, { since, until }) });
+    }
     if (body.action === "report") {
       const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "";
       const until = /^\d{4}-\d{2}-\d{2}$/.test(String(body.until || "")) ? String(body.until) : "";
@@ -251,7 +318,21 @@ Deno.serve(async (request) => {
             fetchReportMetrics(accessToken, accountId, { since, until }),
             fetchReportMetrics(accessToken, accountId, previous),
           ]);
-          reports.push({ ...base, status: "ok", current, previous: previousMetrics });
+          let competitive = null;
+          try {
+            const context = await loadCompetitiveContext("", base.client_name);
+            if (context?.instagramAccountId && context.competitors.length) {
+              competitive = await buildCompetitiveReport(accessToken, context, { since, until });
+            }
+          } catch (competitiveError) {
+            competitive = {
+              client_id: null,
+              client_name: base.client_name,
+              status: "error",
+              error: competitiveError instanceof Error ? competitiveError.message : "Falha na comparação competitiva.",
+            };
+          }
+          reports.push({ ...base, status: "ok", current, previous: previousMetrics, competitive });
         } catch (error) {
           reports.push({ ...base, status: "error", error: error instanceof Error ? error.message : "Falha ao consultar a Meta." });
         }
@@ -395,7 +476,7 @@ Deno.serve(async (request) => {
     }
     if (body.action === "start") {
       const state = await sign(JSON.stringify({ sub: collaborator.id, exp: Math.floor(Date.now() / 1000) + 600 }));
-      const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, response_type: "code", scope: "ads_read,business_management" });
+      const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, response_type: "code", scope: "ads_read,business_management,instagram_basic,pages_show_list,pages_read_engagement" });
       return json({ authorization_url: `https://www.facebook.com/v24.0/dialog/oauth?${params}` });
     }
     if (body.action !== "complete" || !body.code || !(await verify(String(body.state)))) return json({ error: "Código OAuth inválido ou expirado" }, 400);

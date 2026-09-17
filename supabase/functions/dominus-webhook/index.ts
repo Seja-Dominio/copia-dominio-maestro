@@ -477,7 +477,8 @@ async function askMaestro(subject: { groupId?: string; collaboratorId?: string }
     maestro_endpoint: baseUrl,
     context: { page: "WhatsApp — grupo autorizado", task: "Consulta do Dominus", group_id: groupId, collaborator_id: collaboratorId || null },
   });
-  const timestamp = String(Date.now());
+  // The bridge validates the signed timestamp in Unix seconds.
+  const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = await signHermesBridgeRequest(timestamp, body);
   const response = await fetch(`${bridgeUrl}/v1/respond`, {
     method: "POST",

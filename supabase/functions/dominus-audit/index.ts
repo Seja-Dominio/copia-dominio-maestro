@@ -406,7 +406,7 @@ async function createLearningCandidates(findings: Finding[], today: string) {
     const { data: existing, error: lookupError } = await db.from("dominus_learning_reviews").select("id,status").eq("memory_key", candidate.key).order("created_at", { ascending: false }).limit(1);
     if (lookupError) throw lookupError;
     if (existing?.length) continue;
-    const { error } = await db.from("dominus_learning_reviews").insert({
+    const { data: review, error } = await db.from("dominus_learning_reviews").insert({
       memory_key: candidate.key,
       status: "pending",
       proposed_rule: candidate.rule,
@@ -416,8 +416,16 @@ async function createLearningCandidates(findings: Finding[], today: string) {
       evidence: [{ category, finding_count: count, audit_date: today }],
       source_refs: [],
       proposed_by: "dominus-audit",
-    });
+    }).select("id").single();
     if (error) throw error;
+    const { error: eventError } = await db.from("dominus_learning_review_events").insert({
+      review_id: review.id,
+      event_type: "created",
+      actor_id: "dominus-audit",
+      note: candidate.rationale,
+      snapshot: { memory_key: candidate.key, proposed_rule: candidate.rule, scope: "agency", status: "pending" },
+    });
+    if (eventError) throw eventError;
     created += 1;
   }
   return created;
