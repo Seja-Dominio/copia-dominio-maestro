@@ -23,7 +23,7 @@ def make_adapter(calls):
 
 def test_endpoint_requires_https_supabase_project_origin():
     for endpoint in (
-        "http://project.supabase.co",
+        "http://project.invalid",
         "https://supabase.co.evil.example",
         "https://user:pass@project.supabase.co",
         "https://project.supabase.co:8443",
