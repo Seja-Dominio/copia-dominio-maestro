@@ -2,8 +2,6 @@
   "version": 1,
   "non_cxm_candidate": {
     "functions": [
-      "maestro-core-data",
-      "meta-ads-sync-cron",
       "refresh-file-url",
       "system-reports",
       "upload-file"
@@ -14,8 +12,6 @@
     "dominus-memory": { "product": "shared", "release": "blocked_shared" },
     "dominus-webhook": { "product": "shared", "release": "blocked_shared" },
     "maestro-ai": { "product": "shared", "release": "blocked_shared" },
-    "maestro-core-data": { "product": "maestro", "release": "non_cxm_candidate" },
-    "meta-ads-sync-cron": { "product": "ads_brain", "release": "non_cxm_candidate" },
     "refresh-file-url": { "product": "maestro", "release": "non_cxm_candidate" },
     "upload-file": { "product": "maestro", "release": "non_cxm_candidate" },
     "maestro-data": { "product": "shared", "release": "blocked_shared" },
@@ -24,6 +20,8 @@
     "whatsapp-send": { "product": "shared", "release": "blocked_shared" }
   },
   "pending_functions": {
+    "maestro-core-data": { "product": "maestro", "intended_release": "non_cxm_candidate" },
+    "meta-ads-sync-cron": { "product": "ads_brain", "intended_release": "non_cxm_candidate" },
     "admin-timesheets": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "cnpj-enrich": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "collaborator-login": { "product": "maestro", "intended_release": "non_cxm_candidate" },
