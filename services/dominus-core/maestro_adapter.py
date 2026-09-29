@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Literal, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import Request, build_opener
 import json
 from zoneinfo import ZoneInfo
 
@@ -145,13 +146,32 @@ class MaestroToolAdapter:
         transport: Transport | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
-        if not endpoint.strip():
+        endpoint = endpoint.strip().rstrip("/")
+        if not endpoint:
             raise ValueError("endpoint do Maestro é obrigatório")
+        parsed_endpoint = urlsplit(endpoint)
+        try:
+            endpoint_port = parsed_endpoint.port
+        except ValueError as error:
+            raise ValueError("endpoint do Maestro inválido") from error
+        if (
+            parsed_endpoint.scheme != "https"
+            or not parsed_endpoint.hostname
+            or not parsed_endpoint.hostname.endswith(".supabase.co")
+            or parsed_endpoint.username is not None
+            or parsed_endpoint.password is not None
+            or endpoint_port not in (None, 443)
+            or parsed_endpoint.path not in ("", "/")
+            or parsed_endpoint.query
+            or parsed_endpoint.fragment
+        ):
+            raise ValueError("endpoint deve ser a URL HTTPS de um projeto Supabase")
         if not session_token.strip():
             raise ValueError("token de sessão do Maestro é obrigatório")
-        self.endpoint = endpoint.rstrip("/")
+        self.endpoint = endpoint
         self.session_token = session_token
         self.timeout = timeout
+        self._http = build_opener()
         self._transport = transport or self._http_transport
         self._now = now or (lambda: datetime.now(self.timezone))
 
@@ -218,7 +238,7 @@ class MaestroToolAdapter:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with self._http.open(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
             raise MaestroToolError("não foi possível consultar o Maestro") from error

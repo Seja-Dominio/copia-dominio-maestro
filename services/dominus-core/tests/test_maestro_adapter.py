@@ -21,6 +21,22 @@ def make_adapter(calls):
     )
 
 
+def test_endpoint_requires_https_supabase_project_origin():
+    for endpoint in (
+        "http://project.supabase.co",
+        "https://supabase.co.evil.example",
+        "https://user:pass@project.supabase.co",
+        "https://project.supabase.co:8443",
+        "https://project.supabase.co/path",
+    ):
+        try:
+            MaestroToolAdapter(endpoint, "signed-session", transport=lambda _: {})
+        except ValueError as error:
+            assert "endpoint" in str(error)
+        else:
+            raise AssertionError(f"endpoint deveria ser rejeitado: {endpoint}")
+
+
 def test_exposes_only_read_tools():
     names = {tool["name"] for tool in MAESTRO_TOOLS}
     assert names == {"buscar_jobs", "buscar_tarefas", "consultar_agenda", "consultar_dashboard"}
