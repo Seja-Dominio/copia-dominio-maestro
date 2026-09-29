@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -10,7 +11,7 @@ function corsHeaders(origin = "") {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 }
-type Session = { sub: string; exp: number };
+type Session = { sub: string; exp: number; organization_id?: string };
 type Row = { entity: string; record_id: string; payload: Record<string, unknown> };
 
 function decode(value: string) {
@@ -30,12 +31,16 @@ async function authorize(token: string) {
   try { session = JSON.parse(decode(body)) as Session; } catch { return false; }
   if (!session.sub || !session.exp || session.exp < Math.floor(Date.now() / 1000)) return false;
   const { data } = await supabase.from("maestro_collaborators").select("is_active, profile").eq("id", session.sub).maybeSingle();
-  return Boolean(data?.is_active && data.profile?.access_level === "master");
+  if (!data?.is_active || data.profile?.access_level !== "master") return false;
+  let membershipsQuery = supabase.from("organization_members").select("organization_id,organizations!inner(status)").eq("collaborator_id", session.sub).eq("status", "active").eq("organizations.status", "active").limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships } = await membershipsQuery;
+  return Boolean(memberships && memberships.length === 1);
 }
-async function load(entity: string) {
+async function load(entity: string, organizationId: string) {
   const rows: Row[] = [];
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await supabase.from("legacy_records").select("entity, record_id, payload").eq("entity", entity).range(offset, offset + 999);
+    const { data, error } = await supabase.from("legacy_records").select("entity, record_id, payload").eq("entity", entity).eq("organization_id", organizationId).range(offset, offset + 999);
     if (error) throw error;
     rows.push(...((data || []) as Row[]));
     if (!data || data.length < 1000) break;
@@ -83,9 +88,19 @@ Deno.serve(async (request) => {
     if (request.method !== "POST") return json({ error: "Método não permitido" }, 405, origin);
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
     if (!token || !(await authorize(token))) return json({ error: "Acesso administrativo necessário" }, 403, origin);
+    const sessionPayload = JSON.parse(decode(token.split(".")[0])) as Session;
     const { action } = await request.json();
     const entities = ["Client", "Project", "Job", "Collaborator", "Subtask", "FeeContract", "JobTemplate", "AppConfig", "Squad", "BankAccount", "CostCenter", "Timesheet", "FinancialEntry", "DeleteLog"];
-    const rows = await Promise.all(entities.map(async (entity) => [entity, await load(entity)] as const));
+    if (!sessionPayload.organization_id) return json({ error: "Sessão sem organização ativa" }, 403, origin);
+    const { data: products, error: productsError } = await supabase.from("organization_products")
+      .select("product_key,status")
+      .eq("organization_id", sessionPayload.organization_id)
+      .in("status", ["trial", "enabled"]);
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "maestro")) {
+      return json({ error: "O produto Maestro não está habilitado para esta organização." }, 403, origin);
+    }
+    const rows = await Promise.all(entities.map(async (entity) => [entity, await load(entity, sessionPayload.organization_id!)] as const));
     const data = Object.fromEntries(rows);
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Manaus" });
     const isBlueprint = action === "blueprint";

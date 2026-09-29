@@ -11,4 +11,5 @@ const manifest = JSON.parse(await fs.readFile(manifestUrl, "utf8"));
 const result = validateEdgeFunctionProductBoundaries({ functionDirectories: directories, manifest });
 
 console.log(JSON.stringify(result, null, 2));
-if (result.status !== "ok") process.exitCode = 1;
+const requireReleaseReady = process.argv.includes("--require-release-ready");
+if (result.status !== "ok" || (requireReleaseReady && !result.release_ready)) process.exitCode = 1;
