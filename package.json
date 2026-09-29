@@ -16,7 +16,16 @@
     "preview:dev": "vite preview --mode development --host 127.0.0.1 --port 4173",
     "preview:test": "vite preview --mode test --host 127.0.0.1 --port 4174",
     "migration:import-base44": "node scripts/import-base44-export.mjs",
-    "sync:prod-to-dev": "node --env-file=.env.migration.local scripts/sync-prod-to-dev.mjs"
+    "sync:prod-to-dev": "node --env-file=.env.migration.local scripts/sync-prod-to-dev.mjs",
+    "verify:relational-parity": "node --env-file=.env.migration.local scripts/verify-relational-parity.mjs",
+    "verify:tenant-foundation": "node --env-file=.env.migration.local scripts/verify-tenant-foundation.mjs",
+    "verify:product-modules": "node --env-file=.env.migration.local scripts/verify-product-modules.mjs",
+    "verify:legacy-cutover": "node --env-file=.env.migration.local scripts/verify-legacy-cutover.mjs",
+    "verify:tenant-isolation": "node --env-file=.env.migration.local scripts/verify-tenant-isolation.mjs",
+    "verify:relational-dispatch": "node scripts/verify-relational-dispatch.mjs",
+    "verify:migration-files": "node scripts/verify-migration-files.mjs",
+    "verify:functional-inventory": "node scripts/verify-functional-inventory.mjs",
+    "verify:edge-function-product-boundaries": "node scripts/verify-edge-function-product-boundaries.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.43",

@@ -1,0 +1,93 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  schedule:
+    - cron: "23 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Authorization and regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: node --test supabase/functions/_shared/*.test.mjs scripts/lib/*.test.mjs
+      - run: npm run verify:edge-function-product-boundaries
+      - run: npm run verify:relational-dispatch
+      - run: npm run verify:migration-files
+      - run: npm run verify:functional-inventory
+
+  semgrep:
+    name: Static security analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check semgrep==1.178.0
+      - run: semgrep scan --config p/security-audit --error --metrics=off
+
+  trivy:
+    name: Active application dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          skip-dirs: node_modules,.git,base44-source
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  trivy-config:
+    name: Container configuration report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig
+          skip-dirs: node_modules,.git,base44-source
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+  trufflehog:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - name: Scan changed commits
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
+        with:
+          version: v3.97.1
+          extra_args: --results=verified,unknown
+      - name: Scan complete branch history
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
+        with:
+          version: v3.97.1
+          base: ""
+          head: ${{ github.ref_name }}
+          extra_args: --results=verified,unknown
