@@ -25,23 +25,36 @@ create policy legacy_records_authenticated_read
   to authenticated
   using (entity not in ('Collaborator', 'User'));
 
-insert into public.legacy_records (
-  entity,
-  record_id,
-  payload,
-  source_created_at,
-  source_updated_at
-)
-select
-  entity_name,
-  source_id,
-  payload,
-  nullif(payload->>'created_date', '')::timestamptz,
-  source_updated_at
-from migration.base44_records
-where entity_name not in ('Collaborator', 'User')
-on conflict (entity, record_id) do update set
-  payload = excluded.payload,
-  source_created_at = excluded.source_created_at,
-  source_updated_at = excluded.source_updated_at,
-  imported_at = now();
+do $$
+begin
+  -- Dashboard-created Supabase branches intentionally start without data. The
+  -- Base44 snapshot is optional there, while schema setup must still succeed.
+  if to_regclass('migration.base44_records') is null then
+    raise notice 'Skipping Base44 snapshot import: migration.base44_records is absent';
+    return;
+  end if;
+
+  execute $import$
+    insert into public.legacy_records (
+      entity,
+      record_id,
+      payload,
+      source_created_at,
+      source_updated_at
+    )
+    select
+      entity_name,
+      source_id,
+      payload,
+      nullif(payload->>'created_date', '')::timestamptz,
+      source_updated_at
+    from migration.base44_records
+    where entity_name not in ('Collaborator', 'User')
+    on conflict (entity, record_id) do update set
+      payload = excluded.payload,
+      source_created_at = excluded.source_created_at,
+      source_updated_at = excluded.source_updated_at,
+      imported_at = now()
+  $import$;
+end;
+$$;
