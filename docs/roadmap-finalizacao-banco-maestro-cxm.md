@@ -106,6 +106,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - A fila webhook CXM do Dev mantém sobrecargas de enqueue de três e quatro argumentos; ambas estão limitadas a `service_role`, mas o consumidor da sobrecarga antiga ainda não foi identificado. Produção não tem a fila. A relação `cxm_silence_due_jobs` existe somente em Dev, com a FK antiga ausente como a migration local pretende. Essas diferenças ficam na trilha CXM e fora do pacote não-CXM.
 - Evidência e limites estão em `docs/migration-drift-reconciliation.md`. A reconciliação global continua incompleta; não houve alteração remota e não se autoriza repair/push. Próxima ação: ampliar a classificação dos pares com SQL divergente e mapear consumidores/runtime para funções e schedulers compartilhados, depois preparar clones descartáveis para upgrade.
 
+### Revalidação estática da fronteira de Edge Functions — 30/09/2026
+
+- O verificador do manifesto foi executado no commit atual: 18 diretórios classificados; três funções na lista candidata, seis bloqueadas como compartilhadas e oito pendentes não-CXM; resultado estrutural `status: ok`, mas `release_ready=false` com 14 bloqueios de release. Duas funções CXM (`cxm-data`, `cxm-deskcomm-sso`) seguem como exclusões explícitas porque não existem na árvore atual.
+- A varredura da árvore atual de `supabase/functions` não encontrou referências literais `cxm_*`/`CXM` em código de função. Portanto a anotação anterior que atribuía chamadas diretas `cxm_*` a `dominus-webhook` e `whatsapp-send` está desatualizada para este commit e não deve ser usada como inventário atual. Ausência de nomes literais não prova isolamento: funções usam `legacy_records` dinamicamente e o manifesto valida classificação/árvore, não dependências de runtime.
+- Evidência que mantém bloqueios relevantes: `maestro-data` aceita `entity` dinâmica sobre `legacy_records`; `whatsapp-send` usa `service_role`, deriva autorização de perfil global e faz operações/listagens/scheduler em `legacy_records` sem `organization_id`. Ela também usa configuração global `EVOLUTION_*`. Essas rotas precisam ser tenant-scoped e/ou separadas por instalação antes de serem candidatas a release multitenant; não as reclassificar só porque não citam CXM pelo nome.
+- Nenhum código ou dado foi alterado nesta auditoria. Próxima ação: definir entidade/instalação permitida por produto no contrato de sessão, mapear todos os consumidores de `legacy_records` e desenhar credenciais/conexões WhatsApp por organização; então corrigir e testar essas rotas, mantendo o gate fechado até lá.
+
 ### Fase 0 — congelar escopo e tornar o inventário auditável
 
 **Atividades**
