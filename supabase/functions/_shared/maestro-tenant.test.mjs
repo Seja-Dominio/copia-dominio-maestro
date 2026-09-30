@@ -163,3 +163,15 @@ test("traffic copilot authorizes and reads ads accounts only for the active orga
   assert.match(source, /from\("maestro_ads_accounts"\)[\s\S]*?\.eq\("organization_id", collaborator\.organization_id\)/);
   assert.match(source, /if \(accountIds\.length\) query = query\.in\("id", accountIds\)/);
 });
+
+test("Meta Ads OAuth and synchronization keep accounts, credentials, client insights and OAuth state tenant-bound", async () => {
+  const source = await fs.readFile(new URL("../meta-ads-oauth/index.ts", import.meta.url), "utf8");
+  assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(source, /accessLevelForOrganizationRole\(membershipChoice\.membership\.organization_role\)/);
+  assert.match(source, /\.insert\(\{ organization_id: organizationId, collaborator_id: collaborator\.id/);
+  assert.match(source, /\.eq\("id", accountId\)\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.order\("updated_at"/);
+  assert.match(source, /async function loadCompetitiveContext\(clientId: string, organizationId: string[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /organization_id: organizationId,[\s\S]{0,120}collaborator_id: collaborator\.id/);
+  assert.match(source, /oauthState\?\.sub !== collaborator\.id \|\| oauthState\?\.organization_id !== organizationId/);
+});

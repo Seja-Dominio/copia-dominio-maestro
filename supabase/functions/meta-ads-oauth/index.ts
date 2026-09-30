@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCompetitiveReport } from "./competitiveMetrics.ts";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -132,11 +133,12 @@ async function fetchReportMetrics(accessToken: string, accountId: string, range:
   return normalizeReportMetrics(payload.data?.[0] || {});
 }
 
-async function loadCompetitiveContext(clientId: string, clientName = "") {
+async function loadCompetitiveContext(clientId: string, organizationId: string, clientName = "") {
   const clientQuery = supabase
     .from("legacy_records")
     .select("record_id,payload")
-    .eq("entity", "Client");
+    .eq("entity", "Client")
+    .eq("organization_id", organizationId);
   const { data: clientRows, error: clientError } = clientId
     ? await clientQuery.eq("record_id", clientId).limit(1)
     : await clientQuery.filter("payload->>name", "eq", clientName).limit(1);
@@ -146,9 +148,9 @@ async function loadCompetitiveContext(clientId: string, clientName = "") {
   const resolvedClientId = String(clientRow.record_id || clientId || "");
   const resolvedClientName = String(clientRow.payload?.name || clientName || "Cliente não identificado");
   const [competitorRows, insightRows, postRows] = await Promise.all([
-    supabase.from("legacy_records").select("record_id,payload").eq("entity", "ClientCompetitor").filter("payload->>client_id", "eq", resolvedClientId).limit(50),
-    supabase.from("legacy_records").select("payload").eq("entity", "ClientInsight").filter("payload->>client_id", "eq", resolvedClientId).limit(200),
-    supabase.from("legacy_records").select("payload").eq("entity", "PostMetric").filter("payload->>client_id", "eq", resolvedClientId).limit(200),
+    supabase.from("legacy_records").select("record_id,payload").eq("entity", "ClientCompetitor").eq("organization_id", organizationId).filter("payload->>client_id", "eq", resolvedClientId).limit(50),
+    supabase.from("legacy_records").select("payload").eq("entity", "ClientInsight").eq("organization_id", organizationId).filter("payload->>client_id", "eq", resolvedClientId).limit(200),
+    supabase.from("legacy_records").select("payload").eq("entity", "PostMetric").eq("organization_id", organizationId).filter("payload->>client_id", "eq", resolvedClientId).limit(200),
   ]);
   if (competitorRows.error) throw competitorRows.error;
   if (insightRows.error) throw insightRows.error;
@@ -163,10 +165,11 @@ async function loadCompetitiveContext(clientId: string, clientName = "") {
   };
 }
 
-async function loadMetaAccessForClient(context: { clientName: string }) {
+async function loadMetaAccessForClient(context: { clientName: string; organizationId: string }) {
   const { data: account, error: accountError } = await supabase
     .from("maestro_ads_accounts")
     .select("authorization_id")
+    .eq("organization_id", context.organizationId)
     .eq("network", "Meta Ads")
     .eq("client_name", context.clientName)
     .order("updated_at", { ascending: false })
@@ -178,6 +181,7 @@ async function loadMetaAccessForClient(context: { clientName: string }) {
     .from("maestro_ads_authorizations")
     .select("access_token_encrypted,token_expires_at")
     .eq("id", account.authorization_id)
+    .eq("organization_id", context.organizationId)
     .maybeSingle();
   if (authorizationError) throw authorizationError;
   if (!authorization) return null;
@@ -195,13 +199,26 @@ Deno.serve(async (request) => {
     if (!session?.sub) return json({ error: "Sessão inválida" }, 401);
     const { data: collaborator } = await supabase.from("maestro_collaborators").select("id,is_active,profile").eq("id", session.sub).maybeSingle();
     if (!collaborator?.is_active) return json({ error: "Sessão inválida" }, 401);
-    if (!hasAdsBrainAccess((collaborator.profile || {}) as Record<string, unknown>)) {
+    let membershipsQuery = supabase.from("organization_members").select("organization_id,role,status,organizations!inner(status)")
+      .eq("collaborator_id", collaborator.id).eq("status", "active").eq("organizations.status", "active").limit(2);
+    if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+    const { data: memberships, error: membershipError } = await membershipsQuery;
+    if (membershipError) throw membershipError;
+    const membershipChoice = selectOrganizationMembership(memberships, session.organization_id);
+    if (!membershipChoice.ok) return json({ error: "Sessão sem organização ativa" }, 403);
+    const organizationId = membershipChoice.membership.organization_id;
+    const authorizedProfile = {
+      ...(collaborator.profile || {}),
+      access_level: accessLevelForOrganizationRole(membershipChoice.membership.organization_role),
+    } as Record<string, unknown>;
+    if (!hasAdsBrainAccess(authorizedProfile)) {
       return json({ error: "A aba Ads Brain não está habilitada para este usuário." }, 403);
     }
     const body = await request.json();
     if (body.action === "list") {
       const { data, error } = await supabase.from("maestro_ads_accounts")
         .select("id,authorization_id,network,external_account_id,external_account_name,client_name,display_name,currency,account_status,balance,minimum_balance,spending_limit,amount_spent,metrics_config,metrics_data,campaigns_data,last_synced_at,created_at,updated_at")
+        .eq("organization_id", organizationId)
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return json({ accounts: data || [] });
@@ -212,10 +229,11 @@ Deno.serve(async (request) => {
       const { data: account, error: accountError } = await supabase.from("maestro_ads_accounts")
         .select("id,external_account_name,network,external_account_id")
         .eq("id", accountId)
+        .eq("organization_id", organizationId)
         .maybeSingle();
       if (accountError) throw accountError;
       if (!account) return json({ error: "Conta não encontrada no Ads Brain." }, 404);
-      const { error } = await supabase.from("maestro_ads_accounts").delete().eq("id", accountId);
+      const { error } = await supabase.from("maestro_ads_accounts").delete().eq("id", accountId).eq("organization_id", organizationId);
       if (error) throw error;
       return json({ removed: true, account });
     }
@@ -226,7 +244,7 @@ Deno.serve(async (request) => {
       if (!clientName) return json({ error: "Informe o nome do cliente antes de salvar." }, 400);
       if (!authorizationId || !account.id || !account.name) return json({ error: "Selecione novamente a conta de anúncios." }, 400);
       const { data: authorization } = await supabase.from("maestro_ads_authorizations")
-        .select("id,network,expires_at").eq("id", authorizationId).eq("collaborator_id", collaborator.id).maybeSingle();
+        .select("id,network,expires_at").eq("id", authorizationId).eq("collaborator_id", collaborator.id).eq("organization_id", organizationId).maybeSingle();
       if (!authorization || new Date(authorization.expires_at).getTime() < Date.now()) return json({ error: "A autorização expirou. Conecte a Meta novamente." }, 401);
       const network = authorization.network;
       const displayName = `${clientName} - ${network}`;
@@ -247,10 +265,10 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString(),
       };
       const { data: existingAccount, error: existingAccountError } = await supabase.from("maestro_ads_accounts")
-        .select("id").eq("network", network).eq("external_account_id", externalAccountId).maybeSingle();
+        .select("id").eq("network", network).eq("external_account_id", externalAccountId).eq("organization_id", organizationId).maybeSingle();
       if (existingAccountError) throw existingAccountError;
       if (existingAccount) return json({ error: "Esta conta de anúncios já está ativa no Ads Brain. Remova o vínculo existente antes de cadastrá-la novamente.", code: "ACCOUNT_ALREADY_ACTIVE", account_id: existingAccount.id }, 409);
-      const { data, error } = await supabase.from("maestro_ads_accounts").insert({ collaborator_id: collaborator.id, ...accountPayload }).select().single();
+      const { data, error } = await supabase.from("maestro_ads_accounts").insert({ organization_id: organizationId, collaborator_id: collaborator.id, ...accountPayload }).select().single();
       if (error) throw error;
       return json({ account: data });
     }
@@ -259,11 +277,11 @@ Deno.serve(async (request) => {
       const since = /^\d{4}-\d{2}-\d{2}$/.test(String(body.since || "")) ? String(body.since) : "";
       const until = /^\d{4}-\d{2}-\d{2}$/.test(String(body.until || "")) ? String(body.until) : "";
       if (!clientId || !since || !until || since > until) return json({ error: "Informe cliente e intervalo válidos para a comparação." }, 400);
-      const context = await loadCompetitiveContext(clientId);
+      const context = await loadCompetitiveContext(clientId, organizationId);
       if (!context) return json({ error: "Cliente não encontrado." }, 404);
       if (!context.instagramAccountId) return json({ error: "Cadastre o Instagram oficial do cliente antes de consultar a comparação." }, 400);
       if (!context.competitors.length) return json({ error: "Cadastre ao menos um perfil concorrente no bloco de Comparação competitiva." }, 400);
-      const accessToken = await loadMetaAccessForClient(context);
+      const accessToken = await loadMetaAccessForClient({ ...context, organizationId });
       if (!accessToken) return json({ error: "A conta Meta do cliente não possui uma autorização oficial válida para Business Discovery. Reconecte a conta com a permissão do Instagram." }, 403);
       return json({ report: await buildCompetitiveReport(accessToken, context, { since, until }) });
     }
@@ -275,6 +293,7 @@ Deno.serve(async (request) => {
       const requestedIds = Array.isArray(body.account_ids) ? body.account_ids.map(String).filter(Boolean) : [];
       let accountsQuery = supabase.from("maestro_ads_accounts")
         .select("id,authorization_id,network,external_account_id,external_account_name,client_name,display_name,currency,last_synced_at")
+        .eq("organization_id", organizationId)
         .order("client_name", { ascending: true });
       if (requestedIds.length) accountsQuery = accountsQuery.in("id", requestedIds);
       const { data: savedAccounts, error: savedAccountsError } = await accountsQuery;
@@ -300,6 +319,7 @@ Deno.serve(async (request) => {
         const { data: authorization } = await supabase.from("maestro_ads_authorizations")
           .select("access_token_encrypted,token_expires_at")
           .eq("id", savedAccount.authorization_id)
+          .eq("organization_id", organizationId)
           .maybeSingle();
         if (!authorization) {
           reports.push({ ...base, status: "error", error: "Autorização oficial não encontrada." });
@@ -320,7 +340,7 @@ Deno.serve(async (request) => {
           ]);
           let competitive = null;
           try {
-            const context = await loadCompetitiveContext("", base.client_name);
+            const context = await loadCompetitiveContext("", organizationId, base.client_name);
             if (context?.instagramAccountId && context.competitors.length) {
               competitive = await buildCompetitiveReport(accessToken, context, { since, until });
             }
@@ -375,13 +395,14 @@ Deno.serve(async (request) => {
         ? `time_range(${JSON.stringify(customRange)})`
         : `date_preset(${datePreset})`;
       const { data: savedAccounts, error: savedAccountsError } = await supabase.from("maestro_ads_accounts")
-        .select("id,authorization_id,external_account_id,network,metrics_data");
+        .select("id,authorization_id,external_account_id,network,metrics_data")
+        .eq("organization_id", organizationId);
       if (savedAccountsError) throw savedAccountsError;
       const results = [];
       for (const savedAccount of savedAccounts || []) {
         if (savedAccount.network !== "Meta Ads" || !savedAccount.authorization_id) continue;
         const { data: authorization } = await supabase.from("maestro_ads_authorizations")
-          .select("access_token_encrypted,token_expires_at").eq("id", savedAccount.authorization_id).maybeSingle();
+          .select("access_token_encrypted,token_expires_at").eq("id", savedAccount.authorization_id).eq("organization_id", organizationId).maybeSingle();
         if (!authorization) continue;
         if (authorization.token_expires_at && new Date(authorization.token_expires_at).getTime() < Date.now()) {
           results.push({ id: savedAccount.id, error: "Autorização Meta expirada" });
@@ -445,7 +466,7 @@ Deno.serve(async (request) => {
             ? (prepaidBalance != null ? { balance: prepaidBalance } : {})
             : { balance: accountData.balance != null ? Number(accountData.balance) / 100 : null }),
         };
-        const { data: updated, error: updateError } = await supabase.from("maestro_ads_accounts").update(update).eq("id", savedAccount.id).select().single();
+        const { data: updated, error: updateError } = await supabase.from("maestro_ads_accounts").update(update).eq("id", savedAccount.id).eq("organization_id", organizationId).select().single();
         if (updateError) throw updateError;
         results.push({ id: savedAccount.id, account: updated });
       }
@@ -457,7 +478,7 @@ Deno.serve(async (request) => {
       const clientName = String(body.client_name || "").trim().slice(0, 120);
       if (isAccountUpdate && !clientName) return json({ error: "Informe o nome do cliente." }, 400);
       const { data: currentAccount, error: currentAccountError } = await supabase.from("maestro_ads_accounts")
-        .select("network").eq("id", String(body.account_id || "")).maybeSingle();
+        .select("network").eq("id", String(body.account_id || "")).eq("organization_id", organizationId).maybeSingle();
       if (currentAccountError) throw currentAccountError;
       if (!currentAccount) return json({ error: "Conta não encontrada." }, 404);
       const { data, error } = await supabase.from("maestro_ads_accounts")
@@ -469,17 +490,19 @@ Deno.serve(async (request) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", String(body.account_id || ""))
+        .eq("organization_id", organizationId)
         .select().maybeSingle();
       if (error) throw error;
       if (!data) return json({ error: "Conta não encontrada." }, 404);
       return json({ account: data });
     }
     if (body.action === "start") {
-      const state = await sign(JSON.stringify({ sub: collaborator.id, exp: Math.floor(Date.now() / 1000) + 600 }));
+      const state = await sign(JSON.stringify({ sub: collaborator.id, organization_id: organizationId, exp: Math.floor(Date.now() / 1000) + 600 }));
       const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, response_type: "code", scope: "ads_read,business_management,instagram_basic,pages_show_list,pages_read_engagement" });
       return json({ authorization_url: `https://www.facebook.com/v24.0/dialog/oauth?${params}` });
     }
-    if (body.action !== "complete" || !body.code || !(await verify(String(body.state)))) return json({ error: "Código OAuth inválido ou expirado" }, 400);
+    const oauthState = body.state ? await verify(String(body.state)) : null;
+    if (body.action !== "complete" || !body.code || oauthState?.sub !== collaborator.id || oauthState?.organization_id !== organizationId) return json({ error: "Código OAuth inválido ou expirado" }, 400);
     const tokenResponse = await fetch("https://graph.facebook.com/v24.0/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code: String(body.code) }) });
     const token = await tokenResponse.json();
     if (!token.access_token) {
@@ -494,6 +517,7 @@ Deno.serve(async (request) => {
     }
     const tokenExpiresAt = token.expires_in ? new Date(Date.now() + token.expires_in * 1000).toISOString() : null;
     const { data: authorization, error: authorizationError } = await supabase.from("maestro_ads_authorizations").insert({
+      organization_id: organizationId,
       collaborator_id: collaborator.id,
       network: "Meta Ads",
       access_token_encrypted: await encryptSecret(token.access_token),
