@@ -31,7 +31,14 @@ jobs:
       - name: Lint the resulting public schema
         run: supabase db lint --local --schema public --level error
       - name: Verify RLS isolation and tenant-aware foreign keys
-        run: supabase db query --local --file scripts/sql/tenant-isolation-ci.test.sql
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run tenant fixtures."
+            exit 1
+          fi
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
 
   unit-tests:
     name: Authorization and regression tests
