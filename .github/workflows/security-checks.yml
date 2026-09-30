@@ -30,6 +30,8 @@ jobs:
         run: supabase db reset --local --no-seed
       - name: Lint the resulting public schema
         run: supabase db lint --local --schema public --level error
+      - name: Verify RLS isolation and tenant-aware foreign keys
+        run: supabase db query --local --file scripts/sql/tenant-isolation-ci.test.sql
 
   unit-tests:
     name: Authorization and regression tests
