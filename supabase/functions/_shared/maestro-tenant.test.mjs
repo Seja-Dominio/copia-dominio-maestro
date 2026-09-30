@@ -107,3 +107,17 @@ test("Maestro AI validates organization membership and scopes every data source"
   assert.match(source, /organization_id: session\.organization_id,[\s\S]{0,100}payload:/);
   assert.match(source, /O cliente não pertence à organização ativa/);
 });
+
+test("team chat revalidates the active organization and scopes every channel, message, member and reaction operation", async () => {
+  const source = await fs.readFile(new URL("../team-chat/index.ts", import.meta.url), "utf8");
+  assert.match(source, /from\("organization_members"\)/);
+  assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(source, /function loadChannels\(organizationId: string\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /function assertChannel\(channelId: string, organizationId: string\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /function loadMessages\(channelId: string, organizationId: string\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /function loadCollaborators\(organizationId: string, onlyIds\?: string\[\]\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /\.from\("team_chat_message_reactions"\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, channel_id: channelId/);
+  assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, message_id: messageId/);
+  assert.match(source, /\.eq\("organization_id", session\.organization_id \|\| ""\)/);
+});

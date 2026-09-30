@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
-type Session = { sub: string; exp: number; access_level?: string };
+type Session = { sub: string; exp: number; access_level?: string; organization_id?: string };
 type Collaborator = { id: string; name: string; access_level: string };
 
 const supabase = createClient(
@@ -69,31 +70,60 @@ async function verifySession(token: string): Promise<Session | null> {
     .eq("id", session.sub)
     .maybeSingle();
   if (!data?.is_active) return null;
-  return session;
+
+  let membershipsQuery = supabase
+    .from("organization_members")
+    .select("organization_id, role, status, organizations!inner(status)")
+    .eq("collaborator_id", session.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, session.organization_id);
+  if (!choice.ok) return null;
+  return {
+    ...session,
+    organization_id: choice.membership.organization_id,
+    access_level: accessLevelForOrganizationRole(choice.membership.organization_role),
+  };
 }
 
-function collaboratorFromRow(row: any): Collaborator {
+function collaboratorFromRow(row: any, organizationRole: string): Collaborator {
   const profile = row?.profile && typeof row.profile === "object" ? row.profile : {};
   const name = String(profile.name || profile.full_name || profile.login || row?.id || "Colaborador");
-  const rawLevel = String(profile.access_level || "collaborator").toLowerCase();
-  return { id: String(row.id), name, access_level: rawLevel === "admin" ? "master" : rawLevel };
+  return { id: String(row.id), name, access_level: accessLevelForOrganizationRole(organizationRole) };
 }
 
-async function loadCollaborators() {
+async function loadCollaborators(organizationId: string, onlyIds?: string[]) {
+  let membershipQuery = supabase
+    .from("organization_members")
+    .select("collaborator_id, role")
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .limit(500);
+  if (onlyIds) membershipQuery = membershipQuery.in("collaborator_id", onlyIds);
+  const { data: memberships, error: membershipError } = await membershipQuery;
+  if (membershipError) throw membershipError;
+  const membershipByCollaborator = new Map((memberships || []).map((membership) => [String(membership.collaborator_id), String(membership.role)]));
+  const collaboratorIds = [...membershipByCollaborator.keys()];
+  if (!collaboratorIds.length) return [];
   const { data, error } = await supabase
     .from("maestro_collaborators")
     .select("id, profile")
     .eq("is_active", true)
-    .order("id")
-    .limit(500);
+    .in("id", collaboratorIds)
+    .order("id");
   if (error) throw error;
-  return (data || []).map(collaboratorFromRow);
+  return (data || []).map((row) => collaboratorFromRow(row, membershipByCollaborator.get(String(row.id)) || "member"));
 }
 
-async function loadChannels() {
+async function loadChannels(organizationId: string) {
   const { data, error } = await supabase
     .from("team_chat_channels")
     .select("id, slug, name, description, is_private, created_at, updated_at")
+    .eq("organization_id", organizationId)
     .eq("is_archived", false)
     .order("is_private", { ascending: true })
     .order("name", { ascending: true });
@@ -101,11 +131,12 @@ async function loadChannels() {
   return data || [];
 }
 
-async function assertChannel(channelId: string) {
+async function assertChannel(channelId: string, organizationId: string) {
   const { data, error } = await supabase
     .from("team_chat_channels")
     .select("id, slug, name, description, is_private, created_at, updated_at")
     .eq("id", channelId)
+    .eq("organization_id", organizationId)
     .eq("is_archived", false)
     .maybeSingle();
   if (error) throw error;
@@ -114,12 +145,13 @@ async function assertChannel(channelId: string) {
   return data;
 }
 
-async function loadMessages(channelId: string) {
-  await assertChannel(channelId);
+async function loadMessages(channelId: string, organizationId: string) {
+  await assertChannel(channelId, organizationId);
   const { data, error } = await supabase
     .from("team_chat_messages")
     .select("id, channel_id, author_id, content, reply_to_id, created_at, edited_at")
     .eq("channel_id", channelId)
+    .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw error;
@@ -127,18 +159,15 @@ async function loadMessages(channelId: string) {
   const rows = [...(data || [])].reverse();
   const authorIds = [...new Set(rows.map((row) => String(row.author_id)))];
   if (!authorIds.length) return [];
-  const { data: collaborators, error: collaboratorsError } = await supabase
-    .from("maestro_collaborators")
-    .select("id, profile")
-    .in("id", authorIds);
-  if (collaboratorsError) throw collaboratorsError;
-  const authors = new Map((collaborators || []).map((row) => [String(row.id), collaboratorFromRow(row)]));
+  const collaborators = await loadCollaborators(organizationId, authorIds);
+  const authors = new Map(collaborators.map((row) => [String(row.id), row]));
 
   const messageIds = rows.map((row) => row.id);
   const { data: reactions, error: reactionsError } = await supabase
     .from("team_chat_message_reactions")
     .select("message_id, collaborator_id, emoji")
-    .in("message_id", messageIds);
+    .in("message_id", messageIds)
+    .eq("organization_id", organizationId);
   if (reactionsError) throw reactionsError;
 
   const reactionMap = new Map<string, Array<{ emoji: string; count: number; reacted: boolean }>>();
@@ -163,16 +192,16 @@ async function sendMessage(session: Session, body: Record<string, unknown>) {
   if (!channelId) throw new Error("Selecione um canal.");
   if (!content) throw new Error("Escreva uma mensagem.");
   if (content.length > 4000) throw new Error("A mensagem deve ter no máximo 4.000 caracteres.");
-  await assertChannel(channelId);
+  await assertChannel(channelId, String(session.organization_id || ""));
 
   const replyToId = body.replyToId ? String(body.replyToId) : null;
   const { data, error } = await supabase
     .from("team_chat_messages")
-    .insert({ channel_id: channelId, author_id: session.sub, content, reply_to_id: replyToId })
+    .insert({ organization_id: session.organization_id, channel_id: channelId, author_id: session.sub, content, reply_to_id: replyToId })
     .select("id, channel_id, author_id, content, reply_to_id, created_at, edited_at")
     .single();
   if (error) throw error;
-  const messages = await loadMessages(channelId);
+  const messages = await loadMessages(channelId, String(session.organization_id || ""));
   return messages.find((message) => message.id === data.id) || data;
 }
 
@@ -186,15 +215,17 @@ async function toggleReaction(session: Session, body: Record<string, unknown>) {
     .from("team_chat_messages")
     .select("id, channel_id")
     .eq("id", messageId)
+    .eq("organization_id", session.organization_id || "")
     .maybeSingle();
   if (messageError) throw messageError;
   if (!message) throw new Error("Mensagem não encontrada.");
-  await assertChannel(String(message.channel_id));
+  await assertChannel(String(message.channel_id), String(session.organization_id || ""));
 
   const existing = await supabase
     .from("team_chat_message_reactions")
     .select("message_id")
     .eq("message_id", messageId)
+    .eq("organization_id", session.organization_id || "")
     .eq("collaborator_id", session.sub)
     .eq("emoji", emoji)
     .maybeSingle();
@@ -205,33 +236,35 @@ async function toggleReaction(session: Session, body: Record<string, unknown>) {
       .from("team_chat_message_reactions")
       .delete()
       .eq("message_id", messageId)
+      .eq("organization_id", session.organization_id || "")
       .eq("collaborator_id", session.sub)
       .eq("emoji", emoji);
     if (error) throw error;
   } else {
     const { error } = await supabase
       .from("team_chat_message_reactions")
-      .insert({ message_id: messageId, collaborator_id: session.sub, emoji });
+      .insert({ organization_id: session.organization_id, message_id: messageId, collaborator_id: session.sub, emoji });
     if (error) throw error;
   }
 
-  return { messages: await loadMessages(String(message.channel_id)) };
+  return { messages: await loadMessages(String(message.channel_id), String(session.organization_id || "")) };
 }
 
 async function handle(body: Record<string, unknown>, session: Session) {
   const action = String(body.action || "bootstrap");
   if (action === "bootstrap") {
-    const channels = await loadChannels();
+    const organizationId = String(session.organization_id || "");
+    const channels = await loadChannels(organizationId);
     const activeChannelId = String(body.channelId || channels.find((channel) => channel.slug === "geral")?.id || channels[0]?.id || "");
     return {
       channels,
-      collaborators: await loadCollaborators(),
-      messages: activeChannelId ? await loadMessages(activeChannelId) : [],
+      collaborators: await loadCollaborators(organizationId),
+      messages: activeChannelId ? await loadMessages(activeChannelId, organizationId) : [],
       activeChannelId,
     };
   }
   if (action === "listMessages") {
-    return { messages: await loadMessages(String(body.channelId || "")) };
+    return { messages: await loadMessages(String(body.channelId || ""), String(session.organization_id || "")) };
   }
   if (action === "sendMessage") {
     return { message: await sendMessage(session, body) };
