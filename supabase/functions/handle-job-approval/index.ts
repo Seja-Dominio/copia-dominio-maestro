@@ -66,30 +66,32 @@ async function verifyApprovalToken(token: string, secret: string) {
 async function readRecord(entity: string, recordId: string) {
   const { data, error } = await supabase
     .from("legacy_records")
-    .select("payload")
+    .select("payload,organization_id")
     .eq("entity", entity)
     .eq("record_id", recordId)
     .maybeSingle();
   if (error) throw error;
-  return data?.payload || null;
+  return data ? { payload: data.payload || null, organization_id: String(data.organization_id || "") } : null;
 }
 
-async function updateRecord(entity: string, recordId: string, payload: Record<string, unknown>) {
+async function updateRecord(entity: string, recordId: string, organizationId: string, payload: Record<string, unknown>) {
   const { error } = await supabase
     .from("legacy_records")
     .update({ payload, source_updated_at: new Date().toISOString() })
     .eq("entity", entity)
-    .eq("record_id", recordId);
+    .eq("record_id", recordId)
+    .eq("organization_id", organizationId);
   if (error) throw error;
 }
 
-async function createRecord(entity: string, payload: Record<string, unknown>) {
+async function createRecord(entity: string, organizationId: string, payload: Record<string, unknown>) {
   const recordId = String(payload.id || crypto.randomUUID().replaceAll("-", ""));
   const nextPayload = { ...payload, id: recordId };
   const now = new Date().toISOString();
   const { error } = await supabase.from("legacy_records").insert({
     entity,
     record_id: recordId,
+    organization_id: organizationId,
     payload: nextPayload,
     source_created_at: nextPayload.created_date || now,
     source_updated_at: now,
@@ -143,8 +145,10 @@ Deno.serve(async (request) => {
       return json({ error: "Link expirado. Solicite um novo link de aprovação." }, 400, origin);
     }
 
-    const job = await readRecord("Job", String(jobId));
-    if (!job) return json({ error: "Job não encontrado" }, 404, origin);
+    const jobRecord = await readRecord("Job", String(jobId));
+    if (!jobRecord?.payload || !jobRecord.organization_id) return json({ error: "Job não encontrado" }, 404, origin);
+    const job = jobRecord.payload;
+    const organizationId = jobRecord.organization_id;
 
     if (action === "load") return json({ job: await refreshJobAttachments(job) }, 200, origin);
     if (job.status !== "internal_approval" && job.status !== "client_approval") {
@@ -163,8 +167,8 @@ Deno.serve(async (request) => {
       return json({ error: "Ação inválida. Use 'approve' ou 'request_changes'" }, 400, origin);
     }
 
-    await updateRecord("Job", String(jobId), { ...job, status: newStatus });
-    await createRecord("JobHistory", {
+    await updateRecord("Job", String(jobId), organizationId, { ...job, status: newStatus });
+    await createRecord("JobHistory", organizationId, {
       job_id: jobId,
       type: "change",
       text: historyText,
@@ -175,7 +179,7 @@ Deno.serve(async (request) => {
     });
 
     if (feedback && String(feedback).trim()) {
-      await createRecord("Comment", {
+      await createRecord("Comment", organizationId, {
         entity_type: "job",
         entity_id: jobId,
         entity_title: job.title,
@@ -186,7 +190,7 @@ Deno.serve(async (request) => {
 
     if (job.responsible_id) {
       const approved = action === "approve";
-      await createRecord("Notification", {
+      await createRecord("Notification", organizationId, {
         user_id: job.responsible_id,
         type: "approval_pending",
         title: approved

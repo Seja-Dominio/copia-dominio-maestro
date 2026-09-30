@@ -175,3 +175,14 @@ test("Meta Ads OAuth and synchronization keep accounts, credentials, client insi
   assert.match(source, /organization_id: organizationId,[\s\S]{0,120}collaborator_id: collaborator\.id/);
   assert.match(source, /oauthState\?\.sub !== collaborator\.id \|\| oauthState\?\.organization_id !== organizationId/);
 });
+
+test("public job approval links resolve the tenant from the signed job and keep all effects there", async () => {
+  const source = await fs.readFile(new URL("../handle-job-approval/index.ts", import.meta.url), "utf8");
+  assert.match(source, /\.select\("payload,organization_id"\)/);
+  assert.match(source, /if \(!jobRecord\?\.payload \|\| !jobRecord\.organization_id\)/);
+  assert.match(source, /async function updateRecord\(entity: string, recordId: string, organizationId: string/);
+  assert.match(source, /async function createRecord\(entity: string, organizationId: string/);
+  assert.match(source, /organization_id: organizationId,[\s\S]{0,80}payload: nextPayload/);
+  assert.match(source, /await updateRecord\("Job", String\(jobId\), organizationId/);
+  assert.match(source, /createRecord\("Notification", organizationId/);
+});
