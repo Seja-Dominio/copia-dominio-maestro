@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCompetitiveReport } from "./competitiveMetrics.ts";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -207,6 +208,14 @@ Deno.serve(async (request) => {
     const membershipChoice = selectOrganizationMembership(memberships, session.organization_id);
     if (!membershipChoice.ok) return json({ error: "Sessão sem organização ativa" }, 403);
     const organizationId = membershipChoice.membership.organization_id;
+    const { data: products, error: productsError } = await supabase.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", organizationId)
+      .eq("product_key", "ads_brain");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "ads_brain")) {
+      return json({ error: "O produto Ads Brain não está habilitado para esta organização." }, 403);
+    }
     const authorizedProfile = {
       ...(collaborator.profile || {}),
       access_level: accessLevelForOrganizationRole(membershipChoice.membership.organization_role),

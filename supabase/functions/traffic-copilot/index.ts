@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const secret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -169,6 +170,14 @@ Deno.serve(async request => {
     const collaborator = token ? await getSession(token) : null;
     if (!collaborator) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
     if (!hasAdsBrainAccess(collaborator)) return json({ error: "A aba Ads Brain não está habilitada para este usuário." }, 403, origin);
+    const { data: products, error: productsError } = await db.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", collaborator.organization_id)
+      .eq("product_key", "ads_brain");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "ads_brain")) {
+      return json({ error: "O produto Ads Brain não está habilitado para esta organização." }, 403, origin);
+    }
     const body = await request.json();
     const action = body.action === "mcp_query" ? "mcp_query" : "daily_analysis";
     const requestedScopes = Array.isArray(body.scopes) ? body.scopes.map(String).filter(scope => allowedScopes.has(scope)) : ["account_identity", "account_metrics", "campaigns"];

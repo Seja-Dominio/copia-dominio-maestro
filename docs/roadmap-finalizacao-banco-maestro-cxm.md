@@ -260,7 +260,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 ### Validade temporal dos entitlements — 30/09/2026
 
 - A função compartilhada `hasActiveOrganizationProduct` agora considera `expires_at`: datas expiradas ou inválidas negam acesso; null/ausente mantém compatibilidade com entitlements sem expiração. Os endpoints `maestro-data`, `maestro-ai`, `system-reports` e `marketing-mix-snapshot` incluem esse campo nas consultas que alimentam a autorização.
-- Testes locais cobrem expiração antes/depois do instante de referência e data inválida; suíte 36/36, bundling MMM e `git diff --check` passaram. O patch ainda não foi enviado/validado pelo CI; nenhum release foi reclassificado.
+- Testes locais cobrem expiração antes/depois do instante de referência e data inválida; suíte 36/36, bundling MMM e `git diff --check` passaram. CI `36767789347` do commit `380b7850` passou integralmente, incluindo replay de migrations e SQL multi-tenant; nenhum release foi reclassificado.
+
+### Entitlement organizacional nas rotas Ads Brain — 30/09/2026
+
+- `traffic-copilot` e `meta-ads-oauth` já validavam membership/tenant e permissão individual, mas não exigiam o entitlement Ads Brain da organização. Ambas agora verificam `organization_products` para o tenant autenticado, incluindo `expires_at`, antes de ler/alterar contas ou avançar o fluxo OAuth.
+- Regressões garantem que o gate precede as operações com contas, e que a consulta carrega `product_key`, `status` e `expires_at`. Suíte local: 36/36; bundling das duas funções e `git diff --check` passaram.
+- Esta alteração ainda aguarda commit/CI. O manifesto mantém as funções pendentes; provar o gate não demonstra fluxo Meta ponta a ponta, revisão de release nem integração independente do CXM. Nenhuma chamada externa à Meta ou alteração remota foi feita.
 
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 

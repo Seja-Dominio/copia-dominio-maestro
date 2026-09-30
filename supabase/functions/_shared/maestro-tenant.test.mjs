@@ -173,6 +173,11 @@ test("traffic copilot authorizes and reads ads accounts only for the active orga
   assert.match(source, /organization_id: choice\.membership\.organization_id/);
   assert.match(source, /from\("maestro_ads_accounts"\)[\s\S]*?\.eq\("organization_id", collaborator\.organization_id\)/);
   assert.match(source, /if \(accountIds\.length\) query = query\.in\("id", accountIds\)/);
+  const handler = source.indexOf("Deno.serve");
+  const productGate = source.indexOf('if (!hasActiveOrganizationProduct(products, "ads_brain"))', handler);
+  const accountRead = source.indexOf('from("maestro_ads_accounts")', handler);
+  assert.ok(productGate >= 0 && productGate < accountRead);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", collaborator\.organization_id\)[\s\S]*?\.eq\("product_key", "ads_brain"\)/);
 });
 
 test("Meta Ads OAuth and synchronization keep accounts, credentials, client insights and OAuth state tenant-bound", async () => {
@@ -185,6 +190,11 @@ test("Meta Ads OAuth and synchronization keep accounts, credentials, client insi
   assert.match(source, /async function loadCompetitiveContext\(clientId: string, organizationId: string[\s\S]*?\.eq\("organization_id", organizationId\)/);
   assert.match(source, /organization_id: organizationId,[\s\S]{0,120}collaborator_id: collaborator\.id/);
   assert.match(source, /oauthState\?\.sub !== collaborator\.id \|\| oauthState\?\.organization_id !== organizationId/);
+  const handler = source.indexOf("Deno.serve");
+  const productGate = source.indexOf('if (!hasActiveOrganizationProduct(products, "ads_brain"))', handler);
+  const accountRead = source.indexOf('from("maestro_ads_accounts")', handler);
+  assert.ok(productGate >= 0 && productGate < accountRead);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "ads_brain"\)/);
 });
 
 test("public job approval links resolve the tenant from the signed job and keep all effects there", async () => {
