@@ -134,6 +134,9 @@ test("team chat revalidates the active organization and scopes every channel, me
   assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, channel_id: channelId/);
   assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, message_id: messageId/);
   assert.match(source, /\.eq\("organization_id", session\.organization_id \|\| ""\)/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", choice\.membership\.organization_id\)[\s\S]*?\.eq\("product_key", "maestro"\)/);
+  assert.match(source, /if \(productsError \|\| !hasActiveOrganizationProduct\(products, "maestro"\)\) return null;/);
+  assert.ok(source.indexOf('if (productsError || !hasActiveOrganizationProduct(products, "maestro"))') < source.indexOf("async function loadChannels"));
 });
 
 test("credential administration requires an active org admin and cannot overwrite global authorization profile", async () => {
@@ -142,6 +145,9 @@ test("credential administration requires an active org admin and cannot overwrit
   assert.match(source, /session\.access_level !== "master" \|\| !organizationId/);
   assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("collaborator_id", String\(collaboratorId\)\)/);
   assert.match(source, /"Colaborador não encontrado nesta organização/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "maestro"\)/);
+  assert.match(source, /if \(!hasActiveOrganizationProduct\(products, "maestro"\)\)/);
+  assert.ok(source.indexOf('if (!hasActiveOrganizationProduct(products, "maestro"))') < source.indexOf(".from(\"organization_members\")\n      .select(\"collaborator_id, status"));
   assert.match(source, /\.update\(\{[\s\S]*?password_hash: hashedPassword/);
   assert.doesNotMatch(source, /legacy_records|profile,\s*source_updated_at/);
 

@@ -274,6 +274,12 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - O acesso a `organization_products` falha fechado em erro ou entitlement ausente/expirado. Regressão adicionada ao teste do endpoint; suíte Node 36/36, bundle esbuild e `git diff --check` passaram localmente.
 - Patch aguarda commit/CI; nenhuma operação real de timesheet nem alteração remota foi executada.
 
+### Entitlement Maestro no chat interno e administração de credenciais — 30/09/2026
+
+- `team-chat` e `hash-collaborator-password` validam agora entitlement Maestro não expirado para a organização selecionada antes de entregar canais/mensagens ou alterar credenciais. Erro ao consultar produto falha fechado; as regras de membership e escopo já existentes permanecem.
+- Testes de regressão verificam a consulta por organização, inclusão de `expires_at` e precedência do gate sobre as operações protegidas. Suíte Node local 36/36, bundles das Edge Functions e `git diff --check` passaram.
+- Alterações ainda locais e sem CI; nenhum conteúdo de chat ou credencial foi lido/alterado em ambiente remoto.
+
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 
 - A auditoria mostrou que os testes unitários do manifesto já eram incluídos pelo glob `scripts/lib/*.test.mjs`; o workflow `.github/workflows/security-checks.yml`, porém, não chamava o verificador do inventário real e `package.json` não oferecia um comando dedicado. Adicionei `verify:edge-function-product-boundaries` e um passo explícito no job de testes para validar e reportar a lista real classificada em cada CI.

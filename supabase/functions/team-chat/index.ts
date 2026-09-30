@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 type Session = { sub: string; exp: number; access_level?: string; organization_id?: string };
 type Collaborator = { id: string; name: string; access_level: string };
@@ -83,6 +84,11 @@ async function verifySession(token: string): Promise<Session | null> {
   if (membershipError) return null;
   const choice = selectOrganizationMembership(memberships, session.organization_id);
   if (!choice.ok) return null;
+  const { data: products, error: productsError } = await supabase.from("organization_products")
+    .select("product_key,status,expires_at")
+    .eq("organization_id", choice.membership.organization_id)
+    .eq("product_key", "maestro");
+  if (productsError || !hasActiveOrganizationProduct(products, "maestro")) return null;
   return {
     ...session,
     organization_id: choice.membership.organization_id,

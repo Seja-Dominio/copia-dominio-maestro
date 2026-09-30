@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 type Session = { sub: string; exp: number; access_level?: string; organization_id?: string };
 
@@ -110,6 +111,15 @@ Deno.serve(async (request) => {
     const organizationId = String(session.organization_id || "");
     if (session.access_level !== "master" || !organizationId) {
       return json({ error: "Apenas um administrador da organização ativa pode alterar credenciais." }, 403, origin);
+    }
+
+    const { data: products, error: productsError } = await supabase.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", organizationId)
+      .eq("product_key", "maestro");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "maestro")) {
+      return json({ error: "O produto Maestro não está habilitado para esta organização." }, 403, origin);
     }
 
     const { data: targetMembership, error: targetMembershipError } = await supabase
