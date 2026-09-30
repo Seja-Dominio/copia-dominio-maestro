@@ -25,9 +25,24 @@ test("entity access follows classified product entitlement and fails closed on c
   assert.equal(hasEntityProductAccess("Proposal", "", products), false);
   assert.equal(hasEntityProductAccess("Proposal", "", [{ product_key: "cxm", status: "enabled" }]), true);
   assert.equal(hasEntityProductAccess("Proposal", "maestro", products), false);
-  assert.equal(hasEntityProductAccess("FinancialEntry", "maestro", []), true);
-  assert.equal(hasEntityProductAccess("UnclassifiedEntity", "", products), true);
+  assert.equal(hasEntityProductAccess("FinancialEntry", "maestro", []), false);
+  assert.equal(hasEntityProductAccess("FinancialEntry", "maestro", [{ product_key: "maestro", status: "enabled" }]), true);
+  assert.equal(entityHasProductClassification("UnclassifiedEntity", ""), false);
+  assert.equal(hasEntityProductAccess("UnclassifiedEntity", "", products), false);
   assert.equal(hasEntityProductAccess("UnknownEntity", "unknown_product", products), false);
+});
+
+test("all application entity APIs have an explicit fallback product classification", async () => {
+  const productSource = await fs.readFile(new URL("./organization-products.mjs", import.meta.url), "utf8");
+  const applicationEntities = [
+    "AgendaEvent", "AppConfig", "BankAccount", "Client", "ClientCompetitor", "ClientInsight", "Collaborator", "Comment",
+    "CostCenter", "DeleteLog", "FeeContract", "FinancialCategory", "FinancialEntry", "Job", "JobHistory", "JobTemplate",
+    "MasterRequest", "MiniTask", "Note", "Notification", "NpsEntry", "NpsHistory", "PostMetric", "Project",
+    "ProjectTemplate", "Proposal", "SavingsBox", "SavingsTransaction", "Squad", "Subtask", "Supplier", "Timesheet",
+  ];
+  const explicitFallbacks = new Set([...productSource.matchAll(/\["([A-Za-z][A-Za-z0-9_]*)", "(?:maestro|cxm|ads_brain|insights)"\]/g)].map(([, entity]) => entity));
+  const uncovered = [...new Set(applicationEntities)].filter((entity) => !explicitFallbacks.has(entity));
+  assert.deepEqual(uncovered, []);
 });
 
 test("product fallback classifications match every non-Maestro entity seeded in the cutover registry", async () => {
@@ -60,6 +75,8 @@ test("Maestro data enforces product entitlements from the entity registry before
   assert.match(source, /hasEntityProductAccess\(entity, registryEntry\?\.module_key, products \|\| \[\]\)/);
   assert.match(source, /\.select\("product_key,status,expires_at"\)/);
   assert.match(source, /Produto não habilitado para esta organização/);
+  assert.match(source, /if \(!entityHasProductClassification\(entity, registryEntry\?\.module_key\)\) \{[\s\S]*?Entidade sem classificação de produto/);
+  assert.match(source, /if \(operation === "dashboard"\) \{[\s\S]*?hasActiveOrganizationProduct\(products, "maestro"\)/);
 });
 
 test("Maestro AI checks the CXM entitlement before reading commercial proposals", async () => {

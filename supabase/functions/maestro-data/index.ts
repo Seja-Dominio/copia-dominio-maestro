@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, organizationRoleForAccessLevel, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
-import { entityHasProductClassification, hasEntityProductAccess } from "../_shared/organization-products.mjs";
+import { entityHasProductClassification, hasActiveOrganizationProduct, hasEntityProductAccess } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -277,6 +277,14 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   if (!session?.organization_id) return json({ error: "Sessão sem organização ativa" }, 403, origin);
   const operation = String(body.operation || "list");
   if (operation === "dashboard") {
+    const { data: products, error: productsError } = await supabase.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", session.organization_id)
+      .eq("product_key", "maestro");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "maestro")) {
+      return json({ error: "O produto Maestro não está habilitado para esta organização" }, 403, origin);
+    }
     return json({ data: await dashboardData(session) }, 200, origin);
   }
 
@@ -293,15 +301,16 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
     .eq("entity", entity)
     .maybeSingle();
   if (registryError) throw registryError;
-  if (entityHasProductClassification(entity, registryEntry?.module_key)) {
-    const { data: products, error: productsError } = await supabase
-      .from("organization_products")
-      .select("product_key,status,expires_at")
-      .eq("organization_id", session.organization_id);
-    if (productsError) throw productsError;
-    if (!hasEntityProductAccess(entity, registryEntry?.module_key, products || [])) {
-      return json({ error: "Produto não habilitado para esta organização" }, 403, origin);
-    }
+  if (!entityHasProductClassification(entity, registryEntry?.module_key)) {
+    return json({ error: "Entidade sem classificação de produto" }, 403, origin);
+  }
+  const { data: products, error: productsError } = await supabase
+    .from("organization_products")
+    .select("product_key,status,expires_at")
+    .eq("organization_id", session.organization_id);
+  if (productsError) throw productsError;
+  if (!hasEntityProductAccess(entity, registryEntry?.module_key, products || [])) {
+    return json({ error: "Produto não habilitado para esta organização" }, 403, origin);
   }
 
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);

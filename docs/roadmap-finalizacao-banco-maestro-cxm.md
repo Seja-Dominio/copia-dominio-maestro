@@ -278,13 +278,19 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 - `team-chat` e `hash-collaborator-password` validam agora entitlement Maestro não expirado para a organização selecionada antes de entregar canais/mensagens ou alterar credenciais. Erro ao consultar produto falha fechado; as regras de membership e escopo já existentes permanecem.
 - Testes de regressão verificam a consulta por organização, inclusão de `expires_at` e precedência do gate sobre as operações protegidas. Suíte Node local 36/36, bundles das Edge Functions e `git diff --check` passaram.
-- Commit `a391dc1e` enviado à branch candidata; CI `36768766356` passou na suíte de regressão/autorização e nas verificações de segurança já concluídas; replay clean-room ainda executando nesta atualização. Nenhum conteúdo de chat ou credencial foi lido/alterado em ambiente remoto.
+- Commit `a391dc1e` enviado à branch candidata; CI `36768766356` passou integralmente, incluindo replay clean-room, lint, isolamento SQL e análises de segurança. Nenhum conteúdo de chat ou credencial foi lido/alterado em ambiente remoto.
 
 ### Entitlement Maestro na aprovação pública de Jobs — 30/09/2026
 
 - A rota de aprovação pública mantém o token assinado e o tenant obtido do Job, mas agora exige também entitlement Maestro vigente para essa organização antes de carregar o Job/attachments ou executar aprovação, feedback, histórico e notificação.
 - Regressão assegura a consulta de `organization_products` no tenant resolvido, incluindo `expires_at`, e que o gate precede a ação `load`. Suíte Node local 36/36, bundle esbuild e `git diff --check` passaram.
-- A mudança ainda não foi enviada/validada por CI; nenhum link real ou estado remoto foi alterado.
+- Commit `41444174` enviado à branch candidata; CI `36768960135` passou integralmente, incluindo replay clean-room, lint, isolamento SQL e análises de segurança. Nenhum link real ou estado remoto foi alterado.
+
+### Classificação fail-closed de entidades e dashboard — 30/09/2026
+
+- Auditoria do dispatcher mostrou que qualquer nome de entidade era aceito; a verificação de produto só ocorria quando o registry/fallback reconhecia a entidade, portanto entidades sem classificação passavam sem gate. A operação especial `dashboard` também retornava antes de qualquer entitlement.
+- O fallback agora classifica os 32 tipos usados por `maestro.entities.*`: entidades operacionais do Maestro, CXM (Proposta) e Insights (NPS e insights/concorrentes/posts). `legacy_cutover_registry.module_key` continua tendo precedência, divergência entre registry e fallback nega acesso; entidades desconhecidas/sem classificação são negadas. Todos os entitlements, inclusive Maestro, exigem status `trial`/`enabled` e não expirado. Dashboard verifica Maestro explicitamente antes de ler dados.
+- Testes cobrem correspondência do inventário de entidades, negação de desconhecidas, necessidade de entitlement Maestro e gate do dashboard. Suíte local 37/37; bundling da função e verificador de fronteira passaram; manifesto continua `release_ready=false` pelos outros bloqueios. CI ainda pendente após o próximo push; nenhum ambiente remoto mudou.
 
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 
