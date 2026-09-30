@@ -40,6 +40,14 @@ jobs:
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/audit_core_tenant_integrity.sql
+          {
+            cat scripts/sql/timesheet-projection-repair-fixtures.sql
+            cat supabase/migrations/20260930140000_repair_timesheet_payload_projection.sql
+            cat scripts/sql/timesheet-projection-repair-assertions.sql
+            cat supabase/migrations/20260930140000_repair_timesheet_payload_projection.sql
+            cat scripts/sql/timesheet-projection-repair-assertions.sql
+            printf 'ROLLBACK;\n'
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
 
   unit-tests:
     name: Authorization and regression tests
