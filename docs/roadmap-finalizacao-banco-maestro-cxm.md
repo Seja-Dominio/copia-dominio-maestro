@@ -266,7 +266,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 - `traffic-copilot` e `meta-ads-oauth` já validavam membership/tenant e permissão individual, mas não exigiam o entitlement Ads Brain da organização. Ambas agora verificam `organization_products` para o tenant autenticado, incluindo `expires_at`, antes de ler/alterar contas ou avançar o fluxo OAuth.
 - Regressões garantem que o gate precede as operações com contas, e que a consulta carrega `product_key`, `status` e `expires_at`. Suíte local: 36/36; bundling das duas funções e `git diff --check` passaram.
-- Esta alteração ainda aguarda commit/CI. O manifesto mantém as funções pendentes; provar o gate não demonstra fluxo Meta ponta a ponta, revisão de release nem integração independente do CXM. Nenhuma chamada externa à Meta ou alteração remota foi feita.
+- Commit `fed621ca` enviado à branch candidata; CI `36768177137` passou integralmente, incluindo replay limpo, lint do schema, testes SQL de isolamento e análises de segurança. O manifesto mantém as funções pendentes: provar o gate não demonstra fluxo Meta ponta a ponta, revisão de release nem integração independente do CXM. Nenhuma chamada externa à Meta ou alteração remota foi feita.
+
+### Entitlement Maestro em operações administrativas de timesheet — 30/09/2026
+
+- `admin-timesheets` já exigia sessão válida, membership ativa no tenant e papel master, e delegava exclusão/reset a RPCs tenant-scoped. Agora também exige entitlement `maestro` ativo e não expirado, validado antes de aceitar as operações administrativas, inclusive limpeza em massa e reset.
+- O acesso a `organization_products` falha fechado em erro ou entitlement ausente/expirado. Regressão adicionada ao teste do endpoint; suíte Node 36/36, bundle esbuild e `git diff --check` passaram localmente.
+- Patch aguarda commit/CI; nenhuma operação real de timesheet nem alteração remota foi executada.
 
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 

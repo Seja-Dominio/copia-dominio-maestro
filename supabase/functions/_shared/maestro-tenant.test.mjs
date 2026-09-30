@@ -106,6 +106,9 @@ test("admin-timesheets authorizes master role from active membership and uses sc
   assert.match(source, /"maestro_reset_running_timesheets"/);
   assert.match(source, /p_organization_id: actor\.session\.organization_id/g);
   assert.doesNotMatch(source, /from\("legacy_records"\)/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", choice\.membership\.organization_id\)[\s\S]*?\.eq\("product_key", "maestro"\)/);
+  assert.match(source, /if \(productsError \|\| !hasActiveOrganizationProduct\(products, "maestro"\)\) return null;/);
+  assert.ok(source.indexOf('if (productsError || !hasActiveOrganizationProduct(products, "maestro"))') < source.indexOf('if (action === "clear")'));
 });
 
 test("Maestro AI validates organization membership and scopes every data source", async () => {

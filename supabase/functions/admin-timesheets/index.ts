@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -68,6 +69,11 @@ async function getAdminSession(token: string): Promise<{ session: Session & { or
   if (membershipError) return null;
   const choice = selectOrganizationMembership(memberships, session.organization_id);
   if (!choice.ok || accessLevelForOrganizationRole(choice.membership.organization_role) !== "master") return null;
+  const { data: products, error: productsError } = await supabase.from("organization_products")
+    .select("product_key,status,expires_at")
+    .eq("organization_id", choice.membership.organization_id)
+    .eq("product_key", "maestro");
+  if (productsError || !hasActiveOrganizationProduct(products, "maestro")) return null;
   return {
     session: { ...session, organization_id: choice.membership.organization_id },
     collaborator: data.profile || {},
