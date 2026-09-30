@@ -100,6 +100,12 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Evidências mais fortes em 30/09: branch candidata `codex/maestro-db-canonical-candidate`, commit `e80ddda6`; CI `36763101452` verde para replay limpo/testes/segurança; reconciliação de ledger e catálogo read-only em `docs/migration-drift-reconciliation.md`; inventário de Edge Functions ainda `release_ready=false`; restore lógico clean-room passou somente para schema/dados PostgreSQL.
 - Gate bloqueante mais próximo: classificar e provar por efeito as divergências de migration Dev/Produção, então exercitar upgrade em clones descartáveis que reproduzam os catálogos. Nenhum `migration repair`, `db push` integral, corte ou escrita em Produção é permitido por esta estimativa.
 
+### Classificação por efeito de migrations — 30/09/2026
+
+- Auditoria adicional `READ ONLY`: `maestro_apply_legacy_mutation` em Dev, Produção e arquivo local tem o mesmo comportamento após normalizar a refatoração de `v_effective_payload`; assinatura, `SECURITY INVOKER`, `search_path` vazio e EXECUTE somente por `service_role` também coincidem. Classificado como efeito equivalente com histórico/versionamento diferente, não como bug de runtime.
+- A fila webhook CXM do Dev mantém sobrecargas de enqueue de três e quatro argumentos; ambas estão limitadas a `service_role`, mas o consumidor da sobrecarga antiga ainda não foi identificado. Produção não tem a fila. A relação `cxm_silence_due_jobs` existe somente em Dev, com a FK antiga ausente como a migration local pretende. Essas diferenças ficam na trilha CXM e fora do pacote não-CXM.
+- Evidência e limites estão em `docs/migration-drift-reconciliation.md`. A reconciliação global continua incompleta; não houve alteração remota e não se autoriza repair/push. Próxima ação: ampliar a classificação dos pares com SQL divergente e mapear consumidores/runtime para funções e schedulers compartilhados, depois preparar clones descartáveis para upgrade.
+
 ### Fase 0 — congelar escopo e tornar o inventário auditável
 
 **Atividades**

@@ -232,3 +232,19 @@ As identidades abaixo são a lista completa dos arquivos locais cujo conteúdo S
 5. Só então desenhar pacote de avanço específico por ambiente, com sequenciamento, idempotência, verificação pré/pós, backup, rollback e manifesto que exclua CXM do pacote Maestro.
 
 **Resultado:** a divergência de histórico foi confirmada e quantificada, mas reconciliação está **incompleta**. Não há base para `migration repair`, release unificado, cutover ou alteração de produção.
+
+## Classificação adicional por efeito — 30/09/2026
+
+As consultas abaixo foram feitas novamente em Dev (`tqmfuskvllpqmvayjuqu`) e Produção (`fwpisypiiezjhtqxlmqv`), cada uma em transação `READ ONLY` verificada e revertida. Corpos de função não foram registrados; comparação de tokens substituiu literais de texto/número por marcadores.
+
+| Caso | Evidência efetiva | Classificação atual | Consequência |
+|---|---|---|---|
+| `maestro_apply_legacy_mutation` / `persist_job_project_mutations_with_audit` | Mesma assinatura, `SECURITY INVOKER`, `search_path` vazio e EXECUTE efetivo somente para `service_role` nos dois ambientes. O corpo de Produção é token-equivalente ao arquivo local após remoção de comentários/literais; o corpo de Dev torna-se token a token equivalente após expandir `v_effective_payload` para sua expressão `coalesce(p_payload, '{}')`. | **Efeito equivalente; identidade/versionamento do ledger diferente.** O fingerprint bruto de catálogo difere Dev↔Produção por refatoração local, mas a normalização controlada não encontrou diferença no corpo executável. | Não fazer repair/replay por causa desse fingerprint isolado. Fixar a equivalência com teste de regressão da mutação parcial antes de qualquer pacote de atualização. |
+| `cxm_webhook_durable_queue` no Dev | A entrada de ledger de `20260926004418` contém enqueue de três argumentos; o catálogo Dev tem essa sobrecarga e a de quatro argumentos. Ambas são `SECURITY DEFINER`, `search_path` vazio, sem EXECUTE para `anon`/`authenticated` e com EXECUTE para `service_role`. A migration local e `cxm_webhook_synthetic_test_gate` definem a forma de quatro argumentos com `p_test_mode`. Produção não tem a fila/CXM instalado. | **Histórico remoto divergente e compatibilidade CXM não encerrada.** A sobrecarga de três argumentos permanece no Dev; não se provou se há consumidor ativo ou se pode ser removida. | Não expor em release Maestro. Antes de mudar/remover, mapear referências e cron/Edge Function em execução, testar os overloads com autorização negativa e planejar contração compatível. |
+| `cxm_silence_due_jobs_organization_scope` | A relação existe em Dev e a constraint `cxm_silence_due_jobs_organization_client_fkey` não existe, como esperado após `DROP CONSTRAINT IF EXISTS`; em Produção a relação inteira não existe. | **Diferença de instalação CXM entre ambientes, não discrepância de estado do Maestro.** | Não criar tabela/fila CXM em Produção no trilho não-CXM; tratar na trilha CXM com plano de instalação próprio. |
+
+### Limites desta classificação
+
+- A equivalência normalizada de uma RPC não resolve as demais divergências do ledger. Ainda falta classificar cada migration e seus efeitos, principalmente os pares com SQL divergente e todo conteúdo local/remoto sem correspondência.
+- O catálogo não prova ausência de consumidores externos, código Edge ativo ou chamadas por jobs. Não removemos sobrecargas nem tabelas e não alteramos dados, ledger, cron, função ou configuração.
+- Resultado operacional permanece: **sem `migration repair`, `db push` integral ou promoção**. O pacote não-CXM segue `release_ready=false`; manter dependências CXM explicitamente fora dele.
