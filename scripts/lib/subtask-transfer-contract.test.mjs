@@ -7,7 +7,7 @@ if (operation === "transferSubtasks") {
   const result = await supabase.rpc("maestro_transfer_subtasks", { p_organization_id: session.organization_id });
   return json({ data: result.data }, 200, origin);
 }
-if (entity === "CXMAutomationRun" && operation === "create") {}
+if (operation === "create" || operation === "update") {}
 `;
 
 const migrationSource = `

@@ -1,7 +1,7 @@
 export function verifySubtaskTransferContract({ edgeSource, migrationSource }) {
   const errors = [];
   const start = edgeSource.indexOf('if (operation === "transferSubtasks") {');
-  const end = edgeSource.indexOf('if (entity === "CXMAutomationRun" && operation === "create")', start);
+  const end = edgeSource.indexOf('if (operation === "create" || operation === "update") {', start);
   const handler = start < 0 || end < 0 ? "" : edgeSource.slice(start, end);
 
   if (!handler) errors.push("transferSubtasks: handler não localizado");

@@ -16,7 +16,7 @@ function corsHeaders(origin = "") {
   };
 }
 
-type Session = { sub: string; exp: number; access_level?: string; organization_id?: string; scope?: "user" | "group"; group_id?: string };
+type Session = { sub: string; exp: number; access_level?: string; display_name?: string; organization_id?: string; scope?: "user" | "group"; group_id?: string };
 type LegacyRow = {
   entity: string;
   record_id: string;
@@ -387,35 +387,15 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
     if (!sourceUserId || !targetUserId || sourceUserId === targetUserId) {
       return json({ error: "Selecione usuários de origem e destino diferentes" }, 400, origin);
     }
-
-    const [subtaskRows, collaboratorRows] = await Promise.all([
-      listRows(session.organization_id, "Subtask", { filters: { responsible_id: sourceUserId }, limit: 10_000 }),
-      listRows(session.organization_id, "Collaborator", { limit: 100 }),
-    ]);
-    const target = collaboratorRows.find((row) => row.record_id === targetUserId && row.payload?.is_active !== false);
-    if (!target) return json({ error: "Usuário de destino não encontrado ou inativo" }, 404, origin);
-
-    const transferable = subtaskRows.filter((row) => {
-      if (String(row.payload?.responsible_id || "") !== sourceUserId) return false;
-      if (row.payload?.is_completed === true) return false;
-      const status = String(row.payload?.status || "pending").trim().toLowerCase();
-      return status !== "completed";
+    const { data, error } = await supabase.rpc("maestro_transfer_subtasks", {
+      p_organization_id: session.organization_id,
+      p_source_collaborator_id: sourceUserId,
+      p_target_collaborator_id: targetUserId,
+      p_actor_id: session.sub,
+      p_actor_name: String(session.display_name || ""),
     });
-    if (!transferable.length) return json({ data: { updatedCount: 0, updatedIds: [] } }, 200, origin);
-
-    const now = new Date().toISOString();
-    const targetName = String(target.payload?.name || target.payload?.full_name || targetUserId);
-    const rows = transferable.map((row) => ({
-      entity: "Subtask",
-      record_id: row.record_id,
-      payload: { ...row.payload, responsible_id: targetUserId, responsible_name: targetName, updated_date: now },
-      source_created_at: row.source_created_at || row.payload?.created_date || now,
-      source_updated_at: now,
-    }));
-    const scopedRows = rows.map((row) => ({ ...row, organization_id: session.organization_id }));
-    const { error } = await supabase.from("legacy_records").upsert(scopedRows, { onConflict: "entity,record_id" });
     if (error) throw error;
-    return json({ data: { updatedCount: rows.length, updatedIds: rows.map((row) => row.record_id), targetName } }, 200, origin);
+    return json({ data }, 200, origin);
   }
 
   if (operation === "create" || operation === "update") {
