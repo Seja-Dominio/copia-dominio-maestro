@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -9,7 +10,7 @@ const origins = new Set([
   "https://dominiomaestro.com.br",
 ]);
 
-type Session = { sub: string; exp: number; access_level: string; permissions: Record<string, unknown>; scope?: "user" | "group"; group_id?: string; authenticated?: boolean };
+type Session = { sub: string; exp: number; access_level: string; permissions: Record<string, unknown>; organization_id: string; scope?: "user" | "group"; group_id?: string; authenticated?: boolean };
 type Row = { entity: string; record_id: string; payload: Record<string, any>; source_updated_at: string | null };
 
 function localDate(value = new Date()) {
@@ -87,20 +88,33 @@ async function verifySession(token: string): Promise<Session | null> {
   try { payload = JSON.parse(decode(body)); } catch { return null; }
   if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
   if (payload.scope === "group" && typeof payload.group_id === "string" && payload.group_id.endsWith("@g.us")) {
+    if (!payload.organization_id) return null;
     return {
       sub: String(payload.sub),
       exp: Number(payload.exp),
       access_level: "collaborator",
+      organization_id: String(payload.organization_id),
       permissions: { tabs: { Dashboard: true, Projects: true, Jobs: true, Proposals: true, Agenda: true, ClientPortfolio: true, Conversations: true, Instagram: true, Reports: true, AdsBrain: true } },
       scope: "group",
       group_id: payload.group_id,
       authenticated: false,
     };
   }
-  const { data } = await db.from("maestro_collaborators").select("id,is_active,profile").eq("id", payload.sub).maybeSingle();
-  if (!data?.is_active) return null;
+  const { data, error: collaboratorError } = await db.from("maestro_collaborators").select("id,is_active,profile").eq("id", payload.sub).maybeSingle();
+  if (collaboratorError || !data?.is_active) return null;
+  let membershipsQuery = db.from("organization_members")
+    .select("organization_id,role,status,organizations!inner(status)")
+    .eq("collaborator_id", data.id)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (payload.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", payload.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, String(payload.organization_id || ""));
+  if (!choice.ok) return null;
   const profile = (data.profile || {}) as Record<string, unknown>;
-  return { sub: String(data.id), exp: Number(payload.exp), access_level: normalizeLevel(profile.access_level || payload.access_level), permissions: (profile.permissions || {}) as Record<string, unknown>, scope: "user", authenticated: true };
+  return { sub: String(data.id), exp: Number(payload.exp), access_level: accessLevelForOrganizationRole(choice.membership.organization_role), permissions: (profile.permissions || {}) as Record<string, unknown>, organization_id: choice.membership.organization_id, scope: "user", authenticated: true };
 }
 
 function headers(origin: string) {
@@ -145,8 +159,9 @@ function withoutFinancialFields(value: unknown): unknown {
     .map(([key, item]) => [key, withoutFinancialFields(item)]));
 }
 
-async function listRows(entity: string) {
-  const { data, error } = await db.from("legacy_records").select("entity,record_id,payload,source_updated_at").eq("entity", entity).range(0, 9999);
+async function listRows(entity: string, organizationId: string) {
+  const { data, error } = await db.from("legacy_records").select("entity,record_id,payload,source_updated_at")
+    .eq("entity", entity).eq("organization_id", organizationId).range(0, 9999);
   if (error) throw error;
   return (data || []) as Row[];
 }
@@ -255,7 +270,10 @@ function clientForJob(job: Row, clients: Row[]) {
 }
 
 async function visibleOperational(session: Session) {
-  const [jobs, subtasks, projects, clients] = await Promise.all([listRows("Job"), listRows("Subtask"), listRows("Project"), listRows("Client")]);
+  const [jobs, subtasks, projects, clients] = await Promise.all([
+    listRows("Job", session.organization_id), listRows("Subtask", session.organization_id),
+    listRows("Project", session.organization_id), listRows("Client", session.organization_id),
+  ]);
   if (session.scope === "group") return { jobs, subtasks, projects, clients };
   const level = normalizeLevel(session.access_level);
   if (["master", "gestor"].includes(level)) return { jobs, subtasks, projects, clients };
@@ -293,8 +311,8 @@ function indexJobsById(jobs: Row[]) {
   return result;
 }
 
-async function financialSummary() {
-  const rows = await listRows("FinancialEntry");
+async function financialSummary(organizationId: string) {
+  const rows = await listRows("FinancialEntry", organizationId);
   const totals = rows.reduce((result, row) => {
     const amount = Number(row.payload.amount || 0);
     if (!Number.isFinite(amount)) return result;
@@ -530,17 +548,17 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
     const today = localDate();
     const openTasks = operational.subtasks.filter(row => !isCompleted(row.payload));
     const report: Record<string, unknown> = { ...sourceMeta({ periodo: String(args.periodo || "atual") }), producao: { total_jobs: operational.jobs.length, jobs_concluidos: operational.jobs.filter(row => isCompleted(row.payload)).length, tarefas_abertas: openTasks.length, tarefas_atrasadas: openTasks.filter(row => String(row.payload.deadline || "") < today).length } };
-    if (canUse(session, "financial")) report.financeiro = await financialSummary();
+    if (canUse(session, "financial")) report.financeiro = await financialSummary(session.organization_id);
     return report;
   }
   if (name === "consultar_financeiro") {
     if (!canUse(session, "financial")) return { acesso_negado: true, motivo: "Informações financeiras exigem usuário Master autenticado e a aba Financeiro habilitada." };
-    const rows = (await listRows("FinancialEntry")).filter(row => textMatches(`${row.payload.description} ${row.payload.client_name} ${row.payload.category}`, search) && textMatches(row.payload.type, String(args.tipo || "")) && textMatches(row.payload.status, String(args.status || "")) && dateMatches(row.payload.due_date || row.payload.competence_date, String(args.de || ""), String(args.ate || ""))).slice(0, limit);
+    const rows = (await listRows("FinancialEntry", session.organization_id)).filter(row => textMatches(`${row.payload.description} ${row.payload.client_name} ${row.payload.category}`, search) && textMatches(row.payload.type, String(args.tipo || "")) && textMatches(row.payload.status, String(args.status || "")) && dateMatches(row.payload.due_date || row.payload.competence_date, String(args.de || ""), String(args.ate || ""))).slice(0, limit);
     return { ...sourceMeta({ modulo: "Financeiro" }), total: rows.length, lancamentos: rows.map(row => projectRecord("FinancialEntry", row.payload)) };
   }
   if (name === "consultar_comercial") {
     if (!canUse(session, "commercial")) return { acesso_negado: true, motivo: "A área Comercial exige a aba Propostas habilitada para este usuário." };
-    const proposals = await listRows("Proposal");
+    const proposals = await listRows("Proposal", session.organization_id);
     const matches = (row: Row) => textMatches(`${row.payload.title} ${row.payload.name} ${row.payload.client_name}`, search) && textMatches(row.payload.status, String(args.status || ""));
     const result: Record<string, unknown> = { ...sourceMeta({ modulo: "Comercial" }), propostas: proposals.filter(matches).slice(0, limit).map(row => {
       const proposal = projectRecord("Proposal", row.payload);
@@ -555,7 +573,7 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
       result.contratos_bloqueados = true;
       result.motivo_contratos = "A consulta de contratos de clientes é exclusiva para usuários Master autenticados.";
     } else {
-      const contracts = await listRows("FeeContract");
+      const contracts = await listRows("FeeContract", session.organization_id);
       result.contratos = contracts.filter(matches).slice(0, limit).map(row => projectRecord("FeeContract", row.payload));
     }
     return result;
@@ -563,13 +581,14 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
   if (name === "consultar_configuracoes") {
     if (!canUse(session, "settings")) return { acesso_negado: true, motivo: "Configurações são restritas ao Master com a área habilitada." };
     const key = String(args.chave || "").trim();
-    const [configs, collaborators] = await Promise.all([listRows("AppConfig"), listRows("Collaborator")]);
+    const [configs, collaborators] = await Promise.all([listRows("AppConfig", session.organization_id), listRows("Collaborator", session.organization_id)]);
     const safeConfigKeys = new Set(["system_timezone", "job_statuses_v2", "agenda_activities", "collaborator_roles"]);
     return { ...sourceMeta({ modulo: "Configurações" }), configuracoes: configs.filter(row => safeConfigKeys.has(String(row.payload.key || "")) && textMatches(row.payload.key, key)).slice(0, limit).map(row => projectRecord("AppConfig", row.payload)), colaboradores: collaborators.slice(0, limit).map(row => projectRecord("Collaborator", row.payload)) };
   }
   if (name === "consultar_contas_ads" || name === "consultar_metricas_campanhas") {
     if (!canUse(session, "ads")) return { acesso_negado: true, motivo: "A aba Ads Brain não está habilitada para este usuário." };
     let query = db.from("maestro_ads_accounts").select("id,network,client_name,display_name,external_account_id,currency,account_status,balance,minimum_balance,spending_limit,amount_spent,metrics_data,campaigns_data,last_synced_at").order("updated_at", { ascending: false });
+    query = query.eq("organization_id", session.organization_id);
     if (args.conta_id) query = query.eq("id", String(args.conta_id));
     const { data, error } = await query.limit(limit);
     if (error) throw error;
@@ -585,12 +604,14 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
     const clientId = String(args.cliente_id || "").trim();
     if (!serviceUrl || !serviceToken) return { configuracao_pendente: true, motivo: "O serviço seguro de Marketing Mix ainda não foi configurado neste ambiente." };
     if (!clientId) return { erro: "Informe o cliente_id para analisar o mix de marketing." };
-    const payload = { client_id: clientId, start: args.de || undefined, end: args.ate || undefined, run_model: args.executar_modelo === true };
+    const authorizedClient = (await listRows("Client", session.organization_id)).find(row => row.record_id === clientId || String(row.payload.id || "") === clientId);
+    if (!authorizedClient) return { acesso_negado: true, motivo: "O cliente não pertence à organização ativa." };
+    const payload = { client_id: authorizedClient.record_id, start: args.de || undefined, end: args.ate || undefined, run_model: args.executar_modelo === true };
     try {
       const response = await fetch(`${serviceUrl}/v1/mmm/analyze`, { method: "POST", headers: { "Content-Type": "application/json", "X-MMM-Service-Token": serviceToken }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
       const result = await response.json();
       if (!response.ok) return { erro: "O serviço de Marketing Mix não respondeu corretamente.", status: response.status };
-      return { ...sourceMeta({ modulo: "Marketing Mix Model", cliente_id: clientId }), ...result };
+      return { ...sourceMeta({ modulo: "Marketing Mix Model", cliente_id: authorizedClient.record_id }), ...result };
     } catch (error) {
       console.error("Marketing mix service error:", error);
       return { erro: "Não foi possível consultar o serviço de Marketing Mix agora." };
@@ -659,7 +680,8 @@ async function logQuery(session: Session, toolsUsed: string[]) {
     await db.from("legacy_records").insert({
       entity: "AIQueryLog",
       record_id: crypto.randomUUID().replaceAll("-", ""),
-      payload: { collaborator_id: session.sub, access_level: session.access_level, tools: toolsUsed, created_date: now },
+      organization_id: session.organization_id,
+      payload: { collaborator_id: session.sub, organization_id: session.organization_id, access_level: session.access_level, tools: toolsUsed, created_date: now },
       source_created_at: now,
       source_updated_at: now,
     });
@@ -675,7 +697,7 @@ Deno.serve(async request => {
     if (request.method !== "POST") return json({ error: "Método não permitido" }, 405, origin);
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
     const session = token ? await verifySession(token) : null;
-    if (!session) return json({ error: "Sessão inválida ou expirada" }, 401, origin);
+    if (!session?.organization_id) return json({ error: "Sessão inválida, expirada ou sem organização ativa" }, 401, origin);
     const body = await request.json() as Record<string, any>;
     if (typeof body.message !== "string" || !body.message.trim()) return json({ error: "Mensagem obrigatória" }, 400, origin);
     const history = Array.isArray(body.history) ? body.history.slice(-12).map(item => ({ role: item.role === "assistant" ? "assistant" : "user", content: String(item.content || "").slice(0, 6000) })) : [];

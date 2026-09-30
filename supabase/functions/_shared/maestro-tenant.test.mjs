@@ -96,3 +96,14 @@ test("admin-timesheets authorizes master role from active membership and uses sc
   assert.match(source, /p_organization_id: actor\.session\.organization_id/g);
   assert.doesNotMatch(source, /from\("legacy_records"\)/);
 });
+
+test("Maestro AI validates organization membership and scopes every data source", async () => {
+  const source = await fs.readFile(new URL("../maestro-ai/index.ts", import.meta.url), "utf8");
+  assert.match(source, /from\("organization_members"\)/);
+  assert.match(source, /selectOrganizationMembership\(memberships, String\(payload\.organization_id \|\| ""\)\)/);
+  assert.match(source, /organization_id: choice\.membership\.organization_id/);
+  assert.match(source, /\.eq\("entity", entity\)\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /query = query\.eq\("organization_id", session\.organization_id\)/);
+  assert.match(source, /organization_id: session\.organization_id,[\s\S]{0,100}payload:/);
+  assert.match(source, /O cliente não pertence à organização ativa/);
+});
