@@ -134,3 +134,13 @@ test("credential administration requires an active org admin and cannot overwrit
   const modal = await fs.readFile(new URL("../../../src/components/collaborators/AccessCredentialsModal.jsx", import.meta.url), "utf8");
   assert.match(modal, /hashCollaboratorPassword\([\s\S]*?collaboratorId: collaborator\.id,[\s\S]*?login: formData\.login,[\s\S]*?\}\);[\s\S]*?maestro\.entities\.Collaborator\.update\(collaborator\.id/);
 });
+
+test("Dominus memory reviews, rules, events and comments stay inside the active organization", async () => {
+  const source = await fs.readFile(new URL("../dominus-memory/index.ts", import.meta.url), "utf8");
+  assert.match(source, /selectOrganizationMembership\(memberships, payload\.organization_id\)/);
+  assert.match(source, /async function listMemory\(organizationId: string\)[\s\S]*?dominus_learning_reviews[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?dominus_memory[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /function recordEvent[\s\S]*?organization_id: session\.organization_id/);
+  assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, review_id: reviewId, author_id: session\.sub/);
+  assert.match(source, /\.eq\("organization_id", session\.organization_id\)/);
+  assert.match(source, /organization_id: session\.organization_id,/);
+});

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -16,6 +17,7 @@ type Session = {
   exp: number;
   access_level: string;
   permissions: Record<string, unknown>;
+  organization_id: string;
   scope?: "user" | "group";
   authenticated?: boolean;
 };
@@ -62,11 +64,23 @@ async function verifySession(token: string): Promise<Session | null> {
     .maybeSingle();
   if (!data?.is_active) return null;
   const profile = (data.profile || {}) as Record<string, unknown>;
+  let membershipsQuery = db.from("organization_members")
+    .select("organization_id,role,status,organizations!inner(status)")
+    .eq("collaborator_id", payload.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (payload.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", payload.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, payload.organization_id);
+  if (!choice.ok) return null;
   return {
     sub: String(data.id),
     exp: Number(payload.exp),
-    access_level: normalizeLevel(profile.access_level || payload.access_level),
+    access_level: accessLevelForOrganizationRole(choice.membership.organization_role),
     permissions: (profile.permissions || {}) as Record<string, unknown>,
+    organization_id: choice.membership.organization_id,
     scope: "user",
     authenticated: true,
   };
@@ -99,20 +113,20 @@ function sameScope(row: { scope?: string; scope_id?: string | null }, scope: str
   return row.scope === scope && String(row.scope_id || "") === String(scopeId || "");
 }
 
-async function listMemory() {
+async function listMemory(organizationId: string) {
   const [reviews, memories] = await Promise.all([
-    db.from("dominus_learning_reviews").select(REVIEW_COLUMNS).order("proposed_at", { ascending: false }).limit(100),
-    db.from("dominus_memory").select(MEMORY_COLUMNS).order("updated_at", { ascending: false }).limit(200),
+    db.from("dominus_learning_reviews").select(REVIEW_COLUMNS).eq("organization_id", organizationId).order("proposed_at", { ascending: false }).limit(100),
+    db.from("dominus_memory").select(MEMORY_COLUMNS).eq("organization_id", organizationId).order("updated_at", { ascending: false }).limit(200),
   ]);
   if (reviews.error) throw reviews.error;
   if (memories.error) throw memories.error;
   const reviewIds = (reviews.data || []).map((item: any) => String(item.id)).filter(Boolean);
   const [comments, events] = await Promise.all([
     reviewIds.length
-      ? db.from("dominus_learning_review_comments").select(COMMENT_COLUMNS).in("review_id", reviewIds).order("created_at", { ascending: true })
+      ? db.from("dominus_learning_review_comments").select(COMMENT_COLUMNS).eq("organization_id", organizationId).in("review_id", reviewIds).order("created_at", { ascending: true })
       : { data: [], error: null },
     reviewIds.length
-      ? db.from("dominus_learning_review_events").select(EVENT_COLUMNS).in("review_id", reviewIds).order("created_at", { ascending: false })
+      ? db.from("dominus_learning_review_events").select(EVENT_COLUMNS).eq("organization_id", organizationId).in("review_id", reviewIds).order("created_at", { ascending: false })
       : { data: [], error: null },
   ]);
   if (comments.error) throw comments.error;
@@ -130,6 +144,7 @@ async function listMemory() {
 
 async function recordEvent(reviewId: string, eventType: string, session: Session, note = "", snapshot: Record<string, unknown> = {}) {
   const { error } = await db.from("dominus_learning_review_events").insert({
+    organization_id: session.organization_id,
     review_id: reviewId,
     event_type: eventType,
     actor_id: session.sub,
@@ -146,6 +161,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
     .from("dominus_learning_reviews")
     .select(REVIEW_COLUMNS)
     .eq("id", reviewId)
+    .eq("organization_id", session.organization_id)
     .maybeSingle();
   if (reviewError) throw reviewError;
   if (!review) throw new Error("Aprendizado não encontrado.");
@@ -164,6 +180,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .select("id,version,memory_key,scope,scope_id,status")
     .eq("memory_key", text(review.memory_key, 200))
+    .eq("organization_id", session.organization_id)
     .eq("scope", scope)
     .eq("status", "active")
     .order("version", { ascending: false })
@@ -175,6 +192,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .select("version,scope,scope_id")
     .eq("memory_key", text(review.memory_key, 200))
+    .eq("organization_id", session.organization_id)
     .eq("scope", scope)
     .order("version", { ascending: false })
     .limit(200);
@@ -188,6 +206,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
   const { data: staged, error: stageError } = await db
     .from("dominus_memory")
     .insert({
+      organization_id: session.organization_id,
       memory_key: text(review.memory_key, 200),
       rule,
       scope,
@@ -209,6 +228,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
       .from("dominus_memory")
       .update({ status: "retired", retired_at: now, retired_by: session.sub, updated_at: now })
       .eq("id", active.id)
+      .eq("organization_id", session.organization_id)
       .eq("status", "active");
     if (retireError) throw retireError;
   }
@@ -217,6 +237,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .update({ status: "active", retired_at: null, retired_by: null, updated_at: now })
     .eq("id", staged.id)
+    .eq("organization_id", session.organization_id)
     .eq("status", "retired")
     .select(MEMORY_COLUMNS)
     .single();
@@ -236,6 +257,7 @@ async function approveReview(body: Record<string, any>, session: Session) {
       updated_at: now,
     })
     .eq("id", review.id)
+    .eq("organization_id", session.organization_id)
     .eq("status", "pending")
     .select(REVIEW_COLUMNS)
     .single();
@@ -262,6 +284,7 @@ async function editReview(body: Record<string, any>, session: Session) {
     .from("dominus_learning_reviews")
     .update({ proposed_rule: rule, rationale, scope, scope_id: scopeId, updated_at: new Date().toISOString() })
     .eq("id", reviewId)
+    .eq("organization_id", session.organization_id)
     .eq("status", "pending")
     .select(REVIEW_COLUMNS)
     .single();
@@ -278,6 +301,7 @@ async function rejectReview(body: Record<string, any>, session: Session) {
     .from("dominus_learning_reviews")
     .update({ status: "rejected", reviewed_at: now, reviewed_by: session.sub, review_note: text(body.note, 4000), updated_at: now })
     .eq("id", reviewId)
+    .eq("organization_id", session.organization_id)
     .eq("status", "pending")
     .select(REVIEW_COLUMNS)
     .single();
@@ -294,12 +318,13 @@ async function addComment(body: Record<string, any>, session: Session) {
     .from("dominus_learning_reviews")
     .select("id")
     .eq("id", reviewId)
+    .eq("organization_id", session.organization_id)
     .maybeSingle();
   if (reviewError) throw reviewError;
   if (!review) throw new Error("Aprendizado não encontrado.");
   const { data, error } = await db
     .from("dominus_learning_review_comments")
-    .insert({ review_id: reviewId, author_id: session.sub, body: commentBody })
+    .insert({ organization_id: session.organization_id, review_id: reviewId, author_id: session.sub, body: commentBody })
     .select(COMMENT_COLUMNS)
     .single();
   if (error) throw error;
@@ -313,6 +338,7 @@ async function revertMemory(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .select(MEMORY_COLUMNS)
     .eq("id", memoryId)
+    .eq("organization_id", session.organization_id)
     .eq("status", "active")
     .maybeSingle();
   if (currentError) throw currentError;
@@ -322,6 +348,7 @@ async function revertMemory(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .select(MEMORY_COLUMNS)
     .eq("memory_key", current.memory_key)
+    .eq("organization_id", session.organization_id)
     .eq("scope", current.scope)
     .eq("status", "retired")
     .order("version", { ascending: false })
@@ -335,6 +362,7 @@ async function revertMemory(body: Record<string, any>, session: Session) {
   const { data: staged, error: stageError } = await db
     .from("dominus_memory")
     .insert({
+      organization_id: session.organization_id,
       memory_key: current.memory_key,
       rule: previous.rule,
       scope: current.scope,
@@ -355,6 +383,7 @@ async function revertMemory(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .update({ status: "retired", retired_at: now, retired_by: session.sub, updated_at: now })
     .eq("id", current.id)
+    .eq("organization_id", session.organization_id)
     .eq("status", "active");
   if (retireError) throw retireError;
 
@@ -362,6 +391,7 @@ async function revertMemory(body: Record<string, any>, session: Session) {
     .from("dominus_memory")
     .update({ status: "active", retired_at: null, retired_by: null, updated_at: now })
     .eq("id", staged.id)
+    .eq("organization_id", session.organization_id)
     .eq("status", "retired")
     .select(MEMORY_COLUMNS)
     .single();
@@ -380,7 +410,7 @@ Deno.serve(async (request) => {
 
     const body = await request.json().catch(() => ({}));
     const action = text(body.action, 30);
-    if (action === "list") return json(await listMemory(), 200, origin);
+    if (action === "list") return json(await listMemory(session.organization_id), 200, origin);
     if (action === "approve") return json(await approveReview(body, session), 200, origin);
     if (action === "edit") return json(await editReview(body, session), 200, origin);
     if (action === "reject") return json(await rejectReview(body, session), 200, origin);
