@@ -29,14 +29,15 @@ test("repository Edge Functions are exhaustively classified and CXM is excluded 
   });
   assert.equal(result.status, "ok", result.errors.join("\n"));
   assert.equal(result.release_ready, false);
-  assert.deepEqual(result.pending_cxm_functions, ["cxm-data", "cxm-deskcomm-sso"]);
+  assert.deepEqual(result.pending_cxm_functions, []);
+  assert.deepEqual(result.excluded_cxm_functions, ["cxm-data", "cxm-deskcomm-sso"]);
   assert.ok(result.blocked_shared_functions.length > 0);
-  assert.equal(result.pending_non_cxm_functions.length, 15);
+  assert.equal(result.pending_non_cxm_functions.length, 8);
   assert.ok(result.release_blockers.some((blocker) => blocker.startsWith("admin-timesheets: non-CXM function is pending reconciliation")));
   assert.ok(result.release_blockers.some((blocker) => blocker.includes("maestro-data: shared function")));
   assert.equal(liveManifest.functions["system-reports"].product, "maestro");
   assert.ok(liveManifest.non_cxm_candidate.functions.includes("system-reports"));
-  assert.equal(liveManifest.pending_functions["cxm-data"].intended_release, "cxm_only");
+  assert.equal(liveManifest.excluded_functions["cxm-data"].product, "cxm");
   assert.ok(!liveManifest.non_cxm_candidate.functions.includes("cxm-data"));
 });
 
@@ -74,6 +75,28 @@ test("fails closed when a new Edge Function is not classified", () => {
     manifest,
   });
   assert.ok(result.errors.includes("new-function: function directory is unclassified"));
+});
+
+test("fails closed for stale pending entries and for an excluded CXM function reappearing in the deploy tree", () => {
+  const stalePending = {
+    ...manifest,
+    pending_functions: { "missing-worker": { product: "maestro", intended_release: "non_cxm_candidate" } },
+  };
+  const staleResult = validateEdgeFunctionProductBoundaries({
+    functionDirectories: ["maestro-data", "cxm-data", "shared-worker"],
+    manifest: stalePending,
+  });
+  assert.ok(staleResult.errors.includes("missing-worker: pending function has no function directory; declare it as an explicit exclusion if intentional"));
+
+  const cxmReintroduced = {
+    ...manifest,
+    excluded_functions: { "cxm-data": { product: "cxm", reason: "Separate product." } },
+  };
+  const reintroducedResult = validateEdgeFunctionProductBoundaries({
+    functionDirectories: ["maestro-data", "cxm-data", "shared-worker"],
+    manifest: cxmReintroduced,
+  });
+  assert.ok(reintroducedResult.errors.includes("cxm-data: explicitly excluded function is present in the deploy tree"));
 });
 
 test("rejects a CXM or shared function in the non-CXM candidate", () => {

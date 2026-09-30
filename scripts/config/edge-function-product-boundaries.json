@@ -20,22 +20,17 @@
     "whatsapp-send": { "product": "shared", "release": "blocked_shared" }
   },
   "pending_functions": {
-    "maestro-core-data": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "meta-ads-sync-cron": { "product": "ads_brain", "intended_release": "non_cxm_candidate" },
     "admin-timesheets": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "cnpj-enrich": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "collaborator-login": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "collaborator-session-refresh": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "cxm-data": { "product": "cxm", "intended_release": "cxm_only" },
-    "cxm-deskcomm-sso": { "product": "cxm", "intended_release": "cxm_only" },
     "handle-job-approval": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "hash-collaborator-password": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "google-calendar": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "google-places-search": { "product": "maestro", "intended_release": "non_cxm_candidate" },
-    "login-wallpaper": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "marketing-mix-snapshot": { "product": "insights", "intended_release": "non_cxm_candidate" },
     "meta-ads-oauth": { "product": "ads_brain", "intended_release": "non_cxm_candidate" },
     "team-chat": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "traffic-copilot": { "product": "ads_brain", "intended_release": "non_cxm_candidate" }
+  },
+  "excluded_functions": {
+    "cxm-data": { "product": "cxm", "reason": "Não existe neste checkout; mantida fora do pacote Maestro." },
+    "cxm-deskcomm-sso": { "product": "cxm", "reason": "Não existe neste checkout; mantida fora do pacote Maestro." }
   }
 }

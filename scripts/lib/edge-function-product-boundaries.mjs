@@ -12,6 +12,8 @@ export function validateEdgeFunctionProductBoundaries({ functionDirectories, man
   const declared = Object.keys(manifest.functions || {});
   const pending = manifest.pending_functions || {};
   const pendingNames = Object.keys(pending);
+  const excluded = manifest.excluded_functions || {};
+  const excludedNames = Object.keys(excluded);
   const candidate = manifest.non_cxm_candidate?.functions || [];
   const candidateSet = new Set(candidate);
   const blockedSharedFunctions = declared.filter((name) => manifest.functions[name].release === "blocked_shared");
@@ -59,7 +61,9 @@ export function validateEdgeFunctionProductBoundaries({ functionDirectories, man
   }
   for (const name of pendingNames) {
     const entry = pending[name];
+    if (!actual.has(name)) errors.push(`${name}: pending function has no function directory; declare it as an explicit exclusion if intentional`);
     if (manifest.functions?.[name]) errors.push(`${name}: function cannot be both versioned and pending`);
+    if (excluded[name]) errors.push(`${name}: function cannot be both pending and explicitly excluded`);
     if (!entry?.product || !RELEASE_VALUES.has(entry.intended_release)) {
       errors.push(`${name}: pending product or intended release is invalid`);
     }
@@ -67,6 +71,15 @@ export function validateEdgeFunctionProductBoundaries({ functionDirectories, man
       errors.push(`${name}: pending CXM function must remain CXM-only`);
     }
     if (candidateSet.has(name)) errors.push(`${name}: pending function is included in the non-CXM candidate`);
+  }
+  for (const name of excludedNames) {
+    const entry = excluded[name];
+    if (actual.has(name)) errors.push(`${name}: explicitly excluded function is present in the deploy tree`);
+    if (manifest.functions?.[name] || pending[name]) errors.push(`${name}: function cannot be both excluded and classified/pending`);
+    if (entry?.product !== "cxm" || !String(entry?.reason || "").trim()) {
+      errors.push(`${name}: explicit exclusion requires product=cxm and a reason`);
+    }
+    if (candidateSet.has(name)) errors.push(`${name}: explicitly excluded function is included in the non-CXM candidate`);
   }
   if (candidate.length !== candidateSet.size) errors.push("non-CXM candidate contains duplicate function names");
   return {
@@ -78,6 +91,7 @@ export function validateEdgeFunctionProductBoundaries({ functionDirectories, man
     pending_functions: pendingNames,
     pending_cxm_functions: pendingCxmFunctions,
     pending_non_cxm_functions: pendingReleaseFunctions,
+    excluded_cxm_functions: excludedNames.filter((name) => excluded[name]?.product === "cxm"),
     release_ready: errors.length === 0
       && candidate.length > 0
       && blockedSharedFunctions.length === 0
