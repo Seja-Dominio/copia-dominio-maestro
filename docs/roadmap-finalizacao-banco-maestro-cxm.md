@@ -85,6 +85,14 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 ## Fases de execução e gates
 
+### Revalidação clean-room ampliada — 30/09/2026
+
+- A branch candidata `codex/maestro-db-canonical-candidate` contém 172 arquivos de migration locais. No commit `beca243e`, o workflow GitHub Actions `36751215708` terminou com sucesso em todos os jobs: replay integral desde banco vazio, lint do schema público, testes de autorização/regressão, limites de produto das Edge Functions, análise estática de segurança e busca de segredos.
+- O contrato SQL rollback-only agora cria duas organizações e testa visibilidade isolada de memberships/clientes; rejeição de relações cruzadas projeto→cliente, job→projeto, tarefa→job, responsável de tarefa e lançamento→conta bancária; e privilégios financeiros diretos negados para `anon`/`authenticated` e CRUD preservado para `service_role` nas quatro tabelas financeiras. Fixtures e grants temporários são revertidos por `ROLLBACK`.
+- Isso comprova replay limpo e as constraints/permissões presentes na sequência local candidata; não comprova upgrade de snapshots Dev/Produção, equivalência de migrations já registradas remotamente, paridade dos dados reais, fluxos de UI/API, nem deploy standalone do CXM. Nenhuma escrita foi feita nos projetos Supabase hospedados.
+- A leitura remota mais recente registrada nesta sessão encontrou novo desvio entre o checkout de 172 migrations e os ledgers consultados (Dev: 83 entradas; Produção: 111), além de diferença de catálogo (38 relações no Dev e 58 em Produção; 28 relações somente em Produção e 8 somente em Dev; 133 policies exclusivas de Produção e sete definições de função divergentes). Esses números são uma fotografia dos ambientes no momento da consulta e precisam ser reconciliados por migration/efeito; não autorizam `migration repair`, push em lote ou promoção da branch candidata.
+- Próximo gate obrigatório: gerar e revisar a reconciliação migration-a-migration com provas de efeitos e dependências; em seguida criar snapshots anonimizados/representativos e provar upgrade em bancos descartáveis que reproduzam os catálogos divergentes. Até esse gate passar, não aplicar a sequência integral em Dev/Produção nem declarar o banco pronto para corte.
+
 ### Fase 0 — congelar escopo e tornar o inventário auditável
 
 **Atividades**
