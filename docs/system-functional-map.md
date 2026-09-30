@@ -16,6 +16,7 @@ React pages/components
 - Auth de colaborador usa Edge Functions/sessão assinada HMAC, membership por `organization_id` e entitlement de produtos. Não é o mesmo modelo de `auth.users` do Supabase Auth.
 - **Desalinhamento de identidade:** a tela de login Supabase Auth entrega sessão nativa, mas as operações centrais de `maestro-data` exigem token HMAC de colaborador. A leitura read-only atual encontrou 0 linhas em `auth.users`, 7 colaboradores ativos e 0 correspondências de ID. Não vincular por e-mail nem trocar o fluxo até definir identidade canônica e migração.
 - O runtime usa Supabase para dados, autenticação e funções; o modo demo local é isolado e não seleciona um backend externo alternativo.
+- Fronteira CXM observada neste checkout: não existe rota `/CXM` nem as Edge Functions `cxm-data`/`cxm-deskcomm-sso`. As disposições `cxm_domain_pending` são mantidas como backlog do produto separado e não provam que o runtime standalone exista; `verify:functional-inventory` exclui apenas esse backlog CXM da lista de rotas/entidades ativas do Maestro.
 - Operações genéricas passam por `maestro-data`; fluxos sensíveis/especializados chamam Edge Functions dedicadas (login, aprovação pública, anexos, WhatsApp, Ads OAuth, IA, relatórios e timesheets).
 - `legacy_records(entity, record_id, payload jsonb, organization_id, ...)` ainda é um formato operacional e de compatibilidade importante; projeções relacionais não significam que todas as entidades/telas foram migradas.
 
@@ -28,7 +29,8 @@ React pages/components
 | `/Jobs` | quadro/lista, detalhe, tarefa/checklist, briefing/legenda, comentários, anexos, aprovação, timer | Job, Subtask, Comment, JobHistory, Timesheet, Notification, JobTemplate, Storage | `maestro-data`, `handle-job-approval`, `upload-file`, `refresh-file-url`; exige autorização por tenant e por job |
 | `/Agenda` | eventos e atividades com clientes/colaboradores | AgendaEvent, Client, Collaborator | `maestro-data`; datas/horários/status e filtros por tenant |
 | `/Financial` | lançamentos, contas, categorias, centros, recorrência, projeções e saldos | FinancialEntry, BankAccount, FinancialCategory, CostCenter; FeeContract, SavingsBox, SavingsTransaction, Supplier | `maestro-data` + RPCs/ações de Financeiro; parte das dimensões é relacional, demais entidades seguem em compatibilidade |
-| `/CXM`, `/ClientPortfolio` e `/Proposals` | CXM concentra carteira, atendimento, pipeline comercial, contatos, propostas, NPS, automações, respostas rápidas, segmentos, atribuições de conversa e rascunhos de transmissão | Client, Proposal, NpsEntry, NpsHistory, AttendanceMessage, AttendanceEvaluation, ClientWhatsappNumber, CXMAutomationRule/Run, ClientSalesLead, SalesOpportunity, CXMContact, CXMQuickReply, CXMSegment, CXMConversationAssignment, CXMTransmissionDraft | `maestro-data`, `whatsapp-send`, webhooks e `cxm-data`; registros operacionais CXM ainda usam legacy-backed com escopo de organização/cliente validado pelo serviço |
+| `/ClientPortfolio` | carteira e acompanhamento dos clientes disponíveis neste checkout | Client, ClientInsight, ClientCompetitor, PostMetric | `maestro-data` para entidades genéricas e funções de Insights; não equivale ao produto CXM standalone |
+| `/Proposals` | propostas comerciais dentro do Maestro | Proposal, Client, FeeContract | `maestro-data` e geradores documentais; rota protegida por `ProtectedRoute` |
 | `/Conversations` | conversas, envio individual/lote, diretório, conexão e números WhatsApp | AttendanceMessage, WhatsappContact, WhatsappGroup, ClientWhatsappNumber, AgencyWhatsappNumber, integrações/receipts | `whatsapp-send`, `dominus-webhook`, `team-chat`; integrações externas têm credenciais e estado próprios |
 | `/AdsBrain` | contas, campanhas, orçamento, métricas, OAuth, copiloto | `maestro_ads_accounts`, `maestro_ads_authorizations`, `maestro_meta_oauth_states`; dados de sincronização em JSON; ClientCompetitor/ClientInsight/PostMetric em alguns fluxos | `meta-ads-oauth`, `traffic-copilot`, sync agendado; o estado OAuth é temporário, vinculado a colaborador/tenant e consumido uma única vez; o schema relacional ainda não cobre todo o domínio de métricas |
 | `/Instagram` | métricas orgânicas e tráfego por cliente, configuração da conta e análise de conteúdo | Client, ClientInsight, PostMetric | `maestro-data` para clientes; componentes de Insights; validar origem, atualização e tenant dos dados Meta/Instagram |
@@ -36,9 +38,8 @@ React pages/components
 | `/Templates`, `/Production`, `/Media`, `/Documentos` | templates, produção e documentos/anexos | JobTemplate, ProjectTemplate, Proposal, Note, Job, Storage | parte relacional; armazenamento de arquivo é serviço separado do schema relacional |
 | `/Records`, `/Settings`, `/Configuracoes` | colaboradores, equipes, papéis, preferências, parâmetros, auditoria e integrações | Collaborator, Squad, AppConfig, DeleteLog, MasterRequest, MiniTask, Organization/Member/Product/Integration | cadastro e configurações ainda contêm entidades legadas; permissões são parte do contrato funcional |
 | `/Recovery` | recuperação/restauração de itens excluídos por tipo de entidade | DeleteLog e entidades restauradas (Job, Project, Client, Collaborator, Subtask, Timesheet, FinancialEntry, Proposal, FeeContract, AgendaEvent, MiniTask, Supplier, Notification) | usa `maestro-data`; testar autorização por tipo/tenant, restauração idempotente e comportamento quando a entidade não tem mapeamento de restore |
-| `/TestMaestroLab` | demonstração pública de QA para latência, falhas simuladas, camadas e error boundary | nenhuma; fixtures fixas e locais | `src/pages/TestMaestroLab.jsx`; não envia requisições externas nem lê dados do Maestro |
 | tarefas/notas transversais | tarefas pessoais/equipe, notas, notificações | MiniTask, Note, Notification, MasterRequest | componentes flutuantes e tabs reaproveitados em várias rotas; não formam uma fronteira de domínio separada hoje |
-| `/JobApproval`, `/ClientWhatsappSetup` | fluxos públicos com token | Job, Comment/History/Notification, arquivos; ClientWhatsappNumber/setup link | não dependem da navegação autenticada normal; tokens, expiração e escopo precisam de testes específicos |
+| `/JobApproval` | fluxo público de aprovação por token | Job, Comment/History/Notification, arquivos | não depende da navegação autenticada normal; tokens, expiração e escopo precisam de testes específicos |
 
 As rotas adicionais encontradas incluem `/Recovery` e `/Instagram`; permanecem no mapa funcional, mas suas dependências e contratos de dados precisam de casos de teste próprios antes de declarar cobertura funcional integral.
 
@@ -72,7 +73,7 @@ Exceções ao CRUD legado genérico: `JobHistory` agora é lido de `maestro_job_
 
 | Domínio | Entidade | Operações chamadas no frontend | Principais consumidores |
 |---|---|---|---|
-| Plataforma/configuração | `AppConfig` | filter, create, update, delete | `AppConfigContext`, configurações de papéis/status/timezone e wallpaper de login |
+| Plataforma/configuração | `AppConfig` | filter, create, update | `AppConfigContext`, configurações de papéis/status/timezone e wallpaper de login |
 | CXM/atendimento | `AttendanceMessage` | list, filter | pipeline de cliente, supervisão e simulador de automações |
 | CXM/atendimento | `AttendanceEvaluation` | list, filter, create, update | painel de supervisão de atendimento |
 | CXM/WhatsApp | `ClientWhatsappNumber` | list, listar, criar, conectar, consultar status, criar/revogar link de setup | list genérico via `maestro-data`; demais ações via `whatsapp-send`; registros em `legacy_records` |
@@ -256,11 +257,9 @@ Classificação estática extraída de `src/App.jsx`. `protected:<page>` passa p
 | `/` | authenticated-redirect |
 | `/AdsBrain` | protected:AdsBrain |
 | `/Agenda` | protected:Agenda |
-| `/ClientPortfolio` | authenticated-redirect |
-| `/ClientWhatsappSetup` | public-token |
+| `/ClientPortfolio` | protected:ClientPortfolio |
 | `/Configuracoes` | protected:Configuracoes |
 | `/Conversations` | protected:Conversations |
-| `/CXM` | protected:CXM |
 | `/Dashboard` | protected:Dashboard |
 | `/Documentos` | protected:Documentos |
 | `/Financial` | protected:Financial |
@@ -270,13 +269,12 @@ Classificação estática extraída de `src/App.jsx`. `protected:<page>` passa p
 | `/Media` | protected:Media |
 | `/Production` | protected:Production |
 | `/Projects` | protected:Projects |
-| `/Proposals` | authenticated-redirect |
+| `/Proposals` | protected:Proposals |
 | `/Records` | protected:Records |
 | `/Recovery` | protected:Recovery |
 | `/Reports` | protected:Reports |
 | `/Settings` | protected:Settings |
 | `/Templates` | protected:Templates |
-| `/TestMaestroLab` | public-demo |
 
 ### Revalidação de isolamento e advisors na branch — 27/09/2026
 

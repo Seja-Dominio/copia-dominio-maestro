@@ -125,7 +125,13 @@ export function findUndocumentedInventoryItems({ routes, entities, document }) {
 export function findIncompleteEntityDispositions({ entities, dispositions }) {
   const byEntity = new Map(dispositions.map((item) => [item.entity, item]));
   const unclassified = entities.filter((entity) => !byEntity.has(entity));
-  const stale = dispositions.map((item) => item.entity).filter((entity) => !entities.includes(entity));
+  // CXM entries are retained as an independent-product backlog even when the
+  // current Maestro checkout intentionally has no route/adapter for them.
+  const externalBacklogDispositions = new Set(["cxm_domain_pending", "external_adapter_legacy"]);
+  const stale = dispositions
+    .filter((item) => !externalBacklogDispositions.has(item.disposition))
+    .map((item) => item.entity)
+    .filter((entity) => !entities.includes(entity));
   const missingContractFields = dispositions
     .filter((item) => ![item.source_of_truth, item.tenant_owner, item.validation_gate]
       .every((value) => typeof value === "string" && value.trim()))
@@ -133,11 +139,13 @@ export function findIncompleteEntityDispositions({ entities, dispositions }) {
   return { unclassified, stale, missingContractFields };
 }
 
-export function findLegacyCutoverStatusGaps({ entities, statuses }) {
+export function findLegacyCutoverStatusGaps({ entities, statuses, externalEntities = [] }) {
   const byEntity = new Map(statuses.map((item) => [item.entity, item]));
+  const external = new Set(externalEntities);
   const allowedStatuses = new Set(["not_started", "in_progress", "retired", "not_applicable"]);
   const missing = entities.filter((entity) => !byEntity.has(entity));
-  const stale = statuses.map((item) => item.entity).filter((entity) => !entities.includes(entity));
+  const stale = statuses.map((item) => item.entity)
+    .filter((entity) => !entities.includes(entity) && !external.has(entity));
   const invalid = statuses.filter((item) => !allowedStatuses.has(item.status)
     || !String(item.evidence || "").trim())
     .map(({ entity }) => entity);

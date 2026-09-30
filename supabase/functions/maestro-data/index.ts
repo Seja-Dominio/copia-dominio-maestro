@@ -141,7 +141,26 @@ type FilterOperator = {
   lte?: unknown;
   in?: unknown[];
   not_in?: unknown[];
+  include_null?: boolean;
 };
+
+const RELATIONAL_CORE_ENTITIES = new Set(["Client", "Project", "Job", "Subtask", "FinancialEntry", "AgendaEvent", "Timesheet", "Notification"]);
+const RELATIONAL_DOCUMENT_ENTITIES = new Set(["JobTemplate", "Proposal", "Note"]);
+const RELATIONAL_FINANCIAL_ENTITIES = new Set(["BankAccount", "FinancialCategory", "CostCenter"]);
+const RELATIONAL_INSIGHTS_ENTITIES = new Set(["NpsEntry", "NpsHistory"]);
+const RELATIONAL_CXM_ENTITIES = new Set(["WhatsappContact", "WhatsappGroup", "WhatsappAutomation"]);
+const RELATIONAL_COMMENT_ENTITIES = new Set(["Comment"]);
+const RELATIONAL_WEBHOOK_ENTITIES = new Set(["DominusWebhookParsed"]);
+
+function isRelationalEntity(entity: string) {
+  return RELATIONAL_CORE_ENTITIES.has(entity)
+    || RELATIONAL_DOCUMENT_ENTITIES.has(entity)
+    || RELATIONAL_FINANCIAL_ENTITIES.has(entity)
+    || RELATIONAL_INSIGHTS_ENTITIES.has(entity)
+    || RELATIONAL_CXM_ENTITIES.has(entity)
+    || RELATIONAL_COMMENT_ENTITIES.has(entity)
+    || RELATIONAL_WEBHOOK_ENTITIES.has(entity);
+}
 
 function normalizePageValue(value: unknown, fallback: number, maximum: number) {
   const parsed = Number(value);
@@ -154,7 +173,7 @@ async function listRows(organizationId: string, entity: string, options: ListRow
   const limit = normalizePageValue(options.limit, 100, 10_000);
   const filters = options.filters || {};
   const sort = typeof options.sort === "string" ? options.sort : "";
-  const descending = sort.startsWith("-");
+  const descending = sort ? sort.startsWith("-") : true;
   const sortField = descending ? sort.slice(1) : sort;
 
   let query = supabase
@@ -200,6 +219,115 @@ async function listRows(organizationId: string, entity: string, options: ListRow
     .range(offset, Math.max(offset, offset + limit - 1));
   if (error) throw error;
   return (data || []) as LegacyRow[];
+}
+
+async function listRelationalCoreRows(entity: string, organizationId: string, options: ListRowsOptions = {}) {
+  if (!isRelationalEntity(entity)) return null;
+  if (!organizationId) throw new Error("Sessão sem organização para leitura relacional");
+
+  const tableByEntity: Record<string, string> = {
+    Client: "maestro_clients",
+    Project: "maestro_projects",
+    Job: "maestro_jobs",
+    Subtask: "maestro_job_tasks",
+    FinancialEntry: "maestro_financial_entries",
+    AgendaEvent: "maestro_agenda_events",
+    Timesheet: "maestro_timesheets",
+    Notification: "maestro_notifications",
+    JobTemplate: "maestro_job_templates",
+    Proposal: "maestro_proposals",
+    Note: "maestro_notes",
+    BankAccount: "maestro_bank_accounts",
+    FinancialCategory: "maestro_financial_categories",
+    CostCenter: "maestro_cost_centers",
+    NpsEntry: "maestro_nps_entries",
+    NpsHistory: "maestro_nps_history",
+    WhatsappContact: "maestro_whatsapp_contacts",
+    WhatsappGroup: "maestro_whatsapp_groups",
+    WhatsappAutomation: "maestro_whatsapp_automations",
+    Comment: "maestro_job_comments",
+    DominusWebhookParsed: "maestro_webhook_parsed_messages",
+  };
+  const payloadColumn = entity === "JobTemplate" ? "template_payload"
+    : entity === "Proposal" ? "proposal_payload"
+      : entity === "Note" ? "note_payload"
+        : entity === "WhatsappAutomation" ? "automation_payload"
+          : ["BankAccount", "FinancialCategory", "CostCenter", "NpsEntry", "NpsHistory", "WhatsappContact", "WhatsappGroup", "Comment", "DominusWebhookParsed"].includes(entity)
+            ? "payload" : "source_payload";
+  const offset = normalizePageValue(options.offset, 0, 1_000_000);
+  const limit = normalizePageValue(options.limit, 100, 10_000);
+  const filters = options.filters || {};
+  const sort = typeof options.sort === "string" ? options.sort : "";
+  const descending = sort ? sort.startsWith("-") : true;
+  const sortField = descending ? sort.slice(1) : sort;
+  const fieldsByEntity: Record<string, Record<string, string>> = {
+    WhatsappAutomation: { kind: "kind", name: "name", active: "active", group_id: "group_id", schedule_time: "schedule_time", frequency: "frequency" },
+    Comment: { job_id: "job_legacy_record_id", created_by_id: "author_legacy_record_id", content: "content" },
+    DominusWebhookParsed: { message_id: "message_id", group_id: "group_id", text: "text_content", from_me: "from_me", media_kind: "media_kind", media_failed: "media_failed" },
+    WhatsappContact: { external_id: "external_id", instance: "instance", name: "name", phone: "phone" },
+    WhatsappGroup: { external_id: "external_id", instance: "instance", name: "name" },
+    NpsEntry: { client_id: "client_legacy_record_id", month: "month", monthly_score: "monthly_score", recorded_by: "recorded_by" },
+    NpsHistory: { client_id: "client_legacy_record_id", job_id: "job_legacy_record_id", event_type: "event_type", score_before: "score_before", score_after: "score_after" },
+    BankAccount: { name: "name", bank_name: "bank_name", account_type: "account_type", is_active: "is_active", balance: "balance" },
+    FinancialCategory: { name: "name", type: "category_type", category_type: "category_type", is_active: "is_active", order: "display_order" },
+    CostCenter: { name: "name", description: "description", is_active: "is_active" },
+    JobTemplate: { name: "name", content_type: "content_type", team: "team" },
+    Proposal: { title: "title", client_id: "client_legacy_record_id", status: "status" },
+    Note: { title: "title" },
+    Client: { name: "name", company_name: "company_name", status: "status", email: "email", phone: "phone", client_id: "legacy_record_id" },
+    Project: { name: "name", status: "status", client_id: "client_legacy_record_id", reference_month: "reference_month" },
+    Job: { title: "title", status: "status", content_type: "content_type", project_id: "project_legacy_record_id", client_id: "client_legacy_record_id", post_date: "post_date" },
+    Subtask: { title: "title", status: "status", job_id: "legacy_job_record_id", responsible_id: "responsible_id", deadline: "deadline", is_completed: "is_completed", order: "task_order" },
+    FinancialEntry: { type: "type", title: "title", amount: "amount", status: "status", category: "category", client_id: "client_legacy_record_id", due_date: "due_date", competence_date: "competence_date", billing_date: "billing_date", payment_date: "payment_date", bank_account_id: "bank_account_legacy_record_id" },
+    AgendaEvent: { title: "title", date: "event_date", status: "status", activity_type: "activity_type", client_id: "client_legacy_record_id", collaborator_id: "collaborator_id" },
+    Timesheet: { job_id: "legacy_job_record_id", client_id: "client_legacy_record_id", project_id: "project_legacy_record_id", collaborator_id: "collaborator_id", status: "status", is_running: "is_running", started_at: "started_at", ended_at: "ended_at" },
+    Notification: { user_id: "user_id", type: "type", title: "title", is_read: "is_read", entity_type: "entity_type", entity_id: "entity_id" },
+  };
+  const fields = fieldsByEntity[entity] || {};
+  if (sortField && !["created_date", "updated_date"].includes(sortField) && !fields[sortField]) return null;
+  let query = supabase.from(tableByEntity[entity])
+    .select(`legacy_record_id, ${payloadColumn}, created_at, updated_at`)
+    .eq("organization_id", organizationId);
+
+  for (const [field, expected] of Object.entries(filters)) {
+    if (!SAFE_PAYLOAD_FIELD.test(field)) continue;
+    const column = fields[field];
+    if (!column) return null;
+    const isOperator = Boolean(expected && typeof expected === "object" && !Array.isArray(expected));
+    if (isOperator) {
+      const operator = expected as FilterOperator;
+      if (operator.include_null === true) return null;
+      if (operator.eq !== undefined) query = query.eq(column, String(operator.eq));
+      if (operator.gt !== undefined) query = query.gt(column, String(operator.gt));
+      if (operator.in?.length) query = query.in(column, operator.in.map(String));
+      if (operator.not_in?.length) query = query.not(column, "in", `(${operator.not_in.map((value) => `"${String(value).replaceAll('"', '\\"')}"`).join(",")})`);
+      if (operator.gte !== undefined) query = query.gte(column, String(operator.gte));
+      if (operator.lt !== undefined) query = query.lt(column, String(operator.lt));
+      if (operator.lte !== undefined) query = query.lte(column, String(operator.lte));
+    } else if (expected === null) {
+      query = query.is(column, null);
+    } else if (Array.isArray(expected)) {
+      return null;
+    } else {
+      query = query.eq(column, String(expected));
+    }
+  }
+
+  const orderColumn = sortField === "created_date" ? "created_at"
+    : sortField === "updated_date" ? "updated_at"
+      : fields[sortField] || "updated_at";
+  const { data, error } = await query
+    .order(orderColumn, { ascending: !descending, nullsFirst: false })
+    .order("legacy_record_id", { ascending: true })
+    .range(offset, Math.max(offset, offset + limit - 1));
+  if (error) throw error;
+  return (data || []).map((row: Record<string, unknown>) => ({
+    entity,
+    record_id: String(row.legacy_record_id),
+    payload: (row[payloadColumn] || {}) as Record<string, unknown>,
+    source_created_at: row.created_at as string | null,
+    source_updated_at: row.updated_at as string | null,
+  })) as LegacyRow[];
 }
 
 function collaboratorAccessLevel(collaborator: Record<string, unknown>) {
@@ -371,13 +499,22 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   if (["list", "filter"].includes(operation)) {
     const limit = normalizePageValue(body.limit, 100, 10_000);
     const offset = normalizePageValue(body.offset, 0, 1_000_000);
-    const rows = await listRows(session.organization_id, entity, {
+    const readOptions = {
       filters: operation === "filter" ? (body.filters || {}) as Record<string, unknown> : {},
       sort: typeof body.sort === "string" ? body.sort : undefined,
       offset,
       limit,
-    });
-    return json({ data: rows.slice(0, Math.max(0, limit)).map((row) => sanitizePayload(entity, row.payload)) }, 200, origin);
+    };
+    const requestedRelational = body.read_source === "relational" && isRelationalEntity(entity);
+    let rows = requestedRelational
+      ? await listRelationalCoreRows(entity, session.organization_id, readOptions)
+      : null;
+    const actualReadSource = rows ? "relational" : "legacy";
+    if (!rows) rows = await listRows(session.organization_id, entity, readOptions);
+    return json({
+      data: rows.slice(0, Math.max(0, limit)).map((row) => sanitizePayload(entity, row.payload)),
+      ...(requestedRelational ? { read_source: actualReadSource } : {}),
+    }, 200, origin);
   }
 
   if (operation === "transferSubtasks") {

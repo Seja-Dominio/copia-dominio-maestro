@@ -54,6 +54,9 @@ const { unclassified: unclassifiedEntities, stale: staleDispositions,
 const legacyCutoverStatusGaps = findLegacyCutoverStatusGaps({
   entities: operationInventory.outsideRegistry,
   statuses: nonRegistryCutoverStatuses,
+  externalEntities: dispositions
+    .filter((item) => ["cxm_domain_pending", "external_adapter_legacy"].includes(item.disposition))
+    .map((item) => item.entity),
 });
 
 console.log(JSON.stringify({

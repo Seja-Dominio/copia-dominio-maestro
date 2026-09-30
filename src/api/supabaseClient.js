@@ -14,6 +14,12 @@ const environmentUrls = {
 const expectedUrl = environmentUrls[appEnvironment];
 const unsafeTarget = expectedUrl && url !== expectedUrl;
 export const isDevelopmentEnvironment = appEnvironment !== 'production' && url === environmentUrls.development;
+const relationalReadEntities = new Set(
+  String(import.meta.env.VITE_MAESTRO_RELATIONAL_READS || '')
+    .split(',')
+    .map((entity) => entity.trim())
+    .filter(Boolean),
+);
 
 const COLLABORATOR_STORAGE_KEY = 'collaborator';
 const COLLABORATOR_TOKEN_STORAGE_KEY = 'collaborator_session_token';
@@ -100,8 +106,11 @@ async function readEntity(body, { cache = true } = {}) {
     if (inflight) return inflight;
   }
 
-  const request = callMaestroData(body).then((result) => {
-    const value = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
+  const request = callMaestroData(body, { includeMetadata: true }).then((result) => {
+    const value = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+    if (body.read_source === 'relational' && result?.read_source !== 'relational') {
+      console.warn(`[Maestro] ${body.entity} continuou em legacy: filtro/capacidade relacional não suportados nesta consulta.`);
+    }
     if (cache) entityReadCache.set(key, { value, expiresAt: Date.now() + ENTITY_READ_CACHE_TTL });
     return value;
   }).finally(() => entityReadInflight.delete(key));
@@ -268,7 +277,7 @@ export async function loginCollaboratorWithSupabase({ login, password, organizat
   return { data };
 }
 
-export async function callMaestroData(body) {
+export async function callMaestroData(body, { includeMetadata = false } = {}) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
   const sessionToken = getStoredSessionToken();
@@ -285,13 +294,16 @@ export async function callMaestroData(body) {
   });
   const data = await response.json();
   if (!response.ok) throwSupabaseError(data, response, 'Erro ao acessar os dados do Maestro.');
-  return data.data;
+  return includeMetadata ? data : data.data;
 }
 
 function createEntityApi(entity) {
+  const withReadSource = (body) => relationalReadEntities.has(entity)
+    ? { ...body, read_source: 'relational' }
+    : body;
   return {
-    list: (sort, limit, options = {}) => readEntity({ operation: 'list', entity, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) }),
-    filter: (filters, sort, limit, options = {}) => readEntity({ operation: 'filter', entity, filters, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) }),
+    list: (sort, limit, options = {}) => readEntity(withReadSource({ operation: 'list', entity, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) })),
+    filter: (filters, sort, limit, options = {}) => readEntity(withReadSource({ operation: 'filter', entity, filters, sort, limit, ...(options.offset != null ? { offset: options.offset } : {}) })),
     create: async (data) => { const result = await callMaestroData({ operation: 'create', entity, data }); invalidateEntityReads(entity); return result; },
     update: async (id, data) => { const result = await callMaestroData({ operation: 'update', entity, id, data }); invalidateEntityReads(entity); return result; },
     delete: async (id) => { const result = await callMaestroData({ operation: 'delete', entity, id }); invalidateEntityReads(entity); return result; },
@@ -302,9 +314,9 @@ function createEntityApi(entity) {
 
       const poll = async () => {
         try {
-          const body = filters
+          const body = withReadSource(filters
             ? { operation: 'filter', entity, filters, sort, limit }
-            : { operation: 'list', entity, sort, limit };
+            : { operation: 'list', entity, sort, limit });
           const rows = await readEntity(body, { cache: false });
           const next = new Map(rows.map((row) => [row.id, row]));
           if (snapshot.size) {

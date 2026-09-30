@@ -128,6 +128,17 @@ test("requires source of truth, tenant owner, and a validation gate for every ou
   });
 });
 
+test("keeps explicit external-product dispositions outside active Maestro routes", () => {
+  assert.deepEqual(findIncompleteEntityDispositions({
+    entities: ["AppConfig"],
+    dispositions: [
+      { entity: "AppConfig", source_of_truth: "legacy", tenant_owner: "tenant", validation_gate: "test" },
+      { entity: "CXMSegment", disposition: "cxm_domain_pending", source_of_truth: "legacy", tenant_owner: "tenant", validation_gate: "test" },
+      { entity: "ClientWhatsappNumber", disposition: "external_adapter_legacy", source_of_truth: "provider plus legacy config", tenant_owner: "tenant", validation_gate: "test" },
+    ],
+  }), { unclassified: [], stale: [], missingContractFields: [] });
+});
+
 test("requires explicit legacy-retirement status and evidence for every out-of-registry entity", () => {
   assert.deepEqual(findLegacyCutoverStatusGaps({
     entities: ["Client", "MiniTask", "Supplier"],
@@ -142,4 +153,16 @@ test("requires explicit legacy-retirement status and evidence for every out-of-r
     stale: ["StaleEntity"],
     invalid: ["Client"],
   });
+});
+
+test("preserves cutover status for CXM entities outside the Maestro app inventory", () => {
+  assert.deepEqual(findLegacyCutoverStatusGaps({
+    entities: ["AppConfig"],
+    statuses: [
+      { entity: "AppConfig", status: "in_progress", evidence: "projection still active" },
+      { entity: "CXMSegment", status: "not_started", evidence: "belongs to separate CXM runtime" },
+      { entity: "ClientWhatsappNumber", status: "not_started", evidence: "provider-backed adapter remains external" },
+    ],
+    externalEntities: ["CXMSegment", "ClientWhatsappNumber"],
+  }), { missing: [], stale: [], invalid: [] });
 });
