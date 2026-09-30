@@ -121,3 +121,16 @@ test("team chat revalidates the active organization and scopes every channel, me
   assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, message_id: messageId/);
   assert.match(source, /\.eq\("organization_id", session\.organization_id \|\| ""\)/);
 });
+
+test("credential administration requires an active org admin and cannot overwrite global authorization profile", async () => {
+  const source = await fs.readFile(new URL("../hash-collaborator-password/index.ts", import.meta.url), "utf8");
+  assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(source, /session\.access_level !== "master" \|\| !organizationId/);
+  assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("collaborator_id", String\(collaboratorId\)\)/);
+  assert.match(source, /"Colaborador não encontrado nesta organização/);
+  assert.match(source, /\.update\(\{[\s\S]*?password_hash: hashedPassword/);
+  assert.doesNotMatch(source, /legacy_records|profile,\s*source_updated_at/);
+
+  const modal = await fs.readFile(new URL("../../../src/components/collaborators/AccessCredentialsModal.jsx", import.meta.url), "utf8");
+  assert.match(modal, /hashCollaboratorPassword\([\s\S]*?collaboratorId: collaborator\.id,[\s\S]*?login: formData\.login,[\s\S]*?\}\);[\s\S]*?maestro\.entities\.Collaborator\.update\(collaborator\.id/);
+});

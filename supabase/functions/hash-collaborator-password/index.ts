@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
-type Session = { sub: string; exp: number; access_level?: string };
+type Session = { sub: string; exp: number; access_level?: string; organization_id?: string };
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -48,7 +49,25 @@ async function verifySession(token: string): Promise<Session | null> {
     .select("id, is_active")
     .eq("id", session.sub)
     .maybeSingle();
-  return data?.is_active ? session : null;
+  if (!data?.is_active) return null;
+
+  let membershipsQuery = supabase
+    .from("organization_members")
+    .select("organization_id, role, status, organizations!inner(status)")
+    .eq("collaborator_id", session.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, session.organization_id);
+  if (!choice.ok) return null;
+  return {
+    ...session,
+    organization_id: choice.membership.organization_id,
+    access_level: accessLevelForOrganizationRole(choice.membership.organization_role),
+  };
 }
 
 function json(body: Record<string, unknown>, status = 200, origin = "") {
@@ -83,73 +102,47 @@ Deno.serve(async (request) => {
       return json({ error: "Apenas o Master pode alterar credenciais." }, 403, origin);
     }
 
-    const { collaboratorId, password, login, access_level, permissions } = await request.json();
+    const { collaboratorId, password, login } = await request.json();
     if (!collaboratorId || !password) {
       return json({ error: "collaboratorId e password são obrigatórios" }, 400, origin);
     }
 
+    const organizationId = String(session.organization_id || "");
+    if (session.access_level !== "master" || !organizationId) {
+      return json({ error: "Apenas um administrador da organização ativa pode alterar credenciais." }, 403, origin);
+    }
+
+    const { data: targetMembership, error: targetMembershipError } = await supabase
+      .from("organization_members")
+      .select("collaborator_id, status, organizations!inner(status)")
+      .eq("organization_id", organizationId)
+      .eq("collaborator_id", String(collaboratorId))
+      .eq("status", "active")
+      .eq("organizations.status", "active")
+      .maybeSingle();
+    if (targetMembershipError) throw targetMembershipError;
+    if (!targetMembership) return json({ error: "Colaborador não encontrado nesta organização." }, 404, origin);
+
     const { data: current, error: currentError } = await supabase
       .from("maestro_collaborators")
-      .select("profile")
+      .select("login")
       .eq("id", collaboratorId)
       .maybeSingle();
     if (currentError) throw currentError;
     if (!current) return json({ error: "Colaborador não encontrado" }, 404, origin);
 
-    const nextAccessLevel = String(access_level ?? current.profile?.access_level ?? "collaborator").toLowerCase();
-    const rawPermissions = permissions && typeof permissions === "object" ? permissions as Record<string, unknown> : null;
-    const rawTabs = rawPermissions?.tabs && typeof rawPermissions.tabs === "object" ? rawPermissions.tabs as Record<string, unknown> : null;
-    const normalizedPermissions = rawPermissions && rawTabs
-      ? {
-          ...rawPermissions,
-          tabs: {
-            ...rawTabs,
-            Financial: ["gestor", "master"].includes(nextAccessLevel) && rawTabs.Financial === true,
-          },
-        }
-      : undefined;
     const hashedPassword = await hashPassword(String(password));
-    const profile = {
-      ...(current.profile || {}),
-      ...(login !== undefined ? { login: String(login) } : {}),
-      ...(access_level !== undefined ? { access_level: nextAccessLevel } : {}),
-      ...(normalizedPermissions !== undefined ? { permissions: normalizedPermissions } : {}),
-      id: collaboratorId,
-    };
     const now = new Date().toISOString();
 
     const { error: authError } = await supabase
       .from("maestro_collaborators")
       .update({
-        login: String(login ?? current.profile?.login ?? collaboratorId),
+        login: String(login ?? current.login ?? collaboratorId),
         password_hash: hashedPassword,
-        profile,
         source_updated_at: now,
       })
       .eq("id", collaboratorId);
     if (authError) throw authError;
-
-    const { data: legacy, error: legacyReadError } = await supabase
-      .from("legacy_records")
-      .select("payload")
-      .eq("entity", "Collaborator")
-      .eq("record_id", collaboratorId)
-      .maybeSingle();
-    if (legacyReadError) throw legacyReadError;
-
-    if (legacy) {
-      const payload = {
-        ...(legacy.payload || {}),
-        ...profile,
-        password_hash: hashedPassword,
-      };
-      const { error: legacyError } = await supabase
-        .from("legacy_records")
-        .update({ payload, source_updated_at: now })
-        .eq("entity", "Collaborator")
-        .eq("record_id", collaboratorId);
-      if (legacyError) throw legacyError;
-    }
 
     return json({ success: true }, 200, origin);
   } catch (error) {

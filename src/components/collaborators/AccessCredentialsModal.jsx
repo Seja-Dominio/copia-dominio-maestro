@@ -67,17 +67,15 @@ export default function AccessCredentialsModal({
             collaboratorId: collaborator.id,
             password: formData.password_hash,
             login: formData.login,
-            access_level: formData.access_level,
-            permissions: formData.permissions,
-          });
-        } else {
-          // Permite ajustar somente as permissões sem obrigar a redefinir a senha.
-          await maestro.entities.Collaborator.update(collaborator.id, {
-            login: formData.login,
-            access_level: formData.access_level,
-            permissions: formData.permissions,
           });
         }
+        // Role/permissões pertencem à organização ativa e são salvas pelo
+        // endpoint relacional tenant-scoped; credenciais continuam globais.
+        await maestro.entities.Collaborator.update(collaborator.id, {
+          login: formData.login,
+          access_level: formData.access_level,
+          permissions: formData.permissions,
+        });
       }
       onSaved?.();
       onClose();
