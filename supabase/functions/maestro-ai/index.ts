@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -558,6 +559,14 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
   }
   if (name === "consultar_comercial") {
     if (!canUse(session, "commercial")) return { acesso_negado: true, motivo: "A área Comercial exige a aba Propostas habilitada para este usuário." };
+    const { data: products, error: productsError } = await db.from("organization_products")
+      .select("product_key,status")
+      .eq("organization_id", session.organization_id)
+      .eq("product_key", "cxm");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products || [], "cxm")) {
+      return { acesso_negado: true, motivo: "A área Comercial exige o produto CXM habilitado para esta organização." };
+    }
     const proposals = await listRows("Proposal", session.organization_id);
     const matches = (row: Row) => textMatches(`${row.payload.title} ${row.payload.name} ${row.payload.client_name}`, search) && textMatches(row.payload.status, String(args.status || ""));
     const result: Record<string, unknown> = { ...sourceMeta({ modulo: "Comercial" }), propostas: proposals.filter(matches).slice(0, limit).map(row => {

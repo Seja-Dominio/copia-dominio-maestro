@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, organizationRoleForAccessLevel, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { entityHasProductClassification, hasEntityProductAccess } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -284,6 +285,23 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   const isGroupSession = session?.scope === "group";
   if (isGroupSession && !["Job", "Subtask", "AgendaEvent"].includes(entity)) {
     return json({ error: "A sessão do grupo só pode consultar dados operacionais" }, 403, origin);
+  }
+
+  const { data: registryEntry, error: registryError } = await supabase
+    .from("legacy_cutover_registry")
+    .select("module_key")
+    .eq("entity", entity)
+    .maybeSingle();
+  if (registryError) throw registryError;
+  if (entityHasProductClassification(entity, registryEntry?.module_key)) {
+    const { data: products, error: productsError } = await supabase
+      .from("organization_products")
+      .select("product_key,status")
+      .eq("organization_id", session.organization_id);
+    if (productsError) throw productsError;
+    if (!hasEntityProductAccess(entity, registryEntry?.module_key, products || [])) {
+      return json({ error: "Produto não habilitado para esta organização" }, 403, origin);
+    }
   }
 
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);
