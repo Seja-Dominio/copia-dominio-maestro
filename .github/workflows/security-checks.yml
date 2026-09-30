@@ -30,7 +30,7 @@ jobs:
         run: supabase db reset --local --no-seed
       - name: Lint the resulting public schema
         run: supabase db lint --local --schema public --level error
-      - name: Verify RLS isolation and tenant-aware foreign keys
+      - name: Verify RLS isolation, tenant-aware foreign keys, and core integrity audit
         shell: bash
         run: |
           mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
@@ -39,6 +39,7 @@ jobs:
             exit 1
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/audit_core_tenant_integrity.sql
 
   unit-tests:
     name: Authorization and regression tests
