@@ -119,6 +119,7 @@
     "vite": "^6.1.0"
   },
   "overrides": {
+    "axios": "1.20.0",
     "ws": "8.21.0",
     "engine.io-client": {
       "ws": "8.21.0"
