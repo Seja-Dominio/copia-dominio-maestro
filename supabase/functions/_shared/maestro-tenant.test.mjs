@@ -215,6 +215,9 @@ test("public job approval links resolve the tenant from the signed job and keep 
   assert.match(source, /organization_id: organizationId,[\s\S]{0,80}payload: nextPayload/);
   assert.match(source, /await updateRecord\("Job", String\(jobId\), organizationId/);
   assert.match(source, /createRecord\("Notification", organizationId/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "maestro"\)/);
+  assert.match(source, /if \(!hasActiveOrganizationProduct\(products, "maestro"\)\)/);
+  assert.ok(source.indexOf('if (!hasActiveOrganizationProduct(products, "maestro"))') < source.indexOf('if (action === "load")'));
 });
 
 test("file upload uses tenant paths and signed URL refresh requires membership and job attachment access", async () => {

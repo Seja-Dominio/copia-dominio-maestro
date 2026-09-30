@@ -272,13 +272,19 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 - `admin-timesheets` já exigia sessão válida, membership ativa no tenant e papel master, e delegava exclusão/reset a RPCs tenant-scoped. Agora também exige entitlement `maestro` ativo e não expirado, validado antes de aceitar as operações administrativas, inclusive limpeza em massa e reset.
 - O acesso a `organization_products` falha fechado em erro ou entitlement ausente/expirado. Regressão adicionada ao teste do endpoint; suíte Node 36/36, bundle esbuild e `git diff --check` passaram localmente.
-- Patch aguarda commit/CI; nenhuma operação real de timesheet nem alteração remota foi executada.
+- Commit `a5caaa10` enviado à branch candidata; CI `36768493342` passou integralmente, com replay de migrations, lint do schema, isolamento SQL e análises de segurança. Nenhuma operação real de timesheet nem alteração remota foi executada.
 
 ### Entitlement Maestro no chat interno e administração de credenciais — 30/09/2026
 
 - `team-chat` e `hash-collaborator-password` validam agora entitlement Maestro não expirado para a organização selecionada antes de entregar canais/mensagens ou alterar credenciais. Erro ao consultar produto falha fechado; as regras de membership e escopo já existentes permanecem.
 - Testes de regressão verificam a consulta por organização, inclusão de `expires_at` e precedência do gate sobre as operações protegidas. Suíte Node local 36/36, bundles das Edge Functions e `git diff --check` passaram.
-- Alterações ainda locais e sem CI; nenhum conteúdo de chat ou credencial foi lido/alterado em ambiente remoto.
+- Commit `a391dc1e` enviado à branch candidata; CI `36768766356` passou na suíte de regressão/autorização e nas verificações de segurança já concluídas; replay clean-room ainda executando nesta atualização. Nenhum conteúdo de chat ou credencial foi lido/alterado em ambiente remoto.
+
+### Entitlement Maestro na aprovação pública de Jobs — 30/09/2026
+
+- A rota de aprovação pública mantém o token assinado e o tenant obtido do Job, mas agora exige também entitlement Maestro vigente para essa organização antes de carregar o Job/attachments ou executar aprovação, feedback, histórico e notificação.
+- Regressão assegura a consulta de `organization_products` no tenant resolvido, incluindo `expires_at`, e que o gate precede a ação `load`. Suíte Node local 36/36, bundle esbuild e `git diff --check` passaram.
+- A mudança ainda não foi enviada/validada por CI; nenhum link real ou estado remoto foi alterado.
 
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 

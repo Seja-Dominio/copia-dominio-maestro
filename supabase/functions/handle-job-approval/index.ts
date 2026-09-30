@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -149,6 +150,15 @@ Deno.serve(async (request) => {
     if (!jobRecord?.payload || !jobRecord.organization_id) return json({ error: "Job não encontrado" }, 404, origin);
     const job = jobRecord.payload;
     const organizationId = jobRecord.organization_id;
+
+    const { data: products, error: productsError } = await supabase.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", organizationId)
+      .eq("product_key", "maestro");
+    if (productsError) throw productsError;
+    if (!hasActiveOrganizationProduct(products, "maestro")) {
+      return json({ error: "O produto Maestro não está habilitado para esta organização." }, 403, origin);
+    }
 
     if (action === "load") return json({ job: await refreshJobAttachments(job) }, 200, origin);
     if (job.status !== "internal_approval" && job.status !== "client_approval") {
