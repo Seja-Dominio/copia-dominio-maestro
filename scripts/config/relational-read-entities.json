@@ -1,0 +1,23 @@
+[
+  "Client",
+  "Project",
+  "Job",
+  "Subtask",
+  "FinancialEntry",
+  "AgendaEvent",
+  "Timesheet",
+  "Notification",
+  "JobTemplate",
+  "Proposal",
+  "Note",
+  "BankAccount",
+  "FinancialCategory",
+  "CostCenter",
+  "NpsEntry",
+  "NpsHistory",
+  "WhatsappContact",
+  "WhatsappGroup",
+  "WhatsappAutomation",
+  "Comment",
+  "DominusWebhookParsed"
+]
