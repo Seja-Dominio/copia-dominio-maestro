@@ -245,12 +245,12 @@ export function refreshFileUrlFromSupabase(path) {
   return invokeSupabaseFunction('refresh-file-url', { path }).then((data) => data.file_url || '');
 }
 
-export async function loginCollaboratorWithSupabase({ login, password }) {
+export async function loginCollaboratorWithSupabase({ login, password, organization_id }) {
   assertSafeTarget();
   if (!supabase) throw new Error('Supabase não está configurado neste ambiente.');
 
   const { data, error } = await supabase.functions.invoke('collaborator-login', {
-    body: { login, password },
+    body: { login, password, ...(organization_id ? { organization_id } : {}) },
   });
   if (error) {
     // The Supabase SDK keeps the Edge Function response in `context`; expose

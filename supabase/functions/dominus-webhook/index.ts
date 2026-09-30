@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { selectUniqueGroupOrganization } from "../_shared/maestro-tenant.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -402,15 +403,26 @@ function encode(value: string) {
   return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function signMaestroSession(subject: string, groupId = "") {
+async function signMaestroSession(subject: string, groupId = "", organizationId = "") {
   const secret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
   if (!secret) throw new Error("MAESTRO_SESSION_SECRET não configurado");
   const body = encode(JSON.stringify(groupId
-    ? { sub: `group:${groupId}`, scope: "group", group_id: groupId, exp: Math.floor(Date.now() / 1000) + 300 }
+    ? { sub: `group:${groupId}`, scope: "group", group_id: groupId, organization_id: organizationId, exp: Math.floor(Date.now() / 1000) + 300 }
     : { sub: subject, scope: "user", exp: Math.floor(Date.now() / 1000) + 300 }));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
   return `${body}.${encode(String.fromCharCode(...new Uint8Array(signature)))}`;
+}
+
+async function organizationForAuthorizedGroup(groupId: string) {
+  const { data, error } = await supabase
+    .from("maestro_whatsapp_groups")
+    .select("organization_id, organizations!inner(status)")
+    .eq("external_id", groupId)
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (error) throw error;
+  return selectUniqueGroupOrganization(data);
 }
 
 async function signHermesBridgeRequest(timestamp: string, body: string) {
@@ -464,7 +476,9 @@ async function askMaestro(subject: { groupId?: string; collaboratorId?: string }
   if (!baseUrl) throw new Error("SUPABASE_URL não configurado");
   const groupId = String(subject.groupId || "");
   const collaboratorId = String(subject.collaboratorId || "");
-  const token = await signMaestroSession(collaboratorId || groupId, groupId);
+  const organizationId = groupId ? await organizationForAuthorizedGroup(groupId) : "";
+  if (groupId && !organizationId) throw new Error("O grupo não tem vínculo único com uma organização ativa.");
+  const token = await signMaestroSession(collaboratorId || groupId, groupId, organizationId || "");
   const bridgeUrl = Deno.env.get("DOMINUS_HERMES_BRIDGE_URL")?.replace(/\/$/, "");
   if (!bridgeUrl) throw new Error("DOMINUS_HERMES_BRIDGE_URL não configurado");
   const memoryContext = memory.length

@@ -15,6 +15,8 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
   const [isLoginExpanded, setIsLoginExpanded] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installMessage, setInstallMessage] = useState("");
+  const [organizations, setOrganizations] = useState([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
 
   const whatsappNumber = String(import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER || "92984523753").replace(/\D/g, "");
   const whatsappMessage = encodeURIComponent("Olá! Preciso de ajuda para recuperar meu acesso ao Domínio Maestro.");
@@ -100,10 +102,20 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
         setError(error?.message || "Não foi possível validar seu e-mail. Tente novamente.");
         return;
       }
-      const response = await loginCollaborator({ login, password });
+      const response = await loginCollaborator({
+        login,
+        password,
+        ...(selectedOrganizationId ? { organization_id: selectedOrganizationId } : {}),
+      });
       const data = response.data;
 
       if (!data.success) {
+        if (data.organization_required && Array.isArray(data.organizations)) {
+          setOrganizations(data.organizations);
+          setSelectedOrganizationId("");
+          setIsLoginExpanded(true);
+          return;
+        }
         setError(data.error || "Usuário ou senha incorretos");
         return;
       }
@@ -220,13 +232,36 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
                 </button>
               </div>
             </div>
+
+            {organizations.length > 0 && (
+              <div>
+                <label htmlFor="collaborator-organization" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground">
+                  Organização
+                </label>
+                <select
+                  id="collaborator-organization"
+                  value={selectedOrganizationId}
+                  onChange={(event) => setSelectedOrganizationId(event.target.value)}
+                  disabled={loading}
+                  required
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="">Selecione sua organização</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.organization_id} value={organization.organization_id}>
+                      {organization.organization_name || organization.organization_slug || "Organização"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             </div>
           </div>
 
           {/* Botão sempre visível para indicar a região de acesso */}
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || (organizations.length > 0 && !selectedOrganizationId)}
             aria-busy={loading}
             onClick={(event) => {
               if (!login || !password) {

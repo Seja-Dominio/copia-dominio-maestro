@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 type CollaboratorRow = {
   id: string;
@@ -90,7 +91,7 @@ Deno.serve(async (request) => {
     if (!sessionSecret) return json({ error: "Autenticação indisponível: segredo de sessão não configurado." }, 503, origin);
     if (request.method !== "POST") return json({ error: "Método não permitido" }, 405, origin);
 
-    const { login, password } = await request.json();
+    const { login, password, organization_id: requestedOrganizationId } = await request.json();
     if (!login || !password) {
       return json({ error: "Login e senha são obrigatórios" }, 400, origin);
     }
@@ -109,6 +110,33 @@ Deno.serve(async (request) => {
     if (!data.is_active) {
       return json({ error: "Sua conta está desativada. Contate o administrador." }, 403, origin);
     }
+
+    const { data: memberships, error: membershipError } = await supabase
+      .from("organization_members")
+      .select("organization_id, role, status, organizations!inner(name, slug, status)")
+      .eq("collaborator_id", data.id)
+      .eq("status", "active")
+      .eq("organizations.status", "active")
+      .limit(100);
+    if (membershipError) throw membershipError;
+
+    const organizationChoice = selectOrganizationMembership(memberships, requestedOrganizationId);
+    if (!organizationChoice.ok && organizationChoice.reason === "organization_required") {
+      return json({
+        success: false,
+        organization_required: true,
+        organizations: organizationChoice.organizations,
+        error: "Selecione a organização para continuar.",
+      }, 200, origin);
+    }
+    if (!organizationChoice.ok) {
+      return json({
+        error: organizationChoice.reason === "not_a_member"
+          ? "Você não tem acesso à organização selecionada."
+          : "Sua conta não está vinculada a uma organização ativa. Contate o administrador.",
+      }, 403, origin);
+    }
+    const membership = organizationChoice.membership;
 
     if (passwordCheck.needsRehash) {
       const passwordHash = await hashPassword(String(password));
@@ -136,12 +164,18 @@ Deno.serve(async (request) => {
       }
     }
 
-    const rawAccessLevel = String(data.profile?.access_level || "collaborator").toLowerCase();
-    const accessLevel = rawAccessLevel === "admin" ? "master" : rawAccessLevel;
-    const collaborator = { ...data.profile, access_level: accessLevel };
+    const accessLevel = accessLevelForOrganizationRole(membership.organization_role);
+    const collaborator = {
+      ...data.profile,
+      access_level: accessLevel,
+      organization_id: membership.organization_id,
+      organization_name: membership.organization_name,
+      organization_role: membership.organization_role,
+    };
     const sessionToken = await signSession({
       sub: data.id,
       access_level: accessLevel,
+      organization_id: membership.organization_id,
       exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60),
     });
 

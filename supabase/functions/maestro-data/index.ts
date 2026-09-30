@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, organizationRoleForAccessLevel, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -14,7 +15,7 @@ function corsHeaders(origin = "") {
   };
 }
 
-type Session = { sub: string; exp: number; access_level?: string; scope?: "user" | "group"; group_id?: string };
+type Session = { sub: string; exp: number; access_level?: string; organization_id?: string; scope?: "user" | "group"; group_id?: string };
 type LegacyRow = {
   entity: string;
   record_id: string;
@@ -56,25 +57,37 @@ async function verifySession(token: string): Promise<Session | null> {
   if (!session.sub || !session.exp || session.exp < Math.floor(Date.now() / 1000)) return null;
 
   if (session.scope === "group" && typeof session.group_id === "string" && session.group_id.endsWith("@g.us")) {
+    if (!session.organization_id) return null;
     return {
       ...session,
       access_level: "collaborator",
     };
   }
 
-  const { data } = await supabase
+  const { data: collaborator, error: collaboratorError } = await supabase
     .from("maestro_collaborators")
     .select("id, is_active, profile")
     .eq("id", session.sub)
     .maybeSingle();
-  if (!data?.is_active) return null;
+  if (collaboratorError || !collaborator?.is_active) return null;
 
-  const profile = (data.profile || {}) as Record<string, unknown>;
-  const rawAccessLevel = String(profile.access_level || session.access_level || "collaborator").toLowerCase();
-  const accessLevel = rawAccessLevel === "admin" ? "master" : rawAccessLevel;
+  let membershipsQuery = supabase
+    .from("organization_members")
+    .select("organization_id, role, status, organizations!inner(status)")
+    .eq("collaborator_id", session.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const organizationChoice = selectOrganizationMembership(memberships, session.organization_id);
+  if (!organizationChoice.ok) return null;
+  const membership = organizationChoice.membership;
   return {
     ...session,
-    access_level: accessLevel,
+    organization_id: membership.organization_id,
+    access_level: accessLevelForOrganizationRole(membership.organization_role),
   };
 }
 
@@ -135,7 +148,7 @@ function normalizePageValue(value: unknown, fallback: number, maximum: number) {
   return Math.min(maximum, Math.max(0, Math.floor(parsed)));
 }
 
-async function listRows(entity: string, options: ListRowsOptions = {}) {
+async function listRows(organizationId: string, entity: string, options: ListRowsOptions = {}) {
   const offset = normalizePageValue(options.offset, 0, 1_000_000);
   const limit = normalizePageValue(options.limit, 100, 10_000);
   const filters = options.filters || {};
@@ -146,7 +159,8 @@ async function listRows(entity: string, options: ListRowsOptions = {}) {
   let query = supabase
     .from("legacy_records")
     .select("entity, record_id, payload, source_created_at, source_updated_at")
-    .eq("entity", entity);
+    .eq("entity", entity)
+    .eq("organization_id", organizationId);
 
   // Filter inside Postgres so the Edge Function does not download the full
   // entity before applying a small UI limit.
@@ -203,7 +217,7 @@ function dashboardCollaborator(row: Record<string, unknown>) {
   };
 }
 
-async function dashboardData(session?: Session) {
+async function dashboardData(session: Session) {
   const requests = [
     ["projects", "Project", "-created_date", 50],
     ["jobs", "Job", "-post_date", 5000],
@@ -216,7 +230,7 @@ async function dashboardData(session?: Session) {
   ] as const;
 
   const values = await Promise.all(requests.map(async ([key, entity, sort, limit]) => {
-    const rows = await listRows(entity, { sort, limit });
+    const rows = await listRows(String(session.organization_id || ""), entity, { sort, limit });
     return [key, rows.slice(0, limit).map((row) => compactDashboardPayload(entity, row.payload))] as const;
   }));
 
@@ -259,6 +273,7 @@ async function dashboardData(session?: Session) {
 }
 
 async function handleOperation(body: Record<string, unknown>, origin = "", session?: Session) {
+  if (!session?.organization_id) return json({ error: "Sessão sem organização ativa" }, 403, origin);
   const operation = String(body.operation || "list");
   if (operation === "dashboard") {
     return json({ data: await dashboardData(session) }, 200, origin);
@@ -329,7 +344,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   if (["list", "filter"].includes(operation)) {
     const limit = normalizePageValue(body.limit, 100, 10_000);
     const offset = normalizePageValue(body.offset, 0, 1_000_000);
-    const rows = await listRows(entity, {
+    const rows = await listRows(session.organization_id, entity, {
       filters: operation === "filter" ? (body.filters || {}) as Record<string, unknown> : {},
       sort: typeof body.sort === "string" ? body.sort : undefined,
       offset,
@@ -347,8 +362,8 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
     }
 
     const [subtaskRows, collaboratorRows] = await Promise.all([
-      listRows("Subtask", { filters: { responsible_id: sourceUserId }, limit: 10_000 }),
-      listRows("Collaborator", { limit: 100 }),
+      listRows(session.organization_id, "Subtask", { filters: { responsible_id: sourceUserId }, limit: 10_000 }),
+      listRows(session.organization_id, "Collaborator", { limit: 100 }),
     ]);
     const target = collaboratorRows.find((row) => row.record_id === targetUserId && row.payload?.is_active !== false);
     if (!target) return json({ error: "Usuário de destino não encontrado ou inativo" }, 404, origin);
@@ -370,7 +385,8 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
       source_created_at: row.source_created_at || row.payload?.created_date || now,
       source_updated_at: now,
     }));
-    const { error } = await supabase.from("legacy_records").upsert(rows, { onConflict: "entity,record_id" });
+    const scopedRows = rows.map((row) => ({ ...row, organization_id: session.organization_id }));
+    const { error } = await supabase.from("legacy_records").upsert(scopedRows, { onConflict: "entity,record_id" });
     if (error) throw error;
     return json({ data: { updatedCount: rows.length, updatedIds: rows.map((row) => row.record_id), targetName } }, 200, origin);
   }
@@ -393,6 +409,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
         .select("record_id, payload")
         .eq("entity", "Collaborator")
         .eq("record_id", collaboratorId)
+        .eq("organization_id", session.organization_id)
         .maybeSingle();
       if (!recipient || recipient.payload?.is_active === false) {
         return json({ error: "O responsável selecionado não está ativo" }, 400, origin);
@@ -410,6 +427,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
       : String(payload.id || crypto.randomUUID().replaceAll("-", ""));
     if (!recordId) return json({ error: "ID inválido" }, 400, origin);
 
+    delete payload.organization_id;
     let nextPayload = { ...payload, id: recordId };
     if (operation === "update") {
       const { data: current, error: currentError } = await supabase
@@ -417,8 +435,10 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
         .select("payload")
         .eq("entity", entity)
         .eq("record_id", recordId)
+        .eq("organization_id", session.organization_id)
         .maybeSingle();
       if (currentError) throw currentError;
+      if (!current) return json({ error: "Registro não encontrado nesta organização" }, 404, origin);
       if (canMarkOwnNotificationRead) {
         const ownerId = current?.payload?.user_id || current?.payload?.collaborator_id;
         if (String(ownerId || "") !== String(session?.sub || "")) {
@@ -448,6 +468,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
     const { error } = await supabase.from("legacy_records").upsert({
       entity,
       record_id: recordId,
+      organization_id: session.organization_id,
       payload: nextPayload,
       source_created_at: nextPayload.created_date || now,
       source_updated_at: now,
@@ -476,6 +497,14 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
         source_updated_at: now,
       }, { onConflict: "id" });
       if (authError) throw authError;
+
+      const { error: membershipWriteError } = await supabase.from("organization_members").upsert({
+        organization_id: session.organization_id,
+        collaborator_id: recordId,
+        role: organizationRoleForAccessLevel(nextPayload.access_level),
+        status: nextPayload.is_active === false ? "suspended" : "active",
+      }, { onConflict: "organization_id,collaborator_id" });
+      if (membershipWriteError) throw membershipWriteError;
     }
 
     return json({ data: sanitizePayload(entity, nextPayload) }, 200, origin);
@@ -488,7 +517,8 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
       const id = String(payload.id || crypto.randomUUID().replaceAll("-", ""));
       payload.id = id;
       const now = new Date().toISOString();
-      return { entity, record_id: id, payload, source_created_at: payload.created_date || now, source_updated_at: now };
+      delete payload.organization_id;
+      return { entity, record_id: id, organization_id: session.organization_id, payload, source_created_at: payload.created_date || now, source_updated_at: now };
     });
     const { error } = await supabase.from("legacy_records").upsert(rows, { onConflict: "entity,record_id" });
     if (error) throw error;
@@ -497,7 +527,10 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   if (operation === "delete") {
     const recordId = String(body.id || "");
-    const { error } = await supabase.from("legacy_records").delete().eq("entity", entity).eq("record_id", recordId);
+    const { error } = await supabase.from("legacy_records").delete()
+      .eq("entity", entity)
+      .eq("record_id", recordId)
+      .eq("organization_id", session.organization_id);
     if (error) throw error;
     return json({ data: { id: recordId } }, 200, origin);
   }

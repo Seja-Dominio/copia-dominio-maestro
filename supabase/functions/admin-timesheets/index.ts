@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -14,15 +15,14 @@ function corsHeaders(origin = "") {
   };
 }
 
-type Session = { sub: string; exp: number };
-type LegacyRow = { payload: Record<string, unknown>; record_id: string };
+type Session = { sub: string; exp: number; organization_id?: string };
 
 function decode(value: string) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   return atob(padded);
 }
 
-async function getAdminSession(token: string): Promise<{ session: Session; collaborator: Record<string, unknown> } | null> {
+async function getAdminSession(token: string): Promise<{ session: Session & { organization_id: string }; collaborator: Record<string, unknown> } | null> {
   const [body, signature] = token.split(".");
   if (!body || !signature) return null;
 
@@ -56,9 +56,22 @@ async function getAdminSession(token: string): Promise<{ session: Session; colla
     .maybeSingle();
   if (error || !data?.is_active) return null;
 
-  const accessLevel = data.profile?.access_level;
-  if (accessLevel !== "master") return null;
-  return { session, collaborator: data.profile || {} };
+  let membershipsQuery = supabase
+    .from("organization_members")
+    .select("organization_id, role, status, organizations!inner(status)")
+    .eq("collaborator_id", session.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, session.organization_id);
+  if (!choice.ok || accessLevelForOrganizationRole(choice.membership.organization_role) !== "master") return null;
+  return {
+    session: { ...session, organization_id: choice.membership.organization_id },
+    collaborator: data.profile || {},
+  };
 }
 
 function json(body: Record<string, unknown>, status = 200, origin = "") {
@@ -68,60 +81,13 @@ function json(body: Record<string, unknown>, status = 200, origin = "") {
   });
 }
 
-async function findTimesheet(id: string) {
-  const { data, error } = await supabase
-    .from("legacy_records")
-    .select("payload, record_id")
-    .eq("entity", "Timesheet")
-    .eq("record_id", id)
-    .maybeSingle<LegacyRow>();
+async function runTimesheetOperation(
+  rpc: "maestro_delete_timesheets_with_audit" | "maestro_reset_running_timesheets",
+  args: Record<string, unknown>,
+) {
+  const { data, error } = await supabase.rpc(rpc, args);
   if (error) throw error;
-  return data;
-}
-
-async function writeDeleteLog(timesheet: Record<string, unknown>, actor: { session: Session; collaborator: Record<string, unknown> }, reason: string, deletedAt: string) {
-  const { error } = await supabase.from("legacy_records").upsert({
-    entity: "DeleteLog",
-    record_id: crypto.randomUUID().replaceAll("-", ""),
-    payload: {
-      entity_type: "timesheet",
-      entity_id: timesheet.id,
-      entity_data: timesheet,
-      deleted_by: actor.session.sub,
-      deleted_by_name: actor.collaborator.name || actor.collaborator.full_name || "Master",
-      deleted_at: deletedAt,
-      reason,
-      is_restored: false,
-    },
-    source_created_at: deletedAt,
-    source_updated_at: deletedAt,
-  });
-  if (error) throw error;
-}
-
-async function deleteOne(id: string, actor: { session: Session; collaborator: Record<string, unknown> }, reason: string, deletedAt: string) {
-  const row = await findTimesheet(id);
-  if (!row) return false;
-  await writeDeleteLog(row.payload, actor, reason, deletedAt);
-  const { error } = await supabase.from("legacy_records").delete().eq("entity", "Timesheet").eq("record_id", id);
-  if (error) throw error;
-  return true;
-}
-
-async function listTimesheets() {
-  const rows: LegacyRow[] = [];
-  const pageSize = 1000;
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("legacy_records")
-      .select("payload, record_id")
-      .eq("entity", "Timesheet")
-      .range(offset, offset + pageSize - 1);
-    if (error) throw error;
-    rows.push(...((data || []) as LegacyRow[]));
-    if (!data || data.length < pageSize) break;
-  }
-  return rows;
+  return Number(data || 0);
 }
 
 Deno.serve(async (request) => {
@@ -135,41 +101,37 @@ Deno.serve(async (request) => {
 
     const body = await request.json();
     const action = String(body.action || "");
-    const now = new Date().toISOString();
 
     if (action === "delete") {
       const id = String(body.timesheetId || body.id || "");
       if (!id) return json({ error: "timesheetId obrigatório" }, 400, origin);
-      const deleted = await deleteOne(id, actor, "", now);
-      return deleted ? json({ success: true, message: "Timesheet excluído e registrado" }, 200, origin) : json({ error: "Timesheet não encontrado" }, 404, origin);
+      const deletedCount = await runTimesheetOperation("maestro_delete_timesheets_with_audit", {
+        p_organization_id: actor.session.organization_id,
+        p_record_ids: [id],
+        p_actor_id: actor.session.sub,
+        p_actor_name: String(actor.collaborator.name || actor.collaborator.full_name || "Master"),
+        p_reason: "",
+      });
+      return deletedCount > 0
+        ? json({ success: true, message: "Timesheet excluído e registrado" }, 200, origin)
+        : json({ error: "Timesheet não encontrado" }, 404, origin);
     }
 
     if (action === "clear") {
-      const rows = await listTimesheets();
-      let deletedCount = 0;
-      for (const row of rows) {
-        try {
-          if (await deleteOne(row.record_id, actor, "Limpeza em massa do sistema", now)) deletedCount++;
-        } catch (error) {
-          console.error(`Erro ao excluir timesheet ${row.record_id}:`, error);
-        }
-      }
+      const deletedCount = await runTimesheetOperation("maestro_delete_timesheets_with_audit", {
+        p_organization_id: actor.session.organization_id,
+        p_record_ids: null,
+        p_actor_id: actor.session.sub,
+        p_actor_name: String(actor.collaborator.name || actor.collaborator.full_name || "Master"),
+        p_reason: "Limpeza em massa do sistema",
+      });
       return json({ success: true, deletedCount, message: `${deletedCount} timesheets excluídos e registrados` }, 200, origin);
     }
 
     if (action === "reset") {
-      const rows = (await listTimesheets()).filter((row) => row.payload.is_running === true);
-      let stopped = 0;
-      for (const row of rows) {
-        const startedAt = new Date(String(row.payload.started_at || now)).getTime();
-        const duration = Math.max(1, Math.floor((Date.now() - startedAt) / 60000));
-        const { error } = await supabase.from("legacy_records").update({
-          payload: { ...row.payload, is_running: false, ended_at: now, duration_minutes: duration },
-          source_updated_at: now,
-        }).eq("entity", "Timesheet").eq("record_id", row.record_id);
-        if (error) throw error;
-        stopped++;
-      }
+      const stopped = await runTimesheetOperation("maestro_reset_running_timesheets", {
+        p_organization_id: actor.session.organization_id,
+      });
       return json({ success: true, stopped }, 200, origin);
     }
 

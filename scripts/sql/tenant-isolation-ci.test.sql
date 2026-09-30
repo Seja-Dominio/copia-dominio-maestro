@@ -27,8 +27,12 @@ begin
     where legacy_record_id = 'tenant-ci-account-b'
   ) or exists (
     select 1 from public.maestro_job_tasks
-    where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
-      and legacy_record_id = 'tenant-ci-task-a'
+      where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
+        and legacy_record_id = 'tenant-ci-task-a'
+  ) or exists (
+    select 1 from public.maestro_timesheets
+      where legacy_record_id in ('tenant-ci-timesheet-delete-a', 'tenant-ci-timesheet-delete-b',
+        'tenant-ci-timesheet-running-a', 'tenant-ci-timesheet-running-b')
   ) then
     raise exception 'Tenant CI fixture IDs already exist; refusing to run.';
   end if;
@@ -125,6 +129,55 @@ end;
 $tenant_b$;
 
 reset role;
+
+-- The privileged admin RPCs must never cross the organization supplied by the
+-- authenticated edge-session adapter. Deletes and audit snapshots are atomic;
+-- reset updates only running relational projections in that organization.
+insert into public.maestro_timesheets (
+  organization_id, legacy_record_id, source_payload, is_running, started_at
+)
+values
+  ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-timesheet-delete-a', '{"id":"tenant-ci-timesheet-delete-a"}', false, now()),
+  ('00000000-0000-0000-0000-00000000b001', 'tenant-ci-timesheet-delete-b', '{"id":"tenant-ci-timesheet-delete-b"}', false, now()),
+  ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-timesheet-running-a', '{"id":"tenant-ci-timesheet-running-a"}', true, now() - interval '20 minutes'),
+  ('00000000-0000-0000-0000-00000000b001', 'tenant-ci-timesheet-running-b', '{"id":"tenant-ci-timesheet-running-b"}', true, now() - interval '20 minutes');
+
+do $timesheet_admin_scope$
+declare
+  deleted_count bigint;
+  stopped_count bigint;
+begin
+  deleted_count := public.maestro_delete_timesheets_with_audit(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    array['tenant-ci-timesheet-delete-a', 'tenant-ci-timesheet-delete-b'],
+    '00000000-0000-0000-0000-00000000a101', 'Tenant CI A', 'tenant isolation test'
+  );
+  if deleted_count <> 1 then
+    raise exception 'Scoped timesheet delete expected 1 row, got %.', deleted_count;
+  end if;
+  if exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-delete-a')
+    or not exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-delete-b') then
+    raise exception 'Timesheet delete crossed organization scope or failed to delete target.';
+  end if;
+  if not exists (
+    select 1 from public.legacy_records
+    where entity = 'DeleteLog' and organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
+      and payload->>'entity_id' = 'tenant-ci-timesheet-delete-a'
+  ) then
+    raise exception 'Timesheet delete did not create an organization-scoped audit snapshot.';
+  end if;
+
+  stopped_count := public.maestro_reset_running_timesheets('00000000-0000-0000-0000-00000000a001'::uuid);
+  if stopped_count <> 1 then
+    raise exception 'Scoped timesheet reset expected 1 row, got %.', stopped_count;
+  end if;
+  if exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-running-a' and is_running is true)
+    or not exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-running-b' and is_running is true) then
+    raise exception 'Timesheet reset crossed organization scope or failed to stop target.';
+  end if;
+end;
+$timesheet_admin_scope$;
+
 do $cross_tenant_constraints$
 begin
   begin
