@@ -154,3 +154,12 @@ test("system reports derives admin access from the selected membership and expor
   assert.match(source, /\.eq\("organization_id", sessionPayload\.organization_id\)/);
   assert.doesNotMatch(source, /data\.profile\?\.access_level/);
 });
+
+test("traffic copilot authorizes and reads ads accounts only for the active organization", async () => {
+  const source = await fs.readFile(new URL("../traffic-copilot/index.ts", import.meta.url), "utf8");
+  assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(source, /accessLevelForOrganizationRole\(choice\.membership\.organization_role\)/);
+  assert.match(source, /organization_id: choice\.membership\.organization_id/);
+  assert.match(source, /from\("maestro_ads_accounts"\)[\s\S]*?\.eq\("organization_id", collaborator\.organization_id\)/);
+  assert.match(source, /if \(accountIds\.length\) query = query\.in\("id", accountIds\)/);
+});

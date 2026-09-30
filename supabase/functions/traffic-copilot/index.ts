@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const secret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -48,13 +49,26 @@ async function getSession(token: string) {
     .maybeSingle();
   if (error || !collaborator?.is_active) return null;
 
+  let membershipsQuery = db.from("organization_members")
+    .select("organization_id,role,status,organizations!inner(status)")
+    .eq("collaborator_id", session.sub)
+    .eq("status", "active")
+    .eq("organizations.status", "active")
+    .limit(2);
+  if (session.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", session.organization_id);
+  const { data: memberships, error: membershipError } = await membershipsQuery;
+  if (membershipError) return null;
+  const choice = selectOrganizationMembership(memberships, session.organization_id);
+  if (!choice.ok) return null;
+
   const profile = (collaborator.profile || {}) as Record<string, unknown>;
   return {
     id: collaborator.id,
     name: profile.name || profile.full_name || "",
     full_name: profile.full_name || profile.name || "",
     role: profile.role || "",
-    access_level: profile.access_level || "collaborator",
+    access_level: accessLevelForOrganizationRole(choice.membership.organization_role),
+    organization_id: choice.membership.organization_id,
     permissions: profile.permissions && typeof profile.permissions === "object" && !Array.isArray(profile.permissions)
       ? profile.permissions
       : {},
@@ -161,7 +175,8 @@ Deno.serve(async request => {
     const scopes = [...new Set(requestedScopes)];
     if (action === "mcp_query" && !String(body.question || "").trim()) return json({ error: "Informe o que deseja consultar." }, 400, origin);
     const accountIds = Array.isArray(body.account_ids) ? body.account_ids.map(String).filter(Boolean) : [];
-    let query = db.from("maestro_ads_accounts").select("id,network,client_name,display_name,currency,balance,minimum_balance,spending_limit,amount_spent,metrics_data,campaigns_data,last_synced_at");
+    let query = db.from("maestro_ads_accounts").select("id,network,client_name,display_name,currency,balance,minimum_balance,spending_limit,amount_spent,metrics_data,campaigns_data,last_synced_at")
+      .eq("organization_id", collaborator.organization_id);
     if (accountIds.length) query = query.in("id", accountIds);
     const { data: accounts, error } = await query.order("updated_at", { ascending: false });
     if (error) throw error;
