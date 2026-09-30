@@ -281,6 +281,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Reconsulta de ledgers confirmou 83/111 entradas e última versão remota `20260929183217`/`20260929183220`; a migration local `20260930170000_reject_cross_tenant_core_projection_references` ainda não está aplicada por versão. Não interpretar ausência no ledger isoladamente como ausência de efeito; primeiro comparar SQL e catálogo, e simular atualização em clones Dev e Produção.
 - Próxima execução: (1) criar/verificar snapshots isolados dos dois perfis; (2) reproduzir as contagens e classificar separadamente 114 candidatos same-tenant e 502/478 sem parent; (3) comparar efeitos e definições catalogadas das migrations pendentes/divergentes; (4) testar a sequência mínima em clones e medir rollback. Sem `db push`, `migration repair`, backfill ou DDL em ambiente remoto até gates concluídos.
 
+### Guard cross-tenant no perfil de schema de Produção — 30/09/2026
+
+- A branch preview `xpyvjchcrnvprvwgjibm` foi confirmada `with_data=false`; auditoria `READ ONLY` prévia: 127 migrations até `20260927220141`, zero registros de negócio nas tabelas verificadas e uma organização-base. O status de Branching segue `MIGRATIONS_FAILED`, então a branch é usada somente como clone de schema acessível, não como evidência de clone integral.
+- A migration local `20260930170000_reject_cross_tenant_core_projection_references` e fixtures de duas organizações foram exercitadas numa única transação com rollback. Os três casos cross-tenant Project→Client, Job→Client e Job→Project falharam pelas mensagens esperadas; o Project same-tenant foi projetado corretamente; a referência histórica não resolvida permaneceu compatível.
+- Pós-teste `READ ONLY` confirmou `transaction_read_only=on`, zero fixtures remanescentes, função original restaurada e ledger sem alteração. Nenhuma escrita ocorreu em Dev ou Produção.
+- Evidência adicionada ao relatório `docs/migration-drift-reconciliation.md`. Avança apenas a validação de comportamento do trigger no catálogo legado de Produção; continuam bloqueados o upgrade representativo, as constraints ausentes, o backfill das exceções, a reconciliação integral e o cutover.
+
 ### P1 — reconciliar histórico e efeitos reais das migrations
 
 - Completar a matriz das 173 migrations locais versus Dev, produção e branch Supabase de validação; o relatório atual é fingerprint/identidade, não classificação completa de efeitos. Inspecionar SQL local e catálogo atual, mapear dependências, consumidores, funções, triggers, cron e secrets sem expor payloads/credenciais.
@@ -341,6 +348,7 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Não aplicar alterações em produção enquanto branch de validação e histórico não forem reprodutíveis.
 - Não apagar `legacy_records`, dados órfãos, snapshots ou tabelas CXM como parte deste plano sem uma etapa própria de exportação, backup e decisão aprovada.
 - Não compartilhar banco entre produtos como requisito de integração: podem compartilhar infraestrutura inicialmente, mas os limites precisam permitir implantação e evolução independentes.
+
 - 29/09: fechada uma lacuna no contrato de exclusão financeira: o snapshot de recuperação (`DeleteLog`), auditoria, exclusão do registro legado e remoção da projeção agora são atômicos na RPC; a interface deixa de criar o snapshot em chamada separada. Prova rollback-only passou no clean-room (replay anterior + migration aplicada isoladamente) e em branch Supabase isolada sem dados. Esta correção ainda não foi promovida a Produção.
 
 ### Isolamento tenant do snapshot MMM/Insights — 30/09/2026
