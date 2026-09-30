@@ -4,7 +4,7 @@ Auditado em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-c
 
 ## Método e limites
 
-- Arquivos locais: 172 migrations em `supabase/migrations` nesta branch.
+- Arquivos locais na fotografia original desta reconciliação: 172 migrations; o checkout atual contém 173. A migration adicionada depois do fingerprint, `20260930170000_reject_cross_tenant_core_projection_references`, não está em nenhum dos dois ledgers remotos.
 - Ledgers consultados em transação PostgreSQL `READ ONLY`, confirmada como `on`, depois de validar a ref da conexão: Dev `tqmfuskvllpqmvayjuqu`; Produção `fwpisypiiezjhtqxlmqv`.
 - Comparação usa sequência de statements tokenizada: terminadores, comentários e espaços não afetam fingerprint; strings, identificadores quoted e corpos dollar-quoted são preservados.
 - O relatório guarda identidades e contagens, não SQL remoto, URL, credenciais nem dados de negócio.
@@ -14,10 +14,10 @@ Auditado em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-c
 
 | Ambiente | Ledger remoto | Par versão/nome e SQL igual | Par exato com SQL diferente | Mesmo nome, outra versão: SQL igual | Mesmo nome, outra versão: SQL diferente | Conteúdo local sem equivalente no remoto | Conteúdo remoto sem equivalente local |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Dev | 83 | 22 | 9 | 47 | 4 | 90 | 14 |
-| Produção | 111 | 16 | 1 | 74 | 9 | 62 | 11 |
+| Dev | 83 | 22 | 9 | 47 | 4 | 91 | 14 |
+| Produção | 111 | 16 | 1 | 74 | 9 | 63 | 11 |
 
-Produção contém 10 fingerprints com alias em outra identidade/versão local, além das categorias exibidas. Dev não mostrou alias nesse cálculo. Esses totais medem correspondência entre arquivos e ledger, não progresso de execução do schema.
+Produção contém 10 fingerprints com alias em outra identidade/versão local, além das categorias exibidas. Dev não mostrou alias nesse cálculo. Os valores incluem a migration local adicional sem fingerprint remoto; os pares/fingerprints detalhados foram originalmente calculados sobre os 172 arquivos anteriores. Esses totais medem correspondência entre arquivos e ledger, não progresso de execução do schema.
 
 ## Mesmo par versão/nome, SQL divergente
 
@@ -48,7 +48,7 @@ Produção contém 10 fingerprints com alias em outra identidade/versão local, 
 
 As identidades abaixo são a lista completa dos arquivos locais cujo conteúdo SQL não teve fingerprint correspondente no ledger consultado. Isso **não** significa que o efeito esteja ausente do banco: pode ter sido aplicado como outra migration, alterado manualmente ou aplicado parcialmente. A classificação de produto é visível no nome quando possível; itens CXM permanecem fora de qualquer pacote não-CXM.
 
-### Dev — 90 migrations
+### Dev — 91 migrations
 
 ```text
 20260917150839/dominus_learning_review_comments
@@ -141,9 +141,10 @@ As identidades abaixo são a lista completa dos arquivos locais cujo conteúdo S
 20260930022408/harden_job_history_tenant_scope_and_trigger
 20260930140000/repair_timesheet_payload_projection
 20260930160000/reinforce_cxm_silence_due_tenant_scope
+20260930170000/reject_cross_tenant_core_projection_references
 ```
 
-### Produção — 62 migrations
+### Produção — 63 migrations
 
 ```text
 20260917150839/dominus_learning_review_comments
@@ -208,6 +209,7 @@ As identidades abaixo são a lista completa dos arquivos locais cujo conteúdo S
 20260930022408/harden_job_history_tenant_scope_and_trigger
 20260930140000/repair_timesheet_payload_projection
 20260930160000/reinforce_cxm_silence_due_tenant_scope
+20260930170000/reject_cross_tenant_core_projection_references
 ```
 
 ## Conteúdo do ledger remoto sem fingerprint correspondente no checkout
@@ -322,3 +324,11 @@ Probes agregados do catálogo de Produção foram feitos em `BEGIN READ ONLY`, s
 | `20260930170000_reject_cross_tenant_core_projection_references` | Guard não existe na função de Produção; teste transacional passou no preview. | Migration **pendente** no catálogo Produção; teste não equivale a aplicação no parent. |
 
 Na consulta read-only de Dev, o health view, resolver e task-audit function acima não existiam; a função de JobHistory tinha `SECURITY INVOKER`/`search_path` vazio e um trigger; as duas RPCs de timesheet também estavam ausentes, assim como o guard cross-tenant. Isso confirma que Dev não representa a superfície Production para esse sufixo. A classificação cobre apenas estas oito migrations de maior prioridade, não as 173 migrations da matriz; não libera upgrade ou release.
+
+## Clone local do schema de Produção e ensaio direcionado não-CXM — 30/09/2026
+
+- Foi gerado um dump somente do schema `public` do projeto de Produção `fwpisypiiezjhtqxlmqv`; inspeção automatizada não encontrou instruções `COPY` nem `INSERT INTO`. O arquivo ficou em diretório temporário fora do repositório. Foi restaurado num banco descartável, sem dados de negócio, com um stub local de `auth.uid()` para testes RLS.
+- A comparação agregada do catálogo entre Produção e o clone coincidiu: 56 tabelas, 2 views, 33 funções, 19 triggers, 228 constraints, 136 policies e 56 tabelas com RLS. Igualdade de contagens não equivale a comparação semântica de cada objeto.
+- No clone foram aplicadas oito migrations selecionadas do sufixo não-CXM. A migration `20260930160000_reinforce_cxm_silence_due_tenant_scope` ficou deliberadamente excluída. Foram verificadas as constraints tenant-aware, RPCs, view, auditoria/histórico e guard do trigger. As relações de negócio verificadas continuaram sem linhas.
+- Testes sintéticos com `ROLLBACK` passaram para relações entre tenants, RPCs privilegiadas, projeção de auditoria/histórico, operações de timesheet e leitura RLS alternando duas identidades. Fixtures e grant temporário foram revertidos. O stub Auth é exclusivo do clone.
+- Cobertura direcionada, não replay integral nem matriz completa de reconciliação. Não cobre dados reais, runtime completo do Supabase, Auth/Storage/cron/Edge hospedados, upgrade remoto, backfill ou cutover. Dev e Produção não foram escritos. Nada aqui autoriza `db push`, `migration repair` ou deploy.
