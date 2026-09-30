@@ -323,6 +323,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - O contrato estático foi ajustado para localizar o handler no layout real deste branch, com teste de regressão para rejeitar upsert legado. A transferência é autorizada apenas após a checagem de papel já existente e usa a organização/ator da sessão validada.
 - Em sequência, o dispatcher de leitura das 21 entidades foi incorporado no mesmo endpoint com seleção opt-in e fallback/telemetria de origem. Continua sem ativação em produção e sem prova transacional contra banco de teste; não foi feito deploy. Estimativa geral permanece **40%**.
 
+### Integridade do contrato de payload do leitor relacional — 30/09/2026
+
+- A revisão do gate encontrou uma lacuna: ele conferia tabelas e colunas de filtro/ordenação das 21 entidades, mas não a coluna JSON selecionada para reconstruir o payload. O dispatcher agora declara explicitamente `payloadColumnByEntity`; entidade sem mapeamento falha para fallback legado.
+- `verify:relational-dispatch` agora valida, para cada entidade opt-in, que a coluna de payload consta nas migrations e tem tipo `json`/`jsonb`. Resultado local: 21 entidades, 21 tabelas, 21 mapas de campos e 21 mapas de payload aprovados.
+- Provas desta rodada: suíte Node compartilhada/lib 74/74, build Vite, `verify:migration-files` (172 migrations), `verify:relational-dispatch` e `git diff --check` passaram. Essa validação estática não substitui query real PostgREST, comparação de payload por tenant ou E2E; mudança ainda não tem CI própria.
+- Nenhuma flag foi habilitada, deploy ou escrita remota ocorreu. O percentual permanece **40%** até haver evidência de runtime/paridade e progresso nos gates de reconciliação, cutover e CXM standalone.
+
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 
 - A auditoria mostrou que os testes unitários do manifesto já eram incluídos pelo glob `scripts/lib/*.test.mjs`; o workflow `.github/workflows/security-checks.yml`, porém, não chamava o verificador do inventário real e `package.json` não oferecia um comando dedicado. Adicionei `verify:edge-function-product-boundaries` e um passo explícito no job de testes para validar e reportar a lista real classificada em cada CI.

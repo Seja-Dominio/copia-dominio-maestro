@@ -33,6 +33,8 @@ const relationalSets = [...source.matchAll(/const RELATIONAL_[A-Z_]+_ENTITIES = 
 const serverEntities = new Set(relationalSets.flatMap(([, values]) => [...values.matchAll(/"([^"]+)"/g)].map(([, entity]) => entity)));
 const tableMapBody = source.match(/const tableByEntity: Record<string, string> = \{([\s\S]*?)\n\s*\};/)?.[1] || "";
 const tableMappings = [...tableMapBody.matchAll(/^\s*([A-Za-z][A-Za-z0-9_]*):\s*"(maestro_[a-z0-9_]+)"/gm)];
+const payloadMapBody = source.match(/const payloadColumnByEntity: Record<string, string> = \{([\s\S]*?)\n\s*\};/)?.[1] || "";
+const payloadMappings = [...payloadMapBody.matchAll(/^\s*([A-Za-z][A-Za-z0-9_]*):\s*"([a-z][a-z0-9_]*)"/gm)];
 const relationalTableEntities = new Set(tableMappings.map(([, entity]) => entity));
 const readerFieldsBody = source.match(/const fieldsByEntity: Record<string, Record<string, string>> = \{([\s\S]*?)\n\s*\};/)?.[1] || "";
 const readerFieldMappings = [...readerFieldsBody.matchAll(/^\s*([A-Za-z][A-Za-z0-9_]*):\s*\{([^}]*)\}/gm)];
@@ -44,6 +46,14 @@ const columnsForTable = (tableName) => {
   const alterExpression = new RegExp(`alter\\s+table(?:\\s+if\\s+exists)?\\s+public\\.${tableName}\\s+add\\s+column(?:\\s+if\\s+not\\s+exists)?\\s+([a-z][a-z0-9_]*)\\s+`, "gi");
   for (const [, column] of migrationSource.matchAll(alterExpression)) columns.add(column);
   return columns;
+};
+const columnTypesForTable = (tableName) => {
+  const types = new Map();
+  const createTable = migrationSource.match(new RegExp(`create\\s+table(?:\\s+if\\s+not\\s+exists)?\\s+public\\.${tableName}\\s*\\(([\\s\\S]*?)\\);`, "i"))?.[1] || "";
+  for (const [, column, type] of createTable.matchAll(new RegExp(`^\\s*([a-z][a-z0-9_]*)\\s+(${sqlColumnTypes})\\b`, "gmi"))) types.set(column, type.toLowerCase());
+  const alterExpression = new RegExp(`alter\\s+table(?:\\s+if\\s+exists)?\\s+public\\.${tableName}\\s+add\\s+column(?:\\s+if\\s+not\\s+exists)?\\s+([a-z][a-z0-9_]*)\\s+(${sqlColumnTypes})\\b`, "gi");
+  for (const [, column, type] of migrationSource.matchAll(alterExpression)) types.set(column, type.toLowerCase());
+  return types;
 };
 
 if (!configuredEntities.size) errors.push("scripts/config/relational-read-entities.json está vazio");
@@ -70,6 +80,13 @@ for (const entity of configuredEntities) {
   if (tableName && !new RegExp(`create\\s+table(?:\\s+if\\s+not\\s+exists)?\\s+public\\.${tableName}\\s*\\(`, "i").test(migrationSource)) {
     errors.push(`${entity}: a tabela ${tableName} não é criada por nenhuma migration versionada`);
   }
+  const payloadColumn = payloadMappings.find(([, mappedEntity]) => mappedEntity === entity)?.[2];
+  if (!payloadColumn) errors.push(`${entity}: sem mapeamento explícito da coluna de payload relacional`);
+  else if (tableName) {
+    const columnTypes = columnTypesForTable(tableName);
+    if (!columnTypes.has(payloadColumn)) errors.push(`${entity}: coluna de payload ${tableName}.${payloadColumn} não existe no schema versionado`);
+    else if (!/^(json|jsonb)$/.test(columnTypes.get(payloadColumn))) errors.push(`${entity}: coluna ${tableName}.${payloadColumn} não é JSON/JSONB`);
+  }
   const fieldMapping = readerFieldMappings.find(([, mappedEntity]) => mappedEntity === entity);
   if (!fieldMapping) errors.push(`${entity}: sem mapeamento de colunas de filtro/ordenação no reader`);
   else if (tableName) {
@@ -85,11 +102,10 @@ for (const entity of configuredEntities) {
 }
 
 if (configuredEntities.has("DominusWebhookParsed")) {
-  const payloadMappings = source.slice(source.indexOf("async function listRelationalCoreRows"), source.indexOf("async function handleOperation"));
   if (!/DominusWebhookParsed:\s*"maestro_webhook_parsed_messages"/.test(tableMapBody)) {
     errors.push("DominusWebhookParsed: tabela relacional não está mapeada pelo reader");
   }
-  if (!payloadMappings.includes('"DominusWebhookParsed"') || !payloadMappings.includes('? "payload"')) {
+  if (!payloadMappings.some(([, entity]) => entity === "DominusWebhookParsed")) {
     errors.push("DominusWebhookParsed: coluna de payload relacional não está mapeada");
   }
 }
@@ -103,6 +119,7 @@ console.log(JSON.stringify({
     return tableName && new RegExp(`create\\s+table(?:\\s+if\\s+not\\s+exists)?\\s+public\\.${tableName}\\s*\\(`, "i").test(migrationSource);
   }).length,
   reader_field_maps_checked: [...configuredEntities].filter((entity) => readerFieldMappings.some(([, mappedEntity]) => mappedEntity === entity)).length,
+  reader_payload_maps_checked: [...configuredEntities].filter((entity) => payloadMappings.some(([, mappedEntity]) => mappedEntity === entity)).length,
   subtask_transfer_errors: subtaskTransferErrors,
   errors,
 }, null, 2));

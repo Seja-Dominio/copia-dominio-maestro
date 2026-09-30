@@ -248,12 +248,31 @@ async function listRelationalCoreRows(entity: string, organizationId: string, op
     Comment: "maestro_job_comments",
     DominusWebhookParsed: "maestro_webhook_parsed_messages",
   };
-  const payloadColumn = entity === "JobTemplate" ? "template_payload"
-    : entity === "Proposal" ? "proposal_payload"
-      : entity === "Note" ? "note_payload"
-        : entity === "WhatsappAutomation" ? "automation_payload"
-          : ["BankAccount", "FinancialCategory", "CostCenter", "NpsEntry", "NpsHistory", "WhatsappContact", "WhatsappGroup", "Comment", "DominusWebhookParsed"].includes(entity)
-            ? "payload" : "source_payload";
+  const payloadColumnByEntity: Record<string, string> = {
+    Client: "source_payload",
+    Project: "source_payload",
+    Job: "source_payload",
+    Subtask: "source_payload",
+    FinancialEntry: "source_payload",
+    AgendaEvent: "source_payload",
+    Timesheet: "source_payload",
+    Notification: "source_payload",
+    JobTemplate: "template_payload",
+    Proposal: "proposal_payload",
+    Note: "note_payload",
+    BankAccount: "payload",
+    FinancialCategory: "payload",
+    CostCenter: "payload",
+    NpsEntry: "payload",
+    NpsHistory: "payload",
+    WhatsappContact: "payload",
+    WhatsappGroup: "payload",
+    WhatsappAutomation: "automation_payload",
+    Comment: "payload",
+    DominusWebhookParsed: "payload",
+  };
+  const payloadColumn = payloadColumnByEntity[entity];
+  if (!payloadColumn) return null;
   const offset = normalizePageValue(options.offset, 0, 1_000_000);
   const limit = normalizePageValue(options.limit, 100, 10_000);
   const filters = options.filters || {};
