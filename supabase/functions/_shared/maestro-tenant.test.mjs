@@ -144,3 +144,13 @@ test("Dominus memory reviews, rules, events and comments stay inside the active 
   assert.match(source, /\.eq\("organization_id", session\.organization_id\)/);
   assert.match(source, /organization_id: session\.organization_id,/);
 });
+
+test("system reports derives admin access from the selected membership and exports only that tenant", async () => {
+  const source = await fs.readFile(new URL("../system-reports/index.ts", import.meta.url), "utf8");
+  assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(source, /accessLevelForOrganizationRole\(choice\.membership\.organization_role\)/);
+  assert.match(source, /sessionPayload\.access_level !== "master"/);
+  assert.match(source, /async function load\(entity: string, organizationId: string\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
+  assert.match(source, /\.eq\("organization_id", sessionPayload\.organization_id\)/);
+  assert.doesNotMatch(source, /data\.profile\?\.access_level/);
+});
