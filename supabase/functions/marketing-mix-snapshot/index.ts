@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -85,13 +86,12 @@ Deno.serve(async request => {
     const organizationId = clientScopes[0].organization_id;
     const { data: products, error: productError } = await db
       .from("organization_products")
-      .select("product_key, status")
+      .select("product_key, status, expires_at")
       .eq("organization_id", organizationId)
       .eq("product_key", "insights")
-      .in("status", ["trial", "enabled"])
-      .limit(1);
+      .in("status", ["trial", "enabled"]);
     if (productError) throw productError;
-    if (!products?.length) {
+    if (!hasActiveOrganizationProduct(products || [], "insights")) {
       return json({ error: "O produto Insights não está habilitado para esta organização." }, 403);
     }
 

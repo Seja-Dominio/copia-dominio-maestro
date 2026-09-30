@@ -100,7 +100,7 @@ Deno.serve(async (request) => {
     const { action } = await request.json();
     const entities = ["Client", "Project", "Job", "Collaborator", "Subtask", "FeeContract", "JobTemplate", "AppConfig", "Squad", "BankAccount", "CostCenter", "Timesheet", "FinancialEntry", "DeleteLog"];
     const { data: products, error: productsError } = await supabase.from("organization_products")
-      .select("product_key,status")
+      .select("product_key,status,expires_at")
       .eq("organization_id", sessionPayload.organization_id)
       .in("status", ["trial", "enabled"]);
     if (productsError) throw productsError;

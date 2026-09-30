@@ -296,7 +296,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   if (entityHasProductClassification(entity, registryEntry?.module_key)) {
     const { data: products, error: productsError } = await supabase
       .from("organization_products")
-      .select("product_key,status")
+      .select("product_key,status,expires_at")
       .eq("organization_id", session.organization_id);
     if (productsError) throw productsError;
     if (!hasEntityProductAccess(entity, registryEntry?.module_key, products || [])) {

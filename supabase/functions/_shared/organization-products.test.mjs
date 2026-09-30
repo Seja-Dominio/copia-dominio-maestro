@@ -8,6 +8,10 @@ test("requires an active or trial product belonging to the requested organizatio
   assert.equal(hasActiveOrganizationProduct([{ product_key: "maestro", status: "trial" }], "maestro"), true);
   assert.equal(hasActiveOrganizationProduct([{ product_key: "cxm", status: "enabled" }], "maestro"), false);
   assert.equal(hasActiveOrganizationProduct([{ product_key: "maestro", status: "cancelled" }], "maestro"), false);
+  const now = Date.parse("2026-09-30T12:00:00.000Z");
+  assert.equal(hasActiveOrganizationProduct([{ product_key: "maestro", status: "enabled", expires_at: "2026-09-30T12:00:01.000Z" }], "maestro", now), true);
+  assert.equal(hasActiveOrganizationProduct([{ product_key: "maestro", status: "enabled", expires_at: "2026-09-30T11:59:59.000Z" }], "maestro", now), false);
+  assert.equal(hasActiveOrganizationProduct([{ product_key: "maestro", status: "enabled", expires_at: "invalid" }], "maestro", now), false);
   assert.equal(hasActiveOrganizationProduct(null, "maestro"), false);
 });
 
@@ -43,6 +47,7 @@ test("system reports checks the Maestro entitlement within the authenticated org
   assert.match(source, /\.from\("organization_products"\)/);
   assert.match(source, /\.eq\("organization_id", sessionPayload\.organization_id\)/);
   assert.match(source, /hasActiveOrganizationProduct\(products, "maestro"\)/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)/);
 });
 
 test("Maestro data enforces product entitlements from the entity registry before CRUD", async () => {
@@ -53,6 +58,7 @@ test("Maestro data enforces product entitlements from the entity registry before
   assert.match(source, /\.eq\("organization_id", session\.organization_id\)/);
   assert.match(source, /entityHasProductClassification\(entity, registryEntry\?\.module_key\)/);
   assert.match(source, /hasEntityProductAccess\(entity, registryEntry\?\.module_key, products \|\| \[\]\)/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)/);
   assert.match(source, /Produto não habilitado para esta organização/);
 });
 
@@ -64,6 +70,7 @@ test("Maestro AI checks the CXM entitlement before reading commercial proposals"
   assert.ok(commercial >= 0);
   assert.ok(entitlement > commercial && entitlement < proposalRead);
   assert.match(source, /A área Comercial exige o produto CXM habilitado para esta organização/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)/);
 });
 
 test("marketing mix snapshot requires one confirmed active-tenant client, Insights entitlement, and tenant-scoped observations", async () => {
@@ -75,5 +82,7 @@ test("marketing mix snapshot requires one confirmed active-tenant client, Insigh
   assert.match(source, /\.eq\("legacy_entity", "Client"\)[\s\S]*?\.eq\("legacy_record_id", clientId\)[\s\S]*?\.eq\("scope_status", "confirmed"\)[\s\S]*?\.eq\("organizations\.status", "active"\)[\s\S]*?\.limit\(2\)/);
   assert.match(source, /clientScopes\.length !== 1/);
   assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "insights"\)[\s\S]*?\.in\("status", \["trial", "enabled"\]\)/);
+  assert.match(source, /\.select\("product_key, status, expires_at"\)/);
+  assert.match(source, /hasActiveOrganizationProduct\(products \|\| \[\], "insights"\)/);
   assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("client_id", clientId\)/);
 });

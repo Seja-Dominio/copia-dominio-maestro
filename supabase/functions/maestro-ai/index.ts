@@ -560,7 +560,7 @@ async function executeTool(name: string, args: Record<string, any>, session: Ses
   if (name === "consultar_comercial") {
     if (!canUse(session, "commercial")) return { acesso_negado: true, motivo: "A área Comercial exige a aba Propostas habilitada para este usuário." };
     const { data: products, error: productsError } = await db.from("organization_products")
-      .select("product_key,status")
+      .select("product_key,status,expires_at")
       .eq("organization_id", session.organization_id)
       .eq("product_key", "cxm");
     if (productsError) throw productsError;

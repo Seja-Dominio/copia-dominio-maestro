@@ -254,8 +254,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 ### Isolamento tenant do snapshot MMM/Insights — 30/09/2026
 
 - A Edge Function `marketing-mix-snapshot` recebia `client_id` assinado pelo serviço MMM, mas consultava observações somente por esse ID, sem usar o `organization_id` já persistido. Agora resolve o cliente por vínculo legado `Client` confirmado e organização ativa; exige vínculo único (zero ou múltiplas organizações falham fechadas), entitlement `insights` em `trial`/`enabled` e filtra as observações pelo mesmo tenant.
-- Regressão no CI Node valida a ordem das verificações e todos os filtros. Suíte local: 36/36; bundling/sintaxe da Edge Function com esbuild passou; verificador de fronteira continua sem erros, mas corretamente reporta `release_ready=false` (função ainda pendente junto aos outros bloqueios). O CI deste patch fica pendente após push.
+- Regressão no CI Node valida a ordem das verificações e todos os filtros. Suíte local: 36/36; bundling/sintaxe da Edge Function com esbuild passou; verificador de fronteira continua sem erros, mas corretamente reporta `release_ready=false` (função ainda pendente junto aos outros bloqueios). CI `36767469573` passou integralmente, incluindo replay clean-room, lint do schema público e isolamento SQL.
 - Não alterei o cliente MMM, o protocolo HMAC, schema, secrets ou dados remotos. Ainda faltam prova ponta a ponta do serviço até o snapshot, catálogo/entitlement real em ambientes representativos e validação operacional antes de reclassificar a função ou incluí-la num release.
+
+### Validade temporal dos entitlements — 30/09/2026
+
+- A função compartilhada `hasActiveOrganizationProduct` agora considera `expires_at`: datas expiradas ou inválidas negam acesso; null/ausente mantém compatibilidade com entitlements sem expiração. Os endpoints `maestro-data`, `maestro-ai`, `system-reports` e `marketing-mix-snapshot` incluem esse campo nas consultas que alimentam a autorização.
+- Testes locais cobrem expiração antes/depois do instante de referência e data inválida; suíte 36/36, bundling MMM e `git diff --check` passaram. O patch ainda não foi enviado/validado pelo CI; nenhum release foi reclassificado.
 
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 

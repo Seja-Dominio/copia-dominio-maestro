@@ -13,10 +13,11 @@ export function knownProductForEntity(entity) {
   return CLASSIFIED_ENTITY_PRODUCTS.get(String(entity || "")) || "";
 }
 
-export function hasActiveOrganizationProduct(rows, productKey) {
+export function hasActiveOrganizationProduct(rows, productKey, nowMs = Date.now()) {
   return (Array.isArray(rows) ? rows : []).some((row) =>
     String(row?.product_key || "") === productKey
       && ACTIVE_PRODUCT_STATUSES.has(String(row?.status || ""))
+      && (row?.expires_at == null || (Number.isFinite(Date.parse(row.expires_at)) && Date.parse(row.expires_at) > nowMs))
   );
 }
 
