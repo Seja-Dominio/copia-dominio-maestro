@@ -235,13 +235,68 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Triagem de exceções (fase 3) pode ocorrer junto do desenho relacional; bloqueia somente constraints/backfills que afetem esses registros.
 - Fases 5 e 6 podem avançar em paralelo em branches/ambientes isolados; a fase 8 integra os resultados depois.
 
-## Primeiro lote de execução recomendado
+## Ordem de execução priorizada — revisão de 30/09/2026
 
-1. Atualizar este roadmap apenas com evidência confirmada, preservando snapshots datados anteriores.
-2. Gerar reconciliação completa dos 149 arquivos locais contra Dev, branch de validação e produção, com classificações e dependências.
-3. Criar release manifest não-CXM apenas depois de a reconciliação provar sequência mínima; manter CXM, workers e migrations associadas fora.
-4. Preparar branch limpa de validação e provar bootstrap/replay da sequência escolhida; não usar o branch atual de quatro migrations como se fosse validação completa.
-5. Escolher uma fatia não-CXM pequena, executar paridade/isolamento/contratos e obter gate de homologação antes de seguir para a próxima.
+### P0 — manter os limites de segurança e congelar uma base auditável
+
+- Usar como candidato apenas a branch `codex/maestro-db-canonical-candidate`; o commit `0f8e4ab0` tem CI verde, incluindo testes, verificadores, análise estática e replay limpo das 172 migrations.
+- Manter flags de leitura relacional desligadas em produção; não aplicar `db push`, `migration repair`, mudanças de grants ou deploys manuais enquanto os gates abaixo não passarem.
+- Preservar produção em leitura. Verificar novamente, read-only, grants efetivos, policies e defaults de grants por owner, especialmente `legacy_records`: o achado histórico de `SELECT`/`TRUNCATE` para roles cliente é prioritário para confirmar no catálogo atual, mas sua correção deve ser planejada com compatibilidade e prova isolada.
+- Aceite: commit/artefatos identificados, nenhum processo paralelo alterando o mesmo ambiente e snapshot de catálogo/grants com timestamp e proveniência.
+
+### P1 — reconciliar histórico e efeitos reais das migrations
+
+- Completar a matriz de 172 migrations locais versus Dev, produção e branch Supabase de validação; o relatório atual é fingerprint/identidade, não classificação completa de efeitos. Inspecionar SQL local e catálogo atual, mapear dependências, consumidores, funções, triggers, cron e secrets sem expor payloads/credenciais.
+- Resolver todos os casos `SQL divergente`, conteúdo local/remoto sem par e aliases; classificar cada efeito como equivalente, pendente, conflito, CXM ou operacional. CXM e jobs relacionados ficam fora da sequência não-CXM.
+- Definir a sequência mínima de migrations não-CXM com manifest explícito e dependências; não “consertar” o ledger para fazê-lo coincidir.
+- Aceite: 100% dos itens da sequência proposta têm evidência de estado esperado e ordem; nenhum efeito não explicado. Até lá, sem upgrade remoto.
+
+### P2 — provar upgrades em clones representativos e fechar segurança multi-tenant
+
+- Criar clones descartáveis separados para representar os catálogos divergentes de Dev e produção, com dados anonimizados/sintéticos e sem conexão de escrita com os ambientes de origem.
+- Aplicar neles a sequência reconciliada; validar catálogo, constraints, índices, policies, owners/grants, funções e schedulers. Reexecutar os scripts para provar idempotência somente quando migration declarar esse comportamento.
+- Ampliar allow/deny para todas as Edge Functions/RPCs/views e casos de organização errada, role insuficiente e entitlement ausente; conferir grants padrão de todos os owners. Priorizar o caminho `service_role`/`legacy_records` e endpoints compartilhados.
+- Aceite: upgrade dos dois perfis termina sem reparo manual do ledger, replay e catálogo são reproduzíveis, e nenhum acesso cross-tenant/produto não autorizado passa.
+
+### P3 — provar dados, payloads e fluxos relacionais de ponta a ponta
+
+- Revalidar no snapshot a qualidade do dado (incluindo os casos históricos reportados de Jobs sem referência e subtarefas órfãs); classificar exceções sem inferir vínculos por título. Medir IDs, contagens, relações e payloads antes/depois; backfill repetível e retomável.
+- Para as 21 entidades do reader, testar consultas PostgREST reais com paginação, ordenação, cada filtro suportado e fallback; comparar resultado relacional versus legado por tenant, inclusive sem dados e valores nulos. Cobrir as colunas JSON explicitamente verificadas pelo gate estático.
+- Completar e provar contratos de escrita/exclusão/auditoria; a presença do leitor em dark launch não equivale a cutover nem fonte de verdade relacional.
+- Aceite: paridade bidirecional explicada e fluxos críticos UI/API passam em duas organizações; nenhuma exceção desaparece nem se duplica.
+
+### P4 — cortar o Maestro gradualmente por domínio, com rollback exercitado
+
+- Executar uma fatia por vez, nesta ordem: (1) Client/Project/Job/tarefas; (2) comentários/histórico/anexos/aprovações; (3) Financeiro; (4) agenda/timesheets/notificações; (5) documentos/templates/IA/operacional; (6) Ads Brain/Insights.
+- Em cada fatia: backfill → comparação → dual-write se necessário → leitura relacional controlada em homologação → observação → congelar legado apenas daquela fatia → ensaiar rollback. Não remover `legacy_records` até todas as entidades e consumidores estarem aposentados com evidência.
+- Aceite por fatia: paridade sem divergência inexplicada, autorização e regressão aprovadas, rollback recupera a imagem anterior e os outros domínios não mudam.
+
+### P5 — tornar releases não-CXM realmente segregados
+
+- Resolver os seis Edge Functions compartilhados e oito pendentes não-CXM do manifesto atual; mapear acessos dinâmicos a `legacy_records`, credenciais WhatsApp globais, cron e dependências implícitas. Não classificar como seguro só pela ausência de texto `CXM`.
+- Definir allowlist de funções, migrations, secrets, schedulers e módulos não-CXM; automatizar CI para falhar se uma função/migration proibida entrar no pacote. O atual `release_ready=false` é um bloqueio real.
+- Aceite: artefato reproduzível de deploy não-CXM e teste provando que CXM e seus workers não são publicados nem necessários ao Maestro.
+
+### P6 — construir e comprovar CXM independente em trilha isolada
+
+- O spike Deskcomm comprova serviços/banco e infraestrutura local, não a aplicação CXM. Localizar/consolidar o código CXM executável e seu schema/migrations próprios (ou iniciar pacote standalone versionado); definir identidade/tenancy, APIs, secrets, Storage, filas, cron, auditoria e operação.
+- Formalizar integração opcional por contrato versionado, IDs externos, autenticação, idempotência, retries/DLQ e desconexão; sem FK entre bancos. Provar instalação limpa, upgrade, fluxos essenciais e isolamento com duas organizações sem Maestro conectado.
+- Aceite: deploy, login, CRUD/fluxos CXM e recuperação funcionam no stack próprio; integração pode cair/reconectar sem bloquear o Maestro ou duplicar dados.
+
+### P7 — recuperação, carga e lançamento gradual
+
+- Ensaiar backup/restore completo de cada produto separadamente, incluindo Auth, Storage, roles, configuração/secrets pelo processo seguro e schedulers; definir e medir RPO/RTO. O round-trip atual prova somente schema/dados Postgres do clean-room.
+- Medir carga representativa, índices/queries, filas e limites por tenant; preparar alertas, feature flags e rollback operacional.
+- Fazer homologação integrada do Maestro e CXM (standalone e conectado); liberar por domínio/tenant com observação e interruptor de rollback. Produção só após todos os gates anteriores e aprovação do usuário para o corte específico.
+
+### Paralelismo permitido sem conflito
+
+- **Trilha A — migrations/catálogos:** P1 e preparação de clones P2, exclusivamente read-only até existir sequência aprovada.
+- **Trilha B — runtime Maestro:** testes reais do dispatcher, contratos e exceções P3 em banco descartável, sem habilitar flags de produção nem editar os artefatos da Trilha A.
+- **Trilha C — CXM:** localizar/estruturar aplicação e contrato standalone P6 em branch/repositório isolado; não compartilhar migrations, secrets ou deploy com Maestro.
+- P4 depende dos resultados A+B; P5 pode avançar em paralelo em manifesto/pipeline isolado, mas release permanece bloqueado; P7 e lançamento dependem das duas trilhas de produto e dos gates de segurança.
+
+**Próxima atividade concreta:** começar pela P1, fechando a classificação dos efeitos divergentes e dos conteúdos sem par nos catálogos, sem alterar banco remoto. Em paralelo, iniciar apenas o inventário de runtime standalone CXM e os casos de consulta PostgREST em clones descartáveis.
 
 ## O que não fazer
 
