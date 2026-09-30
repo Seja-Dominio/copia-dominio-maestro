@@ -65,3 +65,15 @@ test("Maestro AI checks the CXM entitlement before reading commercial proposals"
   assert.ok(entitlement > commercial && entitlement < proposalRead);
   assert.match(source, /A área Comercial exige o produto CXM habilitado para esta organização/);
 });
+
+test("marketing mix snapshot requires one confirmed active-tenant client, Insights entitlement, and tenant-scoped observations", async () => {
+  const source = await fs.readFile(new URL("../marketing-mix-snapshot/index.ts", import.meta.url), "utf8");
+  const scopeLookup = source.indexOf('.from("organization_legacy_records")');
+  const entitlementLookup = source.indexOf('.from("organization_products")', scopeLookup);
+  const observationLookup = source.indexOf('.from("marketing_mix_observations")', entitlementLookup);
+  assert.ok(scopeLookup >= 0 && entitlementLookup > scopeLookup && observationLookup > entitlementLookup);
+  assert.match(source, /\.eq\("legacy_entity", "Client"\)[\s\S]*?\.eq\("legacy_record_id", clientId\)[\s\S]*?\.eq\("scope_status", "confirmed"\)[\s\S]*?\.eq\("organizations\.status", "active"\)[\s\S]*?\.limit\(2\)/);
+  assert.match(source, /clientScopes\.length !== 1/);
+  assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "insights"\)[\s\S]*?\.in\("status", \["trial", "enabled"\]\)/);
+  assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("client_id", clientId\)/);
+});

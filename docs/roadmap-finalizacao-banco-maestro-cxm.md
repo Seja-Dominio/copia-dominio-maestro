@@ -251,6 +251,12 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Não compartilhar banco entre produtos como requisito de integração: podem compartilhar infraestrutura inicialmente, mas os limites precisam permitir implantação e evolução independentes.
 - 29/09: fechada uma lacuna no contrato de exclusão financeira: o snapshot de recuperação (`DeleteLog`), auditoria, exclusão do registro legado e remoção da projeção agora são atômicos na RPC; a interface deixa de criar o snapshot em chamada separada. Prova rollback-only passou no clean-room (replay anterior + migration aplicada isoladamente) e em branch Supabase isolada sem dados. Esta correção ainda não foi promovida a Produção.
 
+### Isolamento tenant do snapshot MMM/Insights — 30/09/2026
+
+- A Edge Function `marketing-mix-snapshot` recebia `client_id` assinado pelo serviço MMM, mas consultava observações somente por esse ID, sem usar o `organization_id` já persistido. Agora resolve o cliente por vínculo legado `Client` confirmado e organização ativa; exige vínculo único (zero ou múltiplas organizações falham fechadas), entitlement `insights` em `trial`/`enabled` e filtra as observações pelo mesmo tenant.
+- Regressão no CI Node valida a ordem das verificações e todos os filtros. Suíte local: 36/36; bundling/sintaxe da Edge Function com esbuild passou; verificador de fronteira continua sem erros, mas corretamente reporta `release_ready=false` (função ainda pendente junto aos outros bloqueios). O CI deste patch fica pendente após push.
+- Não alterei o cliente MMM, o protocolo HMAC, schema, secrets ou dados remotos. Ainda faltam prova ponta a ponta do serviço até o snapshot, catálogo/entitlement real em ambientes representativos e validação operacional antes de reclassificar a função ou incluí-la num release.
+
 ### Gate fail-closed da fronteira de Edge Functions — 28/09/2026
 
 - A auditoria mostrou que os testes unitários do manifesto já eram incluídos pelo glob `scripts/lib/*.test.mjs`; o workflow `.github/workflows/security-checks.yml`, porém, não chamava o verificador do inventário real e `package.json` não oferecia um comando dedicado. Adicionei `verify:edge-function-product-boundaries` e um passo explícito no job de testes para validar e reportar a lista real classificada em cada CI.

@@ -69,9 +69,36 @@ Deno.serve(async request => {
       return json({ error: "start e end devem estar no formato YYYY-MM-DD." }, 400);
     }
 
+    const { data: clientScopes, error: scopeError } = await db
+      .from("organization_legacy_records")
+      .select("organization_id, organizations!inner(status)")
+      .eq("legacy_entity", "Client")
+      .eq("legacy_record_id", clientId)
+      .eq("scope_status", "confirmed")
+      .eq("organizations.status", "active")
+      .limit(2);
+    if (scopeError) throw scopeError;
+    if (!clientScopes || clientScopes.length !== 1) {
+      return json({ error: "Cliente indisponível para esta análise." }, 404);
+    }
+
+    const organizationId = clientScopes[0].organization_id;
+    const { data: products, error: productError } = await db
+      .from("organization_products")
+      .select("product_key, status")
+      .eq("organization_id", organizationId)
+      .eq("product_key", "insights")
+      .in("status", ["trial", "enabled"])
+      .limit(1);
+    if (productError) throw productError;
+    if (!products?.length) {
+      return json({ error: "O produto Insights não está habilitado para esta organização." }, 403);
+    }
+
     let query = db
       .from("marketing_mix_observations")
       .select("time,geo,kpi,paid,organic,searches,leads,controls,source")
+      .eq("organization_id", organizationId)
       .eq("client_id", clientId)
       .order("time", { ascending: true })
       .limit(5000);
