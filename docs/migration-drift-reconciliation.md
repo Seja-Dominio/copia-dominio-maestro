@@ -305,3 +305,20 @@ As consultas abaixo foram feitas novamente em Dev (`tqmfuskvllpqmvayjuqu`) e Pro
 - Para cobrir o caminho de criação, numa transação rollback-only do preview removi temporariamente as sete constraints-alvo, os FKs dependentes de Job para histórico/timesheets e os quatro índices-alvo; rodei a migration real e validei: 3 uniques tenant-aware válidas, 4 FKs tenant-aware criadas `NOT VALID` e 4 índices presentes. Com duas organizações e dois Clients sintéticos, uma relação nova Project→Client cross-tenant foi rejeitada por FK e a mesma relação same-tenant foi aceita.
 - `ROLLBACK` restaurou o estado anterior. Consulta posterior `READ ONLY` confirmou as sete constraints e quatro índices preexistentes, os dois FKs dependentes, zero fixtures, e ledger inalterado (127 / `20260927220141`). A Produção real permaneceu somente leitura.
 - Isso prova o caminho de criação e enforcement de novas escritas da migration em um preview sem dados após simulação controlada de ausência; não valida constraints contra registros reais, nem o perfil completo da Produção. O fato de o preview diferir do parent reforça a necessidade de clone representativo antes do upgrade e de qualquer corte.
+
+## Classificação read-only do sufixo local não-CXM — 30/09/2026
+
+Probes agregados do catálogo de Produção foram feitos em `BEGIN READ ONLY`, sem retornar corpos de funções, payloads ou dados de negócio:
+
+| Migration local | Efeito observado em Produção | Classificação operacional |
+|---|---|---|
+| `20260929220702_task_audit_log_scope_from_row_org_id` | `maestro_sync_task_audit_log()` existe e lê `organization_legacy_records`, mas o corpo não usa `NEW.organization_id`, que a migration local prioriza. | Efeito **pendente**; scope pode depender do mapa legado em vez da linha fonte. |
+| `20260929224533_resolve_job_task_reconciliation_exact_match` | A RPC existe como `SECURITY DEFINER` com `search_path=public`; a migration local define `SECURITY INVOKER`, `search_path` vazio e exige exatamente uma atualização de tarefa e de fila. | **Conflito de segurança/semântica**; preservar EXECUTE restrito e provar transições atômicas antes de qualquer substituição. |
+| `20260929232021_mode_aware_legacy_cutover_health` | A view existe e expõe `read_mode`, `write_mode` e `health_status`, mas não as colunas direcionais `legacy_only_count`/`relational_only_count` esperadas pelo arquivo local. | Efeito **parcial/anterior**; o gate local completo ainda não está demonstrado. |
+| `20260930012652_timesheet_admin_atomic_relational_operations` | As RPCs `maestro_delete_timesheets_with_audit` e `maestro_reset_running_timesheets` não existem no catálogo consultado. | Efeito **pendente** em Produção. |
+| `20260930022408_harden_job_history_tenant_scope_and_trigger` | O trigger de `maestro_sync_relational_job_history()` existe, mas a função é `SECURITY DEFINER`, `search_path=public`; a versão local é `SECURITY INVOKER`, `search_path` vazio, com validação tenant-aware. | **Conflito de hardening/efeito pendente**. |
+| `20260930140000_repair_timesheet_payload_projection` | Ledger ausente; consulta agregada anterior encontrou 8.938 linhas elegíveis. Teste sintético repetido passou no preview de schema de Produção sem dados. | Migration **pendente**; backfill real não foi feito. |
+| `20260930160000_reinforce_cxm_silence_due_tenant_scope` | Migration CXM. | **Excluída** da sequência não-CXM por limite de produto. |
+| `20260930170000_reject_cross_tenant_core_projection_references` | Guard não existe na função de Produção; teste transacional passou no preview. | Migration **pendente** no catálogo Produção; teste não equivale a aplicação no parent. |
+
+Na consulta read-only de Dev, o health view, resolver e task-audit function acima não existiam; a função de JobHistory tinha `SECURITY INVOKER`/`search_path` vazio e um trigger; as duas RPCs de timesheet também estavam ausentes, assim como o guard cross-tenant. Isso confirma que Dev não representa a superfície Production para esse sufixo. A classificação cobre apenas estas oito migrations de maior prioridade, não as 173 migrations da matriz; não libera upgrade ou release.
