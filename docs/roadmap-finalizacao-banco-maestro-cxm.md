@@ -260,6 +260,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - A primeira versão do teste detectou que a consulta de validação de histórico não deve ocorrer sob `service_role`, que não precisa de `SELECT` nessa relação. A asserção foi movida para depois de `RESET ROLE`, sem ampliar privilégios; uma segunda contagem constatou corretamente dois eventos (Job e Subtask), e o teste final passou.
 - Essa prova valida a definição local da RPC e o comportamento no clone, mas não confirma que Produção tenha a mesma definição/grants nem substitui as sete constraints tenant-aware ausentes no catálogo de 30/09. Repetir contra clones completos dos perfis atuais e conferir o catálogo remoto read-only segue P0; nenhum deploy/DDL remoto foi feito.
 
+### Referências cruzadas no trigger legado core — 30/09/2026
+
+- Um ensaio reproduzível no clean-room mostrou que uma inserção `legacy_records` de um `Project` do tenant A com `client_id` existente somente no tenant B era aceita pelo trigger e projetava `client_id = NULL`, mantendo `client_legacy_record_id` apontando para B. A FK composta `(organization_id, client_id, client_legacy_record_id)` não bloqueia esse caso porque um componente da chave é nulo (`MATCH SIMPLE`). A transação de prova foi revertida.
+- Adicionei a migration aditiva não-CXM `20260930170000_reject_cross_tenant_core_projection_references.sql`: o trigger agora rejeita referências Client/Project que resolvam exclusivamente em outro tenant para Projects e Jobs, mantendo referências históricas sem correspondência global como snapshots legados. A migration não transforma nem apaga registros já existentes.
+- A suíte SQL exercita tentativas negativas para Project→Client, Job→Client e Job→Project, além do caso unresolved permitido. Migration e suíte passaram juntas numa única transação temporária contra o clean-room; o `ROLLBACK` final desfez também o `CREATE OR REPLACE FUNCTION`. Reconsulta confirmou o corpo antigo restaurado e 171 entradas no ledger, sem alteração persistente.
+- CI ainda precisa comprovar replay integral dos arquivos atuais e do teste atualizado. Antes de propor qualquer promoção, auditar leitores/writers legados e classificar referências historicamente cross-tenant; Produção segue sem alteração e as FKs compostas continuam pendentes.
+
 ### P1 — reconciliar histórico e efeitos reais das migrations
 
 - Completar a matriz de 172 migrations locais versus Dev, produção e branch Supabase de validação; o relatório atual é fingerprint/identidade, não classificação completa de efeitos. Inspecionar SQL local e catálogo atual, mapear dependências, consumidores, funções, triggers, cron e secrets sem expor payloads/credenciais.

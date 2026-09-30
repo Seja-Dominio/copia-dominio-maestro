@@ -34,6 +34,10 @@ begin
     where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
       and legacy_record_id in ('tenant-ci-cross-task', 'tenant-ci-valid-task')
   ) or exists (
+    select 1 from public.legacy_records
+    where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client',
+      'tenant-ci-cross-job-project', 'tenant-ci-unresolved-project')
+  ) or exists (
     select 1 from public.maestro_bank_accounts
     where legacy_record_id = 'tenant-ci-account-b'
   ) or exists (
@@ -212,6 +216,54 @@ begin
     raise exception 'TEST_FAIL rejected service_role write left a Subtask behind';
   end if;
 
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Project', 'tenant-ci-cross-project-client',
+      '{"name":"Cross-tenant Project client","client_id":"tenant-ci-client-b"}'::jsonb);
+    raise exception 'TEST_FAIL cross-tenant Project client accepted by legacy projection';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Project client must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant Project client accepted by legacy projection' then
+      raise exception 'TEST_FAIL unexpected Project client rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant Project client accepted by legacy projection' then raise; end if;
+  end;
+
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Job', 'tenant-ci-cross-job-client',
+      '{"title":"Cross-tenant Job client","client_id":"tenant-ci-client-b"}'::jsonb);
+    raise exception 'TEST_FAIL cross-tenant Job client accepted by legacy projection';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Job client must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant Job client accepted by legacy projection' then
+      raise exception 'TEST_FAIL unexpected Job client rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant Job client accepted by legacy projection' then raise; end if;
+  end;
+
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Job', 'tenant-ci-cross-job-project',
+      '{"title":"Cross-tenant Job project","project_id":"tenant-ci-project-b"}'::jsonb);
+    raise exception 'TEST_FAIL cross-tenant Job project accepted by legacy projection';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Job project must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant Job project accepted by legacy projection' then
+      raise exception 'TEST_FAIL unexpected Job project rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant Job project accepted by legacy projection' then raise; end if;
+  end;
+
+  -- Keep compatibility with genuinely unresolved historical pointers; only
+  -- IDs that resolve to another organization are forbidden.
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Project', 'tenant-ci-unresolved-project',
+    '{"name":"Unresolved legacy Project client","client_id":"tenant-ci-unknown-client"}'::jsonb);
+
   v_job_result := public.maestro_write_frozen_core_with_history(
     '00000000-0000-0000-0000-00000000a001'::uuid,
     'Job', 'create', 'tenant-ci-valid-job',
@@ -256,6 +308,20 @@ begin
   ) then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
 end;
 $verify_service_role_core_writes$;
+do $verify_legacy_projection_reference_compatibility$
+begin
+  if exists (
+    select 1 from public.legacy_records
+    where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client', 'tenant-ci-cross-job-project')
+  ) then raise exception 'TEST_FAIL rejected cross-tenant legacy core write persisted'; end if;
+  if not exists (
+    select 1 from public.legacy_records l
+    join public.maestro_projects p on p.organization_id=l.organization_id and p.legacy_record_id=l.record_id
+    where l.record_id='tenant-ci-unresolved-project'
+      and p.client_id is null and p.client_legacy_record_id='tenant-ci-unknown-client'
+  ) then raise exception 'TEST_FAIL unresolved legacy Project reference was not preserved'; end if;
+end;
+$verify_legacy_projection_reference_compatibility$;
 
 -- The privileged admin RPCs must never cross the organization supplied by the
 -- authenticated edge-session adapter. Deletes and audit snapshots are atomic;
