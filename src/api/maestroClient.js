@@ -92,9 +92,9 @@ export async function uploadMaestroFile(file) {
   return maestro.integrations.Core.UploadFile({ file });
 }
 
-export function refreshMaestroFileUrl(path) {
-  if (dataProvider !== 'supabase' || !path) return Promise.resolve('');
-  return refreshFileUrlFromSupabase(path);
+export function refreshMaestroFileUrl(path, jobId) {
+  if (dataProvider !== 'supabase' || !path || !jobId) return Promise.resolve('');
+  return refreshFileUrlFromSupabase(path, jobId);
 }
 
 export async function transferSubtasks(payload) {

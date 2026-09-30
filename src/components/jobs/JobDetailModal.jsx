@@ -1529,6 +1529,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               {tab === "attachments" && (
                 <div className="relative h-full flex flex-col">
                   <JobAttachmentsTab
+                    jobId={job.id}
                     currentUser={collabName}
                     isAdmin={isAdminLevel(sessionCollaborator)}
                     uploadContext={{ clientName: job.client_name, projectName: job.project_name, jobTitle: job.title }}

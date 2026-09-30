@@ -173,7 +173,7 @@ function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allIma
   return createPortal(content, document.body);
 }
 
-export default function JobAttachmentsTab({ attachments = [], commentImages = [], onAttachmentsChange, fullscreenLightbox = false, currentUser = "", isAdmin = false, uploadContext = {} }) {
+export default function JobAttachmentsTab({ jobId, attachments = [], commentImages = [], onAttachmentsChange, fullscreenLightbox = false, currentUser = "", isAdmin = false, uploadContext = {} }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [lightbox, setLightbox] = useState(null);
@@ -194,7 +194,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
     if (refreshingPaths[path]) return "";
     setRefreshingPaths((current) => ({ ...current, [path]: true }));
     try {
-      const url = await refreshMaestroFileUrl(path);
+      const url = await refreshMaestroFileUrl(path, jobId);
       if (url) setFreshUrls((current) => ({ ...current, [path]: url }));
       setLightbox((current) => current && getAttachmentPath(current.item) === path && url
         ? { ...current, item: { ...current.item, url } }

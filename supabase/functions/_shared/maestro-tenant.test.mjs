@@ -7,6 +7,7 @@ import {
   selectOrganizationMembership,
   selectUniqueGroupOrganization,
 } from "./maestro-tenant.mjs";
+import { collaboratorCanReadJob, jobContainsAttachmentPath, normalizeAttachmentPath } from "./attachment-access.mjs";
 
 const organizationA = {
   organization_id: "org-a",
@@ -66,6 +67,16 @@ test("resolves group scope only when every matching directory row belongs to one
   assert.equal(selectUniqueGroupOrganization([{ organization_id: "org-a" }, { organization_id: "org-a" }]), "org-a");
   assert.equal(selectUniqueGroupOrganization([{ organization_id: "org-a" }, { organization_id: "org-b" }]), null);
   assert.equal(selectUniqueGroupOrganization([]), null);
+});
+
+test("attachment access normalizes stored URLs, proves job ownership and checks collaborator assignment", () => {
+  assert.equal(normalizeAttachmentPath("https://example.test/storage/v1/object/sign/job-attachments/org-a/user-a/file.png?token=x"), "org-a/user-a/file.png");
+  const job = { id: "job-1", responsible_id: "member-a", attachments: [{ path: "org-a/member-a/file.png" }] };
+  assert.equal(jobContainsAttachmentPath(job, [], "org-a/member-a/file.png"), true);
+  assert.equal(jobContainsAttachmentPath(job, [], "org-b/member-b/private.png"), false);
+  assert.equal(collaboratorCanReadJob({ accessLevel: "collaborator", collaboratorId: "member-a", jobPayload: job }), true);
+  assert.equal(collaboratorCanReadJob({ accessLevel: "collaborator", collaboratorId: "member-b", jobPayload: job }), false);
+  assert.equal(collaboratorCanReadJob({ accessLevel: "master", collaboratorId: "member-b", jobPayload: job }), true);
 });
 
 test("the production data endpoint derives organization scope from active memberships", async () => {
@@ -185,4 +196,16 @@ test("public job approval links resolve the tenant from the signed job and keep 
   assert.match(source, /organization_id: organizationId,[\s\S]{0,80}payload: nextPayload/);
   assert.match(source, /await updateRecord\("Job", String\(jobId\), organizationId/);
   assert.match(source, /createRecord\("Notification", organizationId/);
+});
+
+test("file upload uses tenant paths and signed URL refresh requires membership and job attachment access", async () => {
+  const upload = await fs.readFile(new URL("../upload-file/index.ts", import.meta.url), "utf8");
+  const refresh = await fs.readFile(new URL("../refresh-file-url/index.ts", import.meta.url), "utf8");
+  assert.match(upload, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(upload, /\$\{session\.organization_id\}\/\$\{session\.sub\}\//);
+  assert.match(refresh, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
+  assert.match(refresh, /\.eq\("organization_id", verified\.session\.organization_id\)/);
+  assert.match(refresh, /collaboratorCanReadJob\(/);
+  assert.match(refresh, /jobContainsAttachmentPath\(/);
+  assert.ok(refresh.indexOf("jobContainsAttachmentPath(") < refresh.indexOf("createSignedUrl(path"));
 });
