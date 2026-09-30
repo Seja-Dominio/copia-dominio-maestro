@@ -253,6 +253,13 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Nas quatro relações core, RLS está habilitado sem FORCE, com quatro policies cada: policies `authenticated` exigem membership ativa na organização da linha e DELETE limita papel a `master`/`gestor`. `service_role` tem DML efetivo; o isolamento para esse caminho não é dado por RLS e não pode ser inferido da prova de policies.
 - As consultas foram somente leitura. Nenhum DDL, grant, dado, ledger, migration ou configuração remota foi alterado. A reprodução da query no clone de produção, incluindo versão PostgreSQL, comparação dos guards e negativa de relação cross-tenant, é o próximo teste; não promover migrations até lá.
 
+### Exercício da RPC core sob `service_role` — 30/09/2026
+
+- A suíte SQL de isolamento passou a executar `maestro_write_frozen_core_with_history` sob `service_role`, que ignora RLS: tentativas de criar Job com projeto de outro tenant e Subtask ligada a Job de outro tenant são rejeitadas; as gravações válidas mantêm os FKs tenant-aware e os dois eventos de histórico.
+- O script completo `scripts/sql/tenant-isolation-ci.test.sql` passou no clean-room ativo e terminou em `ROLLBACK`; não permaneceram fixtures nem grants. Esse clone tinha 171/172 migrations locais aplicadas; a única ausente é `20260930160000_reinforce_cxm_silence_due_tenant_scope`, exclusivamente CXM e sem referências no teste. Portanto esta execução comprova o contrato isolado da RPC, não o replay integral desta revisão.
+- A primeira versão do teste detectou que a consulta de validação de histórico não deve ocorrer sob `service_role`, que não precisa de `SELECT` nessa relação. A asserção foi movida para depois de `RESET ROLE`, sem ampliar privilégios; uma segunda contagem constatou corretamente dois eventos (Job e Subtask), e o teste final passou.
+- Essa prova valida a definição local da RPC e o comportamento no clone, mas não confirma que Produção tenha a mesma definição/grants nem substitui as sete constraints tenant-aware ausentes no catálogo de 30/09. Repetir contra clones completos dos perfis atuais e conferir o catálogo remoto read-only segue P0; nenhum deploy/DDL remoto foi feito.
+
 ### P1 — reconciliar histórico e efeitos reais das migrations
 
 - Completar a matriz de 172 migrations locais versus Dev, produção e branch Supabase de validação; o relatório atual é fingerprint/identidade, não classificação completa de efeitos. Inspecionar SQL local e catálogo atual, mapear dependências, consumidores, funções, triggers, cron e secrets sem expor payloads/credenciais.

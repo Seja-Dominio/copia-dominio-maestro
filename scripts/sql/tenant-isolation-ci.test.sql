@@ -23,6 +23,17 @@ begin
       '00000000-0000-0000-0000-00000000b401'::uuid
     )
   ) or exists (
+    select 1 from public.maestro_projects
+    where id = '00000000-0000-0000-0000-00000000b301'::uuid
+  ) or exists (
+    select 1 from public.maestro_jobs
+    where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id in ('tenant-ci-cross-job', 'tenant-ci-cross-client-job', 'tenant-ci-valid-job')
+  ) or exists (
+    select 1 from public.maestro_job_tasks
+    where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id in ('tenant-ci-cross-task', 'tenant-ci-valid-task')
+  ) or exists (
     select 1 from public.maestro_bank_accounts
     where legacy_record_id = 'tenant-ci-account-b'
   ) or exists (
@@ -61,7 +72,8 @@ values
 
 insert into public.maestro_projects (id, organization_id, legacy_record_id, client_id, client_legacy_record_id, name)
 values
-  ('00000000-0000-0000-0000-00000000a301', '00000000-0000-0000-0000-00000000a001', 'tenant-ci-project-a', '00000000-0000-0000-0000-00000000a201', 'tenant-ci-client-a', 'Tenant CI Project A');
+  ('00000000-0000-0000-0000-00000000a301', '00000000-0000-0000-0000-00000000a001', 'tenant-ci-project-a', '00000000-0000-0000-0000-00000000a201', 'tenant-ci-client-a', 'Tenant CI Project A'),
+  ('00000000-0000-0000-0000-00000000b301', '00000000-0000-0000-0000-00000000b001', 'tenant-ci-project-b', '00000000-0000-0000-0000-00000000b201', 'tenant-ci-client-b', 'Tenant CI Project B');
 
 insert into public.maestro_jobs (
   id, organization_id, legacy_record_id, project_id, project_legacy_record_id,
@@ -129,6 +141,121 @@ end;
 $tenant_b$;
 
 reset role;
+
+-- Exercise the service_role path that bypasses RLS: tenant safety must come
+-- from the SECURITY INVOKER RPC's explicit organization-scoped lookups.
+set local role service_role;
+do $service_role_core_writes$
+declare
+  v_job_result jsonb;
+  v_task_result jsonb;
+  v_job_id uuid;
+  v_error text;
+begin
+  begin
+    perform public.maestro_write_frozen_core_with_history(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      'Job', 'create', 'tenant-ci-cross-job',
+      '{"title":"Cross-tenant project","project_id":"tenant-ci-project-b","client_id":"tenant-ci-client-a"}'::jsonb,
+      '00000000-0000-0000-0000-00000000a101', 'Tenant CI A'
+    );
+    raise exception 'TEST_FAIL cross-tenant project accepted by service_role RPC';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'job project must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant project accepted by service_role RPC' then
+      raise exception 'TEST_FAIL unexpected cross-tenant project rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant project accepted by service_role RPC' then raise; end if;
+  end;
+  if exists (select 1 from public.maestro_jobs where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-cross-job') then
+    raise exception 'TEST_FAIL rejected service_role write left a Job behind';
+  end if;
+
+  begin
+    perform public.maestro_write_frozen_core_with_history(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      'Job', 'create', 'tenant-ci-cross-client-job',
+      '{"title":"Cross-tenant client","project_id":"tenant-ci-project-a","client_id":"tenant-ci-client-b"}'::jsonb,
+      '00000000-0000-0000-0000-00000000a101', 'Tenant CI A'
+    );
+    raise exception 'TEST_FAIL cross-tenant client accepted by service_role RPC';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'job client must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant client accepted by service_role RPC' then
+      raise exception 'TEST_FAIL unexpected cross-tenant client rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant client accepted by service_role RPC' then raise; end if;
+  end;
+  if exists (select 1 from public.maestro_jobs where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-cross-client-job') then
+    raise exception 'TEST_FAIL rejected service_role write left a Job behind';
+  end if;
+
+  begin
+    perform public.maestro_write_frozen_core_with_history(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      'Subtask', 'create', 'tenant-ci-cross-task',
+      '{"title":"Cross-tenant job","job_id":"tenant-ci-job-b"}'::jsonb,
+      '00000000-0000-0000-0000-00000000a101', 'Tenant CI A'
+    );
+    raise exception 'TEST_FAIL cross-tenant job accepted by service_role RPC';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'subtask job must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant job accepted by service_role RPC' then
+      raise exception 'TEST_FAIL unexpected cross-tenant job rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant job accepted by service_role RPC' then raise; end if;
+  end;
+  if exists (select 1 from public.maestro_job_tasks where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-cross-task') then
+    raise exception 'TEST_FAIL rejected service_role write left a Subtask behind';
+  end if;
+
+  v_job_result := public.maestro_write_frozen_core_with_history(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    'Job', 'create', 'tenant-ci-valid-job',
+    '{"title":"Valid scoped Job","project_id":"tenant-ci-project-a","client_id":"tenant-ci-client-a"}'::jsonb,
+    '00000000-0000-0000-0000-00000000a101', 'Tenant CI A'
+  );
+  select id into v_job_id from public.maestro_jobs
+  where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-valid-job';
+  if v_job_id is null or v_job_result ->> 'title' <> 'Valid scoped Job' then
+    raise exception 'TEST_FAIL valid service_role Job write did not persist';
+  end if;
+  v_task_result := public.maestro_write_frozen_core_with_history(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    'Subtask', 'create', 'tenant-ci-valid-task',
+    '{"title":"Valid scoped task","job_id":"tenant-ci-valid-job"}'::jsonb,
+    '00000000-0000-0000-0000-00000000a101', 'Tenant CI A'
+  );
+  if v_task_result ->> 'job_id' <> 'tenant-ci-valid-job'
+    or not exists (select 1 from public.maestro_job_tasks where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-valid-task' and job_id=v_job_id)
+  then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
+end;
+$service_role_core_writes$;
+reset role;
+do $verify_service_role_core_writes$
+declare
+  v_job_id uuid;
+  v_history_count integer;
+begin
+  select id into v_job_id from public.maestro_jobs
+  where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-valid-job';
+  if v_job_id is null then raise exception 'TEST_FAIL valid service_role Job write did not persist'; end if;
+  select count(*) into v_history_count from public.maestro_job_history
+  where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and job_legacy_id='tenant-ci-valid-job';
+  if v_history_count <> 2 then raise exception 'TEST_FAIL Job/Subtask writes and history were not committed atomically'; end if;
+  if not exists (select 1 from public.maestro_job_history where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and job_id=v_job_id) then
+    raise exception 'TEST_FAIL Job history did not resolve its typed tenant-scoped Job relation';
+  end if;
+  if not exists (
+    select 1 from public.maestro_job_tasks
+    where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id='tenant-ci-valid-task' and job_id=v_job_id
+  ) then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
+end;
+$verify_service_role_core_writes$;
 
 -- The privileged admin RPCs must never cross the organization supplied by the
 -- authenticated edge-session adapter. Deletes and audit snapshots are atomic;
