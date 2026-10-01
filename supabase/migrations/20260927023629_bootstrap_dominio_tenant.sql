@@ -6,6 +6,21 @@ declare
   agency_id uuid;
   owner_id text;
 begin
+  select id into owner_id
+  from public.maestro_collaborators
+  where is_active = true
+    and lower(coalesce(profile->>'access_level', '')) in ('master', 'admin')
+  order by case when profile->>'full_name' = 'Jhonatan Grimm' then 0 else 1 end, id
+  limit 1;
+
+  if owner_id is null then
+    if exists (select 1 from public.legacy_records) then
+      raise exception 'Tenant bootstrap requires an active Master/Admin collaborator before scoping existing legacy data';
+    end if;
+    raise notice 'Tenant bootstrap deferred: this empty schema has no active Master/Admin collaborator';
+    return;
+  end if;
+
   select id into agency_id
   from public.organizations
   where slug = 'dominio-performance';
@@ -16,35 +31,24 @@ begin
     returning id into agency_id;
   end if;
 
-  select id into owner_id
-  from public.maestro_collaborators
-  where is_active = true
-    and lower(coalesce(profile->>'access_level', '')) in ('master', 'admin')
-  order by case when profile->>'full_name' = 'Jhonatan Grimm' then 0 else 1 end, id
-  limit 1;
+  insert into public.organization_members (organization_id, collaborator_id, role, status)
+  values (agency_id, owner_id, 'owner', 'active')
+  on conflict (organization_id, collaborator_id) do nothing;
 
-  if owner_id is null then
-    raise notice 'No active Master/Admin collaborator found; tenant membership bootstrap is deferred for this schema-only environment';
-  else
-    insert into public.organization_members (organization_id, collaborator_id, role, status)
-    values (agency_id, owner_id, 'owner', 'active')
-    on conflict (organization_id, collaborator_id) do nothing;
-
-    insert into public.organization_members (organization_id, collaborator_id, role, status)
-    select
-      agency_id,
-      mc.id,
-      case
-        when lower(coalesce(mc.profile->>'access_level', '')) in ('master', 'admin') then 'admin'
-        when lower(coalesce(mc.profile->>'access_level', '')) in ('gestor', 'manager') then 'manager'
-        when lower(coalesce(mc.profile->>'access_level', '')) in ('viewer', 'visualizador') then 'viewer'
-        else 'member'
-      end,
-      'active'
-    from public.maestro_collaborators mc
-    where mc.is_active = true and mc.id <> owner_id
-    on conflict (organization_id, collaborator_id) do nothing;
-  end if;
+  insert into public.organization_members (organization_id, collaborator_id, role, status)
+  select
+    agency_id,
+    mc.id,
+    case
+      when lower(coalesce(mc.profile->>'access_level', '')) in ('master', 'admin') then 'admin'
+      when lower(coalesce(mc.profile->>'access_level', '')) in ('gestor', 'manager') then 'manager'
+      when lower(coalesce(mc.profile->>'access_level', '')) in ('viewer', 'visualizador') then 'viewer'
+      else 'member'
+    end,
+    'active'
+  from public.maestro_collaborators mc
+  where mc.is_active = true and mc.id <> owner_id
+  on conflict (organization_id, collaborator_id) do nothing;
 
   insert into public.organization_products (organization_id, product_key, status, plan_key)
   values

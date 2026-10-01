@@ -34,6 +34,40 @@ jobs:
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Replay every migration from a clean database
         run: supabase db reset --local --no-seed
+      - name: Verify fresh tenant bootstrap never creates an ownerless organization
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run bootstrap fixture."
+            exit 1
+          fi
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/bootstrap-owner-integrity-ci.test.sql
+      - name: Verify legacy tenant bootstrap fails closed without an owner
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run bootstrap guard fixture."
+            exit 1
+          fi
+          set +e
+          migration_output=$(
+            {
+              printf '%s\n' "BEGIN;" "INSERT INTO public.legacy_records (entity, record_id, payload) VALUES ('BootstrapOwnerGuardCI', 'synthetic-no-owner', '{}'::jsonb);"
+              cat supabase/migrations/20260927023629_bootstrap_dominio_tenant.sql
+            } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 2>&1
+          )
+          migration_status=$?
+          set -e
+          if [ "$migration_status" -eq 0 ] || ! grep -Fq "Tenant bootstrap requires an active Master/Admin collaborator" <<< "$migration_output"; then
+            echo "Expected bootstrap to fail closed when legacy data has no active owner."
+            exit 1
+          fi
+          if [ "$(docker exec "${db_containers[0]}" psql -U postgres -d postgres -Atqc "select not exists (select 1 from public.legacy_records where entity = 'BootstrapOwnerGuardCI' and record_id = 'synthetic-no-owner')")" != "t" ]; then
+            echo "Bootstrap guard fixture was not rolled back after the expected failure."
+            exit 1
+          fi
       - name: Verify missing WhatsApp scheduler config preserves an existing job
         shell: bash
         run: |
