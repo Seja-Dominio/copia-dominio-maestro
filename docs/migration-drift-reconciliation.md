@@ -22,6 +22,14 @@ Em Dev, as 478 Subtasks sem pai resolvível coincidem com a fila legacy-only pre
 3. Ensaiar em clone a sequência completa de upgrade, mantendo órfãos em exceção explícita e sem inventar vínculo; validar constraints, RLS e rollback.
 4. Só reavaliar rollout depois de comparar o catálogo e o ledger completos. Continuam proibidos `migration repair`, `db push` e escrita em ambientes hospedados nesta etapa.
 
+### Comparação com branches preview acessíveis — 01/10/2026
+
+Consulta read-only à lista de branches dos projetos pai confirmou duas previews existentes: `maestro-integrity-validation` (`xpyvjchcrnvprvwgjibm`, derivada da Produção) e `maestro-db-canonical-candidate-20260930` (`fwvpfmbkuosjibvyvbap`, derivada do Dev). Ambas constam `with_data=false`, `MIGRATIONS_FAILED` e `preview_project_status=ACTIVE_HEALTHY`. As URLs de conexão retornadas pela API foram mantidas somente em memória e não registradas.
+
+Conectado a cada preview com ref validada, transação `READ ONLY` confirmada e `ROLLBACK`, o catálogo mostra as quatro relações core com RLS e as sete constraints compostas esperadas validadas (distribuição: 1 Client, 2 Project, 3 Job, 1 Subtask). Isso difere do projeto pai Produção, onde nenhuma das sete constraints compostas com esses nomes existe, e coincide com o candidato Dev. A preview non-CXM existente `diljbmxxlsqyxcqnraba` não tem as quatro relações core e não serve a este ensaio.
+
+**Conclusão:** previews mostram estado de schema esperado, não o estado de dados/ledger da Produção nem uma atualização completa desde o catálogo atual; o campo `MIGRATIONS_FAILED` reforça a limitação. Não se pode usar essa evidência para validar os cinco ponteiros sem pai, backfill, validação de constraints sobre dados reais ou rollback de upgrade. O Docker local continua indisponível; retomar clone representativo quando o runtime local estiver ativo ou houver snapshot de dados anonimizado aprovado.
+
 Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado. A tabela e listas iniciais desta página são fotografias históricas; a recontagem `READ ONLY` de 01/10/2026, registrada abaixo, prevalece para contagens do ledger.
 
 ## Método e limites
