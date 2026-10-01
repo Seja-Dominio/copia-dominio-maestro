@@ -43,9 +43,11 @@ jobs:
             exit 1
           fi
           {
-            sed '/^-- WHATSAPP_SCHEDULER_MIGRATION_BARRIER$/,$d' scripts/sql/whatsapp-scheduler-preservation-ci.test.sql
+            sed '/^-- WHATSAPP_SCHEDULER_CONFIG_MISSING_BARRIER$/,$d' scripts/sql/whatsapp-scheduler-preservation-ci.test.sql
             cat supabase/migrations/20261001160000_preserve_whatsapp_scheduler_without_vault_config.sql
-            sed -n '/^-- WHATSAPP_SCHEDULER_MIGRATION_BARRIER$/,$p' scripts/sql/whatsapp-scheduler-preservation-ci.test.sql | sed '1d'
+            sed -n '/^-- WHATSAPP_SCHEDULER_CONFIG_MISSING_BARRIER$/,$p' scripts/sql/whatsapp-scheduler-preservation-ci.test.sql | sed '1d' | sed '/^-- WHATSAPP_SCHEDULER_CONFIGURED_BARRIER$/,$d'
+            cat supabase/migrations/20261001160000_preserve_whatsapp_scheduler_without_vault_config.sql
+            sed -n '/^-- WHATSAPP_SCHEDULER_CONFIGURED_BARRIER$/,$p' scripts/sql/whatsapp-scheduler-preservation-ci.test.sql | sed '1d'
           } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
       - name: Lint the resulting public schema
         run: supabase db lint --local --schema public --level error
