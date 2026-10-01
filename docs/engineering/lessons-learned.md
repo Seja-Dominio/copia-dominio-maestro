@@ -3,7 +3,7 @@
 ## Migrations multi-relação: classificar alvos antes do pacote — 30/09/2026
 
 - **Evidência:** a migration `20260926520000_add_authenticated_organization_rls` mistura 33 tabelas; Produção tem 33 e 132 policies, Dev tem 9 e nenhuma policy, e 12 tabelas não aparecem no registry de ownership. Busca direta em `dominus-webhook`, `dominus-audit` e migrations de operações core ligou todos os 12 a consumidores Maestro, embora AppConfig e dados conversacionais/logs ainda exijam escopos de acesso específicos. O alvo SQL não faz guarda de existência. O caso demonstra que owner de produto não determina, por si só, autorização ou tenant policy.
-- **Resultado validado:** o replay integral da branch limpa passou no CI `36808101999`; isso não resolve os ledgers/objetos divergentes nos ambientes remotos. A regra de não mascarar baseline incompatível evita declarar reconciliação com base em guards que apenas pulam objetos ausentes.
+- **Resultado validado:** o replay integral da branch limpa passou no CI `36808101999`; isso não resolve os ledgers/objetos divergentes nos ambientes remotos. O manifesto suplementar + gate local reconciliam 21 owners do registry e 12 owners com evidência no código, falhando para alvos novos sem classificação. A regra de não mascarar baseline incompatível evita declarar reconciliação com base em guards que apenas pulam objetos ausentes.
 - **Aplicação:** migrations multi-tabela, RLS e pacotes por produto; inventariar alvos, owner, presença por ambiente e dependências antes de particionar ou testar upgrade.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com esse cruzamento obrigatório e a ressalva contra guards silenciosos. Esforço ativo: não medido.
 

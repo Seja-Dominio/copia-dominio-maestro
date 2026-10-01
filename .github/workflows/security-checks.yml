@@ -81,6 +81,8 @@ jobs:
           else
             echo "::notice::Static migration auditor is not part of this candidate; clean-room replay/lint validates every SQL file."
           fi
+      - name: Verify RLS target product ownership
+        run: npm run verify:policy-target-ownership
       - name: Verify functional inventory when app sources are present
         run: |
           if [ -f scripts/verify-functional-inventory.mjs ]; then

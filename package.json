@@ -26,6 +26,7 @@
     "verify:frontend-module-boundaries": "node scripts/verify-frontend-module-boundaries.mjs",
     "reconcile:migration-ledgers": "node scripts/reconcile-migration-ledgers.mjs",
     "verify:migration-files": "node scripts/verify-migration-files.mjs",
+    "verify:policy-target-ownership": "node scripts/verify-policy-target-ownership.mjs",
     "verify:functional-inventory": "node scripts/verify-functional-inventory.mjs",
     "verify:edge-function-product-boundaries": "node scripts/verify-edge-function-product-boundaries.mjs"
   },

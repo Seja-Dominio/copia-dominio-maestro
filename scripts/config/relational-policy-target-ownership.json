@@ -1,0 +1,17 @@
+{
+  "purpose": "Classifies product consumers for RLS migration targets omitted from the legacy cutover registry; this is not an authorization grant or a tenant-policy approval.",
+  "targets": [
+    { "table": "maestro_job_history", "product": "maestro", "evidence": ["scripts/lib/relational-parity-coverage.mjs", "supabase/migrations/20260926230000_create_relational_job_history.sql"] },
+    { "table": "maestro_webhook_receipts", "product": "maestro", "evidence": ["supabase/functions/dominus-webhook/index.ts", "supabase/migrations/20260926233000_create_relational_webhook_receipts.sql"] },
+    { "table": "maestro_dominus_query_logs", "product": "maestro", "evidence": ["supabase/functions/dominus-webhook/index.ts", "supabase/migrations/20260926440000_create_relational_dominus_operations.sql"] },
+    { "table": "maestro_dominus_sent_messages", "product": "maestro", "evidence": ["supabase/functions/dominus-webhook/index.ts", "supabase/migrations/20260926440000_create_relational_dominus_operations.sql"] },
+    { "table": "maestro_dominus_pending_messages", "product": "maestro", "evidence": ["supabase/functions/dominus-webhook/index.ts", "supabase/migrations/20260926440000_create_relational_dominus_operations.sql"] },
+    { "table": "maestro_mini_tasks", "product": "maestro", "evidence": ["scripts/config/frontend-entity-dispositions.json", "src/components/todo/FloatingTodoList.jsx", "supabase/migrations/20260926460000_create_relational_task_audit_logs.sql"] },
+    { "table": "maestro_delete_logs", "product": "maestro", "evidence": ["scripts/config/frontend-entity-dispositions.json", "src/pages/Recovery.jsx", "supabase/migrations/20260926460000_create_relational_task_audit_logs.sql"] },
+    { "table": "maestro_conversation_states", "product": "maestro", "evidence": ["supabase/functions/dominus-webhook/index.ts", "supabase/migrations/20260926480000_create_relational_operational_configs.sql"] },
+    { "table": "maestro_audit_summaries", "product": "maestro", "evidence": ["supabase/functions/dominus-audit/index.ts", "supabase/migrations/20260926480000_create_relational_operational_configs.sql"] },
+    { "table": "maestro_system_audit_logs", "product": "maestro", "evidence": ["supabase/migrations/20260926480000_create_relational_operational_configs.sql", "supabase/migrations/20260929035000_core_relational_delete_recovery.sql"] },
+    { "table": "maestro_app_configs", "product": "maestro", "evidence": ["scripts/config/frontend-entity-dispositions.json", "src/lib/AppConfigContext.jsx", "supabase/migrations/20260926480000_create_relational_operational_configs.sql"] },
+    { "table": "maestro_squads", "product": "maestro", "evidence": ["scripts/config/frontend-entity-dispositions.json", "src/components/squads/SquadsManager.jsx", "supabase/migrations/20260926480000_create_relational_operational_configs.sql"] }
+  ]
+}
