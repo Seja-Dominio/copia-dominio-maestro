@@ -48,6 +48,12 @@ $$;
 
 revoke all on function public.maestro_relink_subtasks_after_job_recovery() from public, anon, authenticated;
 grant execute on function public.maestro_relink_subtasks_after_job_recovery() to service_role;
+grant select (organization_id, job_id, legacy_job_record_id, source_payload, resolution_status, legacy_record_id)
+  on public.maestro_job_tasks to service_role;
+grant update (job_id, resolution_status, updated_at)
+  on public.maestro_job_tasks to service_role;
+grant select (organization_id, legacy_record_id, entity, issue_type, resolution_status)
+  on public.relational_integrity_exceptions to service_role;
 grant update (resolution_status, resolution_note, resolved_at)
   on public.relational_integrity_exceptions to service_role;
 

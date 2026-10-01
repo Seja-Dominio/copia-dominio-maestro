@@ -211,6 +211,20 @@ begin
 end;
 $assertions$;
 
+do $recovery_privileges$
+begin
+  if not has_column_privilege('service_role', 'public.maestro_job_tasks', 'organization_id', 'SELECT')
+    or not has_column_privilege('service_role', 'public.maestro_job_tasks', 'source_payload', 'SELECT')
+    or not has_column_privilege('service_role', 'public.maestro_job_tasks', 'job_id', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.maestro_job_tasks', 'updated_at', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.relational_integrity_exceptions', 'legacy_record_id', 'SELECT')
+    or not has_column_privilege('service_role', 'public.relational_integrity_exceptions', 'resolution_status', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.relational_integrity_exceptions', 'resolved_at', 'UPDATE') then
+    raise exception 'Job recovery trigger is missing a required service_role column privilege';
+  end if;
+end;
+$recovery_privileges$;
+
 set local role service_role;
 select public.maestro_write_frozen_core_with_history(
   '00000000-0000-0000-0000-00000000c001'::uuid,

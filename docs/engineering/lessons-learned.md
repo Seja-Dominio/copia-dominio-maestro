@@ -78,6 +78,12 @@
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, regra pequena de descoberta de baselines.
 - Esforço ativo: não medido.
 
+## Clone schema-only também precisa reproduzir ACL efetiva — 01/10/2026
+
+- **Evidência:** o clone Dev não tinha grants em três tabelas usadas pelo fluxo de recuperação e tinha grants incompletos em outra; por isso a chamada sob `service_role` falhou. Consulta hospedada `READ ONLY` mostrou o mesmo ACL direto amplo para `service_role` nas quatro tabelas em Dev e Produção. Ao normalizar somente o clone para esse ACL, a fixture passou tanto nele quanto no Prod-shaped.
+- **Aplicação:** antes de interpretar falha de privilégio em clone como defeito de migration/runtime, comparar grants diretos e efetivos por papel, ACL por coluna, owner e defaults com o ambiente de origem; corrigir somente o clone de teste para reproduzir o estado observado.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, incluindo ACL de tabela/coluna, ownership e privilégios padrão na comparação de baselines. Não houve escrita remota.
+
 ## Interpretar contagem relacional conforme o modo de cutover — 01/10/2026
 
 - **Evidência revisada:** a auditoria READ ONLY em Produção encontrou 7.392 linhas Subtask relacionais e 7.102 legadas; todas as chaves legadas têm projeção/escopo, mas a origem das 290 linhas relational-only permanece desconhecida. A revisão do checkout confirmou que o dispatcher anterior ignorava `write_mode`. Esta branch inclui despacho relacional fail-closed para entidades congeladas e writer scoped de Project; migration, testes tenant-aware no clone isolado e CI de replay limpo/integridade passaram. Produção não foi alterada; implantação e origem das 290 linhas não estão comprovadas.
