@@ -1,17 +1,25 @@
-# Roadmap para finalizar o banco do Maestro e separar o CXM
+# Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
-Atualizado em 2026-09-28. Este plano define o caminho até um banco relacional operacional para o Maestro e um CXM que possa ser hospedado e vendido separadamente, com integração opcional. Não autoriza aplicar migrations em produção por lote.
+Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
 
 ## Resultado que este plano chama de “banco finalizado”
 
 O banco só será considerado finalizado quando todos estes resultados estiverem demonstrados:
 
 1. O Maestro usa tabelas relacionais como fonte de verdade para os domínios incluídos no produto, sem depender de `legacy_records` para operações de negócio desses domínios.
-2. O CXM pode ser implantado em uma instalação/banco independentes, com identidade, organizações, permissões, dados, filas, tarefas agendadas, auditoria, backup e monitoramento próprios.
-3. A integração Maestro↔CXM usa contratos versionados e autenticados, com IDs externos estáveis, idempotência, retries e comportamento definido quando um dos produtos está indisponível.
-4. O isolamento entre organizações e entre produtos é exercitado por testes positivos e negativos; não depende somente de filtros de interface.
-5. Migrations reproduzem o estado a partir de uma base limpa e também atualizam uma cópia representativa do estado atual; nenhum histórico remoto é reescrito para esconder drift.
-6. Paridade, fluxos críticos, segurança, restauração e rollback passam gates registrados antes do corte gradual de produção.
+2. O Maestro inclui o módulo CXM integrado ao produto, com acesso governado por entitlement e isolamento multi-tenant na mesma instalação do Maestro.
+3. O CRM externo, com a mesma experiência e funcionalidades do CXM integrado, é um produto separado com repositório Git, servidores/infraestrutura, banco de dados e hospedagem próprios; não é um deploy do Maestro nem compartilha seu banco.
+4. A integração opcional Maestro↔CRM usa contratos versionados e autenticados, com IDs externos estáveis, idempotência, retries e comportamento definido quando um dos produtos está indisponível. Não há FKs entre bancos.
+5. O isolamento entre organizações e entre Maestro e CRM externo é exercitado por testes positivos e negativos; não depende somente de filtros de interface.
+6. Migrations reproduzem o estado a partir de uma base limpa e também atualizam uma cópia representativa do estado atual; nenhum histórico remoto é reescrito para esconder drift.
+7. Paridade, fluxos críticos, segurança, restauração e rollback passam gates registrados antes do corte gradual de produção.
+
+## Decisão de arquitetura de produto — 30/09/2026
+
+- **Maestro** é o sistema principal e contém o CXM integrado. O release completo do Maestro deve disponibilizar esse módulo junto das demais áreas, respeitando entitlement e permissões por organização.
+- **CRM externo** é a aplicação independente que reproduz as funcionalidades do CRM/CXM do Maestro. Terá repositório Git, banco, servidores/infraestrutura e hospedagem próprios, com ciclo de release e recuperação independentes.
+- A fronteira de deploy não deve remover o CXM integrado do Maestro. Deve impedir que o artefato/aplicação e os recursos exclusivos do CRM externo sejam empacotados no deploy do Maestro. Integração entre ambos é opcional e somente por API/contrato versionado; sem compartilhamento de banco, segredos, cron ou FKs cross-database.
+- Esta é a arquitetura-alvo aprovada pelo usuário, não uma afirmação de que já esteja implementada. O checkout auditado ainda não contém uma rota `/CXM` nem as Edge Functions `cxm-data`/`cxm-deskcomm-sso`; o fechamento exige implementar/validar o módulo integrado no Maestro e localizar/construir o aplicativo CRM autônomo em repositório próprio, depois provar paridade funcional entre os dois.
 
 “Relacional” não exige transformar cada JSON em dezenas de colunas. Campos usados em joins, filtros, autorização, cálculos e constraints devem ser tipados; payloads externos/evolutivos podem permanecer JSON versionado com retenção e dono explícitos.
 
@@ -120,10 +128,10 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 **Atividades**
 
-- Confirmar a lista de módulos do Maestro: núcleo operacional, Financeiro, Produção/Documentos, Ads Brain e Insights; marcar CXM como produto isolável, não incluído nos deploys desta trilha.
+- Confirmar a lista de módulos do Maestro: núcleo operacional, Financeiro, Produção/Documentos, Ads Brain, Insights e CXM integrado; inventariar separadamente o CRM externo e seus recursos/deploys próprios.
 - Fechar matriz entidade × tabela × Edge Function/API × consumidor × operações × tenant dono × fonte de verdade.
-- Classificar entidades não relacionais como `relacional`, `legado temporário`, `configuração`, `cache/snapshot`, `CXM separado` ou `fora de escopo`, cada qual com responsável e teste.
-- Resolver as quatro lacunas CXM do verificador no inventário CXM próprio, sem alterar o gate do pacote Maestro para fingir que não existem.
+- Classificar entidades não relacionais como `relacional`, `legado temporário`, `configuração`, `cache/snapshot`, `CXM integrado`, `CRM externo` ou `fora de escopo`, cada qual com responsável e teste.
+- Inventariar as funcionalidades CXM integradas e o aplicativo CRM externo em fronteiras distintas; as ausências no checkout atual são pendências de entrega, não motivo para retirar o CXM do escopo Maestro.
 - Remover arquivos gerados/temporários do conjunto candidato e criar listas de arquivos exatas por entrega.
 
 **Aceite**: nenhum consumidor/tabela sem domínio, dono ou decisão de persistência; verificadores funcionais passam separadamente para o escopo Maestro e para o inventário CXM.
@@ -190,18 +198,18 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 **Aceite por fatia**: paridade bidirecional sem divergência não explicada; integração, autorização e regressão da UI passam; rollback documentado e testado; demais domínios inalterados.
 
-### Fase 6 — construir CXM como produto instalável independente
+### Fase 6 — entregar CXM integrado e CRM externo funcionalmente equivalente
 
 **Atividades**
 
-- Definir boundary próprio: schema/migrations, API/Edge Functions, autenticação/tenancy, secrets, filas, cron, storage, logs, billing/entitlements e política de retenção.
-- Separar dados CXM de tabelas de núcleo; onde precisar de cliente/job/usuário do Maestro, guardar IDs externos e snapshot mínimo necessário, não FK cross-database.
-- Versionar contrato de integração: provisionamento/credenciais, sync de organizações e usuários, clientes/contatos permitidos, eventos, webhooks, idempotency keys, retry/DLQ, revogação e reconciliação.
-- Definir modo standalone (CXM com cadastros próprios) e modo conectado ao Maestro; escopos e consentimentos devem ser explícitos.
-- Incluir migrations e seeds de instalação limpa, upgrade, operação sem dependência do Maestro e desinstalação/retensão exportável.
-- Isolar workers/schedulers por ambiente e instalação; testar falha de fornecedor, replay de webhook, duplicidade, rate limit e rotação de segredo.
+- Fechar a implementação do módulo CXM dentro do Maestro, com suas tabelas/migrations no banco Maestro, APIs/rotas internas, identidade, entitlement, autorização e retenção coerentes com o tenant Maestro.
+- Versionar o aplicativo **CRM externo** em repositório Git próprio, com schema/migrations, API, autenticação/tenancy, secrets, filas, cron, storage, logs, billing/entitlements e política de retenção próprios.
+- Manter dados do CRM externo em seu banco; ao integrar com Maestro, usar IDs externos e snapshots mínimos pela API, sem FK ou consulta direta entre bancos.
+- Versionar contrato opcional de integração: provisionamento/credenciais, sincronização autorizada de organizações/usuários/clientes, eventos, webhooks, idempotency keys, retry/DLQ, revogação e reconciliação.
+- Provar paridade dos fluxos de CRM/CXM previstos entre o módulo Maestro e a aplicação externa, distinguindo dados/configurações locais de cada instalação.
+- Isolar workers/schedulers por aplicação e instalação; testar indisponibilidade de um lado, replay de webhook, duplicidade, rate limit e rotação de segredo.
 
-**Aceite**: CXM sobe e executa seus fluxos principais em ambiente novo sem banco ou função do Maestro; integração opcional reconecta sem duplicar nem cruzar tenants; dados podem ser exportados e recuperados.
+**Aceite**: o Maestro executa os fluxos CXM integrados; o CRM externo sobe pelo próprio repositório e infraestrutura, sem depender do Maestro, e oferece os mesmos fluxos acordados; integração opcional pode cair/reconectar sem bloquear o outro lado, duplicar ou cruzar tenants; dados de ambos podem ser exportados e recuperados separadamente.
 
 ### Fase 7 — endurecer operação, recuperação e escala
 
@@ -222,15 +230,15 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Congelar commit candidato e gerar manifest explícito de código, migrations, funções, variáveis e módulos incluídos/excluídos.
 - Fazer replay clean-room, upgrade, testes de isolamento, paridade e fluxo end-to-end num ambiente representativo.
 - Revisar segurança/advisors, logs, backup, rollback, feature flags e plano de monitoramento.
-- Publicar primeiro em ambiente de homologação; fazer smoke test de cada módulo Maestro e do CXM independente/conectado.
+- Publicar primeiro em homologação separada para Maestro (incluindo CXM integrado) e CRM externo; testar o módulo integrado, o CRM autônomo e a integração opcional entre eles.
 - Liberar produção por domínio/tenant com janela de observação e botão de desligamento; interromper corte se houver divergência, aumento de erro ou impacto em módulo fora do escopo.
 
-**Aceite final**: Maestro funcional com fonte relacional para todo o escopo declarado; CXM standalone funcional e integrado por contrato versionado; testes, backup/restauração, segurança e rollback aprovados; nenhuma dependência CXM oculta no release do Maestro; relatório pós-deploy sem regressão.
+**Aceite final**: Maestro funcional com fonte relacional para todo o escopo declarado, incluindo o CXM integrado; CRM externo funcional e equivalente nos fluxos definidos, com Git/banco/servidores/hospedagem próprios; integração opcional por contrato versionado; testes, backup/restauração, segurança e rollback aprovados separadamente; o aplicativo externo não é empacotado no release Maestro; relatório pós-deploy sem regressão.
 
 ## Dependências e paralelismo
 
 - Fases 0 e 1 começam primeiro e bloqueiam qualquer corte persistente.
-- O desenho dos contratos CXM pode ocorrer em paralelo às fases 1–5, mas migrations/deploy do CXM ficam em trilha e ambiente próprios.
+- O desenho da integração com o CRM externo pode ocorrer em paralelo às fases 1–5. O módulo CXM integrado e seu schema pertencem ao produto Maestro; migrations/deploy do CRM externo ficam em repositório, banco e ambiente próprios.
 - Segurança multi-tenant (fase 2) bloqueia abertura de acesso e ativação geral de módulos.
 - Triagem de exceções (fase 3) pode ocorrer junto do desenho relacional; bloqueia somente constraints/backfills que afetem esses registros.
 - Fases 5 e 6 podem avançar em paralelo em branches/ambientes isolados; a fase 8 integra os resultados depois.
@@ -294,8 +302,8 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 ### P1 — reconciliar histórico e efeitos reais das migrations
 
 - Completar a matriz das 173 migrations locais versus Dev, produção e branch Supabase de validação; o relatório atual é fingerprint/identidade, não classificação completa de efeitos. Inspecionar SQL local e catálogo atual, mapear dependências, consumidores, funções, triggers, cron e secrets sem expor payloads/credenciais.
-- Resolver todos os casos `SQL divergente`, conteúdo local/remoto sem par e aliases; classificar cada efeito como equivalente, pendente, conflito, CXM ou operacional. CXM e jobs relacionados ficam fora da sequência não-CXM.
-- Definir a sequência mínima de migrations não-CXM com manifest explícito e dependências; não “consertar” o ledger para fazê-lo coincidir.
+- Resolver todos os casos `SQL divergente`, conteúdo local/remoto sem par e aliases; classificar cada efeito como equivalente, pendente, conflito, CXM integrado ao Maestro, CRM externo ou operacional.
+- Definir a sequência de migrations do Maestro, incluindo schema necessário ao CXM integrado, e uma trilha distinta para migrations exclusivas do CRM externo; não “consertar” o ledger para fazê-lo coincidir.
 - Aceite: 100% dos itens da sequência proposta têm evidência de estado esperado e ordem; nenhum efeito não explicado. Até lá, sem upgrade remoto.
 
 ### P2 — provar upgrades em clones representativos e fechar segurança multi-tenant
@@ -318,32 +326,38 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Em cada fatia: backfill → comparação → dual-write se necessário → leitura relacional controlada em homologação → observação → congelar legado apenas daquela fatia → ensaiar rollback. Não remover `legacy_records` até todas as entidades e consumidores estarem aposentados com evidência.
 - Aceite por fatia: paridade sem divergência inexplicada, autorização e regressão aprovadas, rollback recupera a imagem anterior e os outros domínios não mudam.
 
-### P5 — tornar releases não-CXM realmente segregados
+### P5 — separar o release do Maestro do aplicativo CRM externo
 
-- Resolver os seis Edge Functions compartilhados e oito pendentes não-CXM do manifesto atual; mapear acessos dinâmicos a `legacy_records`, credenciais WhatsApp globais, cron e dependências implícitas. Não classificar como seguro só pela ausência de texto `CXM`.
-- Definir allowlist de funções, migrations, secrets, schedulers e módulos não-CXM; automatizar CI para falhar se uma função/migration proibida entrar no pacote. O atual `release_ready=false` é um bloqueio real.
-- Aceite: artefato reproduzível de deploy não-CXM e teste provando que CXM e seus workers não são publicados nem necessários ao Maestro.
+- Auditar as seis Edge Functions compartilhadas e oito pendentes do manifesto atual; classificá-las entre backend do Maestro (incluindo CXM integrado), recursos exclusivos do CRM externo e adaptadores de integração. Mapear acessos dinâmicos a `legacy_records`, credenciais WhatsApp globais, cron e dependências implícitas.
+- Definir manifestos e CI independentes: o release Maestro inclui o módulo CXM integrado e seus recursos necessários; o CRM externo publica somente pelo seu repositório/pipeline/ambiente. Nenhum recurso exclusivo do CRM externo ou segredo/banco é acoplado ao deploy Maestro.
+- Estado atual continua `release_ready=false`; o inventário precisa ser reclassificado de acordo com esta arquitetura antes de mudar exclusões no código ou habilitar qualquer release.
+- **Aceite:** releases reproduzíveis e independentes; o deploy Maestro contém as funções necessárias ao CXM integrado, enquanto o aplicativo CRM externo e seus workers/banco não são publicados nem exigidos pelo Maestro.
 
-### P6 — construir e comprovar CXM independente em trilha isolada
+### P6 — construir e comprovar o CRM externo em trilha isolada
 
-- O spike Deskcomm comprova serviços/banco e infraestrutura local, não a aplicação CXM. Localizar/consolidar o código CXM executável e seu schema/migrations próprios (ou iniciar pacote standalone versionado); definir identidade/tenancy, APIs, secrets, Storage, filas, cron, auditoria e operação.
-- Formalizar integração opcional por contrato versionado, IDs externos, autenticação, idempotência, retries/DLQ e desconexão; sem FK entre bancos. Provar instalação limpa, upgrade, fluxos essenciais e isolamento com duas organizações sem Maestro conectado.
-- Aceite: deploy, login, CRUD/fluxos CXM e recuperação funcionam no stack próprio; integração pode cair/reconectar sem bloquear o Maestro ou duplicar dados.
+- O spike Deskcomm comprova serviços/banco e infraestrutura local, não a aplicação CRM. Localizar/consolidar o código executável do CRM/CXM no repositório externo próprio; definir identidade/tenancy, APIs, secrets, Storage, filas, cron, auditoria e operação.
+- Formalizar integração opcional com o Maestro por contrato versionado, IDs externos, autenticação, idempotência, retries/DLQ e desconexão; sem FK entre bancos. Provar instalação limpa, upgrade, fluxos essenciais e isolamento com duas organizações sem Maestro conectado.
+- **Aceite:** deploy, login, CRUD/fluxos e recuperação do CRM funcionam no stack próprio; fluxos têm paridade definida com CXM integrado; a integração pode cair/reconectar sem bloquear o Maestro ou duplicar dados.
 
 ### P7 — recuperação, carga e lançamento gradual
 
 - Ensaiar backup/restore completo de cada produto separadamente, incluindo Auth, Storage, roles, configuração/secrets pelo processo seguro e schedulers; definir e medir RPO/RTO. O round-trip atual prova somente schema/dados Postgres do clean-room.
 - Medir carga representativa, índices/queries, filas e limites por tenant; preparar alertas, feature flags e rollback operacional.
-- Fazer homologação integrada do Maestro e CXM (standalone e conectado); liberar por domínio/tenant com observação e interruptor de rollback. Produção só após todos os gates anteriores e aprovação do usuário para o corte específico.
+- Homologar Maestro (com CXM integrado) e CRM externo separadamente e, depois, juntos via contrato opcional; liberar por produto/domínio/tenant com observação e rollback próprio. Produção só após os gates e aprovação do usuário para o corte específico.
 
 ### Paralelismo permitido sem conflito
 
 - **Trilha A — migrations/catálogos:** P1 e preparação de clones P2, exclusivamente read-only até existir sequência aprovada.
 - **Trilha B — runtime Maestro:** testes reais do dispatcher, contratos e exceções P3 em banco descartável, sem habilitar flags de produção nem editar os artefatos da Trilha A.
-- **Trilha C — CXM:** localizar/estruturar aplicação e contrato standalone P6 em branch/repositório isolado; não compartilhar migrations, secrets ou deploy com Maestro.
+- **Trilha C — CRM externo:** localizar/estruturar a aplicação e contrato P6 no repositório isolado do CRM; não compartilhar banco, secrets ou deploy com Maestro. O CXM integrado permanece na trilha de produto Maestro.
 - P4 depende dos resultados A+B; P5 pode avançar em paralelo em manifesto/pipeline isolado, mas release permanece bloqueado; P7 e lançamento dependem das duas trilhas de produto e dos gates de segurança.
 
-**Próxima atividade concreta:** começar pela P1, fechando a classificação dos efeitos divergentes e dos conteúdos sem par nos catálogos, sem alterar banco remoto. Em paralelo, iniciar apenas o inventário de runtime standalone CXM e os casos de consulta PostgREST em clones descartáveis.
+**Próxima atividade concreta:** continuar P1, classificando efeitos divergentes e conteúdos sem par nos catálogos, sem alterar bancos remotos. Em paralelo, inventariar o runtime do CXM integrado no Maestro, o repositório/aplicação do CRM externo e os contratos que podem conectá-los; testar consultas PostgREST em clones descartáveis.
+
+### Atualização de fronteira de produto — 30/09/2026
+
+- A decisão arquitetural acima substitui as formulações anteriores deste roadmap que tratavam todo CXM como um aplicativo externo excluído do Maestro. Referências históricas registram o estado/planejamento daquela etapa; a meta atual é CXM integrado no Maestro e CRM funcionalmente equivalente em instalação totalmente separada.
+- O manifesto `scripts/config/edge-function-product-boundaries.json` e os verificadores ainda refletem a implementação/classificação anterior: não os alterei nesta correção. Antes de abrir o release, revisar cada função para distinguir backend do CXM integrado, adaptador Maestro↔CRM e componente exclusivo do CRM externo; não incluir código/recursos do CRM independente no deploy Maestro.
 
 ## O que não fazer
 
