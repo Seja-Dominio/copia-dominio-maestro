@@ -3,8 +3,21 @@
 
 do $$
 declare
+  v_missing text;
   v_definition text;
 begin
+  select string_agg(required.name, ', ' order by required.name)
+    into v_missing
+  from unnest(array[
+    'maestro_clients', 'maestro_projects', 'maestro_jobs', 'maestro_job_tasks',
+    'maestro_timesheets', 'maestro_job_history', 'organization_members',
+    'job_task_reconciliation'
+  ]) as required(name)
+  where to_regclass('public.' || required.name) is null;
+  if v_missing is not null then
+    raise exception 'Cannot reconcile core tenant integrity; required public relations are missing: %', v_missing;
+  end if;
+
   select pg_get_constraintdef(oid) into v_definition from pg_constraint
     where conrelid='public.maestro_clients'::regclass and conname='maestro_clients_organization_id_id_key';
   if v_definition is null then
