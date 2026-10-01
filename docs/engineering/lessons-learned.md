@@ -71,3 +71,10 @@
 - **Aplicação:** antes de declarar ausência de cópia/snapshot local ou criar outra, enumerar os bancos existentes dentro de cada container Postgres relevante e conferir ledger/catálogo pelo nome do banco.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, regra pequena de descoberta de baselines.
 - Esforço ativo: não medido.
+
+## Interpretar contagem relacional conforme o modo de cutover — 01/10/2026
+
+- **Evidência:** em Produção, a projeção Subtask tem 7.392 linhas e o legado 7.102; todas as 7.102 chaves legadas têm projeção/escopo, enquanto 290 linhas relacionais-only são compatíveis com o registry `read_mode=relational`, `write_mode=relational`, `legacy_write_allowed=false`. Permanecem 27 payloads divergentes e 120 tarefas sem Job, classificados separadamente, sem mutação remota.
+- **Aplicação:** antes de tratar contagens distintas entre legado e projeção como perda/duplicação, consultar modo e status de cutover, comparar cobertura bidirecional por chave e payload, e separar registros canônicos pós-cutover das exceções reais. Nunca apagar nem regravar para forçar igualdade de totais.
+- **Skill:** nenhuma alteração automática. Este é um caso confirmado no domínio Subtask, mas ainda não há dois domínios/casos comparáveis para generalizar a regra à skill global de migrations.
+- Esforço ativo: não medido.
