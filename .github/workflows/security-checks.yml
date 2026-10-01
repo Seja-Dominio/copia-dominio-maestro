@@ -57,6 +57,20 @@ jobs:
             cat scripts/sql/timesheet-projection-repair-assertions.sql
             printf 'ROLLBACK;\n'
           } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
+      - name: Verify tenant-safe Timesheet backfill and dual-write
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run Timesheet fixtures."
+            exit 1
+          fi
+          {
+            sed '/^-- TIMESHEET_MIGRATION_BARRIER$/,$d' scripts/sql/timesheet-tenant-projection-ci.test.sql
+            cat supabase/migrations/20261001120000_reconcile_timesheet_tenant_projection.sql
+            cat supabase/migrations/20261001120000_reconcile_timesheet_tenant_projection.sql
+            sed -n '/^-- TIMESHEET_MIGRATION_BARRIER$/,$p' scripts/sql/timesheet-tenant-projection-ci.test.sql | sed '1d'
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
 
   unit-tests:
     name: Authorization and regression tests
