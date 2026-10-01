@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Fixtures com DDL em dump schema-only precisam do owner restaurado — 01/10/2026
+
+- **Evidência:** a fixture de reconciliação core falhou no clone Prod-shaped ao executar `ALTER TABLE` como `postgres`; a consulta read-only confirmou `supabase_admin` como owner das tabelas. O fechamento da sessão reverteu a fixture (0 organizações, Jobs, tasks/exceções sintéticas). Reexecução idêntica como `supabase_admin` passou migrations idempotentes, asserts de reconciliação/recovery e RLS, finalizando com `ROLLBACK` e zero resíduos. O CI clean-room continuou passando como `postgres`, cujo ownership é diferente.
+- **Aplicação:** em snapshots `pg_dump --schema-only`, conferir owner antes de executar fixtures com DDL; usar o owner do clone para preparar/aplicar DDL e `SET ROLE` explícito para validar privilégios de runtime.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com esta separação entre owner do clone e papel executor da aplicação.
+- Esforço ativo: não medido; CI/espera separados.
+
 ## Preview saudável sem dados não valida upgrade representativo — 01/10/2026
 
 - **Evidência:** duas branches preview Supabase acessíveis (`xpyvjchcrnvprvwgjibm` e `fwvpfmbkuosjibvyvbap`) reportam `ACTIVE_HEALTHY`, mas `with_data=false` e `MIGRATIONS_FAILED`. Consultas PostgreSQL `READ ONLY` confirmaram catálogo core e sete constraints tenant-aware, enquanto o projeto pai Produção não tem essas sete constraints; o Dev pai tem. A branch non-CXM consultada nem contém as quatro relações core.

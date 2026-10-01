@@ -61,6 +61,14 @@
 - **Divergência de interpretação resolvida:** snapshots anteriores que citavam constraints referiam-se a constraints de outros nomes/escopo; a auditoria inicial compara os sete nomes tenant-aware específicos. A leitura direta do catálogo confirmou FKs antigas não tenant-aware em Produção. Não inferir que toda FK está ausente nem executar DDL remoto.
 - Duas previews acessíveis foram rechecadas por API e conexão `READ ONLY`: `maestro-integrity-validation` (filha da Produção) e `maestro-db-canonical-candidate-20260930` (filha do Dev) estão `ACTIVE_HEALTHY`, mas com `MIGRATIONS_FAILED` e `with_data=false`. Ambas têm RLS nas quatro tabelas core e as sete constraints tenant-aware validadas. A preview non-CXM existente não contém as relações core. Isso confirma o catálogo dos previews, não reproduz a Produção atual nem prova upgrade/backfill com dados; detalhes e refs em `docs/migration-drift-reconciliation.md`. Docker local segue indisponível nesta sessão.
 - Próximo gate do Marco 4: reconciliar o catálogo observado com o histórico efetivamente executado em clone, classificar os casos órfãos sem expor identidades, e validar upgrade/rollback em cópia representativa. O marco continua parcial.
+
+### Baseline de Produção e fixtures sintéticas revalidados — 01/10/2026
+
+- Colima existente reativado sem recriar VM. Reencontrado `maestro_prod_baseline_20260930b`; contagens agregadas atuais batem com Produção (56 tabelas, 2 views, 632 colunas, 228 constraints, 210 índices, 136 policies, 19 triggers, 33 funções, 56 com RLS). O baseline não contém linhas nas quatro tabelas core.
+- Não usar `maestro_prod_schema_snapshot_20260930` como baseline: tinha 235 constraints, 35 funções, 634 colunas e quatro FKs core compostas não validadas que não existem no catálogo pai atual.
+- No clone `maestro_prod_upgrade_candidate_20261001a`, auditoria read-only confirmou zero inconsistências relacionais, 7/7 constraints compostas válidas e RLS core. Fixtures de relink/subtask e recovery, tenant-isolation e policies passaram sob `supabase_admin` (owner do dump), todas com `ROLLBACK`; verificações posteriores confirmaram zero resíduos. A primeira execução como `postgres` falhou por ownership da tabela e foi revertida ao fechar a sessão; retry no owner adequado passou.
+- Execuções CI `36931365914` (SHA `06f6ff0e`) e `36931984841` (SHA `51416dc9`) passaram integralmente. Evidência detalhada em `docs/migration-drift-reconciliation.md`.
+- Isto fecha novamente o gate sintético do sufixo já ensaiado; **não** equivale a dados representativos nem classifica a origem dos 502 Subtasks sem pai, dos cinco ponteiros Job→Project ou demais diferenças. Continua proibida escrita em Produção; Marco 4 parcial.
 - Próxima ação segura: continuar a reconciliação por domínio dos efeitos de migrations e dos objetos/grants divergentes nos clones Prod e Dev, preservando a barreira contra repair de ledger e escrita remota.
 
 ## Marco de autenticação do app — 01/10/2026
