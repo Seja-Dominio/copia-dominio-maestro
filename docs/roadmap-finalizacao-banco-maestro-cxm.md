@@ -107,7 +107,7 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - A regressão SQL testa privilégios mínimos, nega alvo de outro tenant, aceita vínculo correto uma única vez, rejeita repetição e verifica alteração atômica das duas linhas. `tenant-isolation-ci.test.sql` passou com `ROLLBACK`; `audit_core_tenant_integrity.sql` passou read-only com `ROLLBACK`; `verify-tenant-foundation.mjs` e `verify-tenant-isolation.mjs` retornaram `status=ok`; zero fixtures residuais.
 - O primeiro ensaio também expôs que `FOR UPDATE` exigia privilégio de tabela e que o default legado da tarefa era `linked`; ambos foram endereçados (lock por advisory e fixture explícita `pending`) antes da prova final.
 - Clone local `maestro_upgrade_candidate_20261001`, sem dados de negócio; migration aplicada como `supabase_admin`. Nenhuma escrita em Produção, Dev ou preview. A divergência de implementação remota continua sem decisão/reconciliação.
-- Próximos gates: revisar diff, commit/push sem force-push, confirmar SHA remoto e CI incluindo replay clean-room. Não declarar Marco 4 concluído: ledger integral, upgrade com snapshot representativo e classificação de efeitos seguem pendentes.
+- Commit `d06062ea86abf856bc23f875542547111ba079f4` enviado à branch candidata; remoto confirmado no mesmo SHA. CI `36804599176` passou integralmente: replay clean-room, lint do schema, regressão RLS/tenant, testes Node/build e scanners. Não declarar Marco 4 concluído: ledger integral, upgrade com snapshot representativo e classificação de efeitos seguem pendentes.
 
 ### Revalidação clean-room ampliada — 30/09/2026
 
