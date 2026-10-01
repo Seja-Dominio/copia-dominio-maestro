@@ -48,6 +48,8 @@ $$;
 
 revoke all on function public.maestro_relink_subtasks_after_job_recovery() from public, anon, authenticated;
 grant execute on function public.maestro_relink_subtasks_after_job_recovery() to service_role;
+grant update (resolution_status, resolution_note, resolved_at)
+  on public.relational_integrity_exceptions to service_role;
 
 drop trigger if exists maestro_jobs_relink_subtasks_after_recovery on public.maestro_jobs;
 create trigger maestro_jobs_relink_subtasks_after_recovery

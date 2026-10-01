@@ -211,18 +211,20 @@ begin
 end;
 $assertions$;
 
+set local role service_role;
+select public.maestro_write_frozen_core_with_history(
+  '00000000-0000-0000-0000-00000000c001'::uuid,
+  'Job',
+  'create',
+  'tenant-ci-parent-loss-job-1',
+  '{"id":"tenant-ci-parent-loss-job-1","title":"Recovered exact-key Job"}'::jsonb,
+  'tenant-ci-recovery-actor',
+  'CI Recovery Actor'
+);
+reset role;
+
 do $recovery$
 begin
-  perform public.maestro_write_frozen_core_with_history(
-    '00000000-0000-0000-0000-00000000c001'::uuid,
-    'Job',
-    'create',
-    'tenant-ci-parent-loss-job-1',
-    '{"id":"tenant-ci-parent-loss-job-1","title":"Recovered exact-key Job"}'::jsonb,
-    'tenant-ci-recovery-actor',
-    'CI Recovery Actor'
-  );
-
   if (select count(*) from public.maestro_job_tasks t
       join public.maestro_jobs j on j.organization_id = t.organization_id and j.id = t.job_id
       where t.legacy_job_record_id = 'tenant-ci-parent-loss-job-1'
