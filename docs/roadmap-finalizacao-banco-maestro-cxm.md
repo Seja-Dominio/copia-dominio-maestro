@@ -1,5 +1,11 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Checkpoint read-only dos ledgers — 01/10/2026
+
+- Reconsulta autenticada via Supabase CLI confirmou 83 entradas no ledger Dev e 111 em Produção, contra 180 migrations locais. Fingerprints calculados em memória a partir das `statements` confirmaram Dev: 22 pares identidade+conteúdo exatos, nove divergências sob mesma identidade e 16 conteúdos remotos sem arquivo equivalente; Produção: 15 pares exatos, duas divergências sob mesma identidade, 70 conteúdos com alias local em outra identidade e 26 sem fingerprint local.
+- As leituras foram encerradas com `ROLLBACK` e executadas em `READ ONLY` (Produção confirmou `transaction_read_only=on`); nenhum DDL, repair, `db push` ou escrita remota. O SQL remoto bruto não foi registrado. Evidência e lista sanitizada em `docs/migration-drift-reconciliation.md`.
+- Resultado: fotografia anterior confirmada, sem avanço que feche a reconciliação. **Marco 4 continua parcial**; falta classificar os corpos remotos sem equivalente e testar os caminhos completos nos baselines apropriados.
+
 ## Classificação do conflito do scheduler WhatsApp — 01/10/2026
 
 - Em transações remotas `READ ONLY`, o job `whatsapp_automation_runner` está ativo em Dev e Produção na mesma agenda `*/5 * * * *`. A comparação sanitizada encontrou 63/63 tokens estruturais iguais; somente o literal da URL do endpoint difere. Os seis demais literais — inclusive handler/ação e nomes de chaves Vault — têm fingerprints iguais. Nenhuma URL ou valor secreto foi exposto.
