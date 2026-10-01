@@ -1,5 +1,13 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Estado do Marco 4 — confirmação de CI e baseline de upgrade — 01/10/2026
+
+- CI `36896371397` do commit `5cc4ff5dbff1422b19164c33ba208539846b9d91` concluiu com sucesso em todos os jobs.
+- Os dois bancos locais candidatos são vazios por estimativa de catálogo, mas têm ledgers diferentes (171 e 140 registros) e não representam, por si sós, clones validados de Dev/Produção.
+- Auditoria remota READ ONLY confirmou drift selecionado de policies, event trigger e cron; os detalhes e limites estão em `docs/migration-drift-reconciliation.md`, seção “Validação de candidatos a baseline e divergência do catálogo”.
+- A primeira tentativa de clone schema-only foi rejeitada como baseline válido por limitações do runtime local (`pg_cron` restrito ao DB configurado e definição `realtime` bloqueada por privilégio). A base temporária incompleta foi removida, sem tocar as duas bases existentes.
+- **Marco 4 permanece parcial.** Replay clean-room e CI estão comprovados; falta upgrade a partir de cópias isoladas que reproduzam corretamente configuração, extensões, ACLs, ledger e fixtures anonimizadas. Nenhuma escrita em Dev/Produção.
+
 ## Revalidação do isolamento tenant no clean-room — 01/10/2026
 
 - O relato anterior de falha no clone schema-only de upgrade Prod (`permission denied` em `maestro_clients`, além das verificações de reassociação legada e projeção Subtask) foi reavaliado contra um banco local clean-room com as migrations canônicas atuais. A suíte completa `scripts/verify-tenant-isolation.mjs` retornou `status: ok`, sem falhas, incluindo reassociação cross-tenant negada, dual-write Subtask vinculado e RLS autenticado de leitura própria/negação cross-tenant.
