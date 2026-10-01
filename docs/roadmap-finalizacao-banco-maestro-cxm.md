@@ -8,6 +8,14 @@
 - Limite: não houve E2E de login em homologação, deploy, escrita remota nem alteração de banco. O restante da remoção de Base44 continua aberto: `deleteAccount`, `fetchInstagramInsights`, `generateAIInsights`, SDK/adaptador/fallbacks e handlers legados requerem portabilidade e paridade antes de remoção.
 - Checkpoint deste marco: commit `cc593656c5c316901ff701ee52fbc62d2f0d4dcb`, enviado sem force-push; SHA remoto confirmado. CI `36820838685` passou integralmente, incluindo replay clean-room das migrations, isolamento/RLS/tenant-aware, regressões, build, fronteiras de módulos, scanners de segurança e dependências. A validação foi no branch, sem deploy.
 
+## Reconciliar ownership de dados do módulo Insights — 01/10/2026
+
+- O mapa funcional identificava `ClientInsight`/`PostMetric` como não migrados, mas tratava o produtor como desconhecido. A leitura do snapshot Base44 confirmou que `fetchInstagramInsights` criava/atualizava Insights diários e até 25 métricas de posts por chamada; o frontend ativo ainda consome essas entidades via adaptador legado.
+- Limite de segurança confirmado no código histórico: o produtor usava `INSTAGRAM_ACCESS_TOKEN` global e operações `asServiceRole` filtradas por `client_id`, sem validação explícita da membership do chamador, da organização da conta Instagram ou de vínculo Meta por tenant. Não deve ser copiado literalmente para uma Edge Function compartilhada nem ligado ao Ads Brain sem contrato de produto.
+- Atualizados `docs/system-functional-map.md` e `scripts/config/frontend-entity-dispositions.json` com produtor histórico, estado atual, tenant owner e critérios de aceite: credencial/conta Meta autorizada por organização, vínculo tenant-aware a Client, sincronização idempotente por cliente/post ou cliente/data, suporte de métricas/janelas e política de retenção/exclusão.
+- Verificações locais: `verify:functional-inventory` passou (20 rotas, 21 contratos de acesso, 32 entidades, 119 operações; sem itens sem classificação); `verify:relational-dispatch` passou para 21/21 entidades/tabelas/field maps/payload maps; JSON de dispositions válido e `git diff --check` limpo. CI `36882460968` passou no commit documental anterior, sem alterações de runtime.
+- Decisão segura: ainda não criar tabela nem portar a sincronização/IA. A modelagem depende de definir a fonte/token Meta por organização, ownership de client/account, idempotência e retenção; nenhum acesso atual prova que esse domínio está pronto para cutover. Próximo gate é validar contrato de credenciais/escopo do provider sem misturar Insights e Ads Brain; depois desenhar migrations aditivas e testes clean replay + upgrade tenant-aware.
+
 Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
 
 ## Resultado que este plano chama de “banco finalizado”

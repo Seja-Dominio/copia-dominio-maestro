@@ -92,8 +92,8 @@ Exceções ao CRUD legado genérico: `JobHistory` agora é lido de `maestro_job_
 | CXM/transmissões | `CXMTransmissionDraft` | filter, create | rascunhos imutáveis em `cxm-data`; somente Gestor/Master, segmento e escopo agência/cliente validados |
 | CXM/comercial | `SalesOpportunity` | list, create, update | pipeline comercial, prospecção, dashboard CXM |
 | Insights | `ClientCompetitor` | filter, create, delete | aba de Insights do cliente |
-| Insights | `ClientInsight` | filter | aba de Insights do cliente |
-| Insights | `PostMetric` | filter, update | aba de Insights do cliente |
+| Insights | `ClientInsight` | filter | aba de Insights do cliente; ainda em `legacy_records`; snapshot Base44 confirma produtor diário `fetchInstagramInsights`, mas não há substituto Supabase ativo |
+| Insights | `PostMetric` | filter, update | aba de Insights do cliente; ainda em `legacy_records`; snapshot Base44 confirma sincronização de até 25 mídias, sem produtor Supabase ativo |
 | Identidade/acesso | `Collaborator` | list, filter, create, update, delete, subscribe | layout, cadastros, jobs/projetos, agenda, relatórios, equipes e tarefas |
 | Auditoria/recuperação | `DeleteLog` | list, filter, create, update | `safeDelete`, recuperação, histórico de jobs/projetos |
 | Aprovação interna | `MasterRequest` | list, create, update | painel de solicitações e criação de pedido de aprovação |
