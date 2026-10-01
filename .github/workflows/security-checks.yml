@@ -49,6 +49,7 @@ jobs:
             sed '/^-- MIGRATION_BARRIER:/,$d' scripts/sql/reconcile-core-subtask-links-clone.test.sql
             cat supabase/migrations/20261001140000_reconcile_core_subtask_links.sql
             cat supabase/migrations/20261001140000_reconcile_core_subtask_links.sql
+            cat supabase/migrations/20261001150000_relink_subtasks_on_job_recovery.sql
             sed -n '/^-- MIGRATION_BARRIER:/,$p' scripts/sql/reconcile-core-subtask-links-clone.test.sql | sed '1d'
           } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/audit_core_tenant_integrity.sql

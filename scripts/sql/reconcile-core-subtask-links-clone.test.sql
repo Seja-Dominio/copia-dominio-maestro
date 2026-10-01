@@ -211,4 +211,31 @@ begin
 end;
 $assertions$;
 
+do $recovery$
+begin
+  perform public.maestro_write_frozen_core_with_history(
+    '00000000-0000-0000-0000-00000000c001'::uuid,
+    'Job',
+    'create',
+    'tenant-ci-parent-loss-job-1',
+    '{"id":"tenant-ci-parent-loss-job-1","title":"Recovered exact-key Job"}'::jsonb,
+    'tenant-ci-recovery-actor',
+    'CI Recovery Actor'
+  );
+
+  if (select count(*) from public.maestro_job_tasks t
+      join public.maestro_jobs j on j.organization_id = t.organization_id and j.id = t.job_id
+      where t.legacy_job_record_id = 'tenant-ci-parent-loss-job-1'
+        and j.legacy_record_id = 'tenant-ci-parent-loss-job-1'
+        and t.job_id = j.id and t.resolution_status = 'linked') <> 6
+    or (select count(*) from public.relational_integrity_exceptions e
+      join public.maestro_job_tasks t on t.organization_id = e.organization_id and t.legacy_record_id = e.legacy_record_id
+      where t.legacy_job_record_id = 'tenant-ci-parent-loss-job-1'
+        and e.entity = 'Subtask' and e.issue_type = 'missing_job_parent'
+        and e.resolution_status = 'resolved') <> 6 then
+    raise exception 'Same-ID Job recovery did not relink and resolve its exact same-tenant subtasks';
+  end if;
+end;
+$recovery$;
+
 rollback;

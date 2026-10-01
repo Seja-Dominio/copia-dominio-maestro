@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { maestro } from "@/api/maestroClient";
+import { prepareRecoveryPayload } from "@/lib/recoveryPayload.mjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useToast } from "@/components/ui/use-toast";
 
 const ENTITY_CONFIG = {
   job:             { label: "Jobs",          icon: Briefcase,  color: "bg-blue-100 text-blue-700" },
@@ -58,6 +60,7 @@ export default function Recovery() {
   const [restoring, setRestoring] = useState(false);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const { toast } = useToast();
 
   useEffect(() => { loadData(); }, []);
 
@@ -120,27 +123,36 @@ export default function Recovery() {
     setRestoring(true);
     const toRestore = deleteLogs.filter(dl => selected.has(dl.id));
 
-    for (const dl of toRestore) {
-      const data = { ...dl.entity_data };
-      delete data.id;
-      delete data.created_date;
-      delete data.updated_date;
-      delete data.created_by;
-      delete data.created_by_id;
-
-      const entityName = ENTITY_MAP[dl.entity_type];
-      if (entityName && maestro.entities[entityName]) {
-        await maestro.entities[entityName].create(data);
+    try {
+      for (const dl of toRestore) {
+        const entityName = ENTITY_MAP[dl.entity_type];
+        if (entityName && maestro.entities[entityName]) {
+          const data = prepareRecoveryPayload(dl, entityName);
+          await maestro.entities[entityName].create(data);
+        }
+        await maestro.entities.DeleteLog.update(dl.id, {
+          is_restored: true,
+          restored_at: new Date().toISOString(),
+        });
       }
-      await maestro.entities.DeleteLog.update(dl.id, {
-        is_restored: true,
-        restored_at: new Date().toISOString(),
-      });
-    }
 
-    setSelected(new Set());
-    await loadData();
-    setRestoring(false);
+      toast({ title: "Itens restaurados", description: "A recuperação foi concluída." });
+    } catch (error) {
+      console.error("Recovery failed:", error);
+      toast({
+        variant: "destructive",
+        title: "Não foi possível concluir a recuperação",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      });
+    } finally {
+      setSelected(new Set());
+      try {
+        await loadData();
+      } catch (error) {
+        console.error("Recovery list refresh failed:", error);
+      }
+      setRestoring(false);
+    }
   }
 
   if (loading) {
