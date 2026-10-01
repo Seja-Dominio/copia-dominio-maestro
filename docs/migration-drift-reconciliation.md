@@ -465,3 +465,16 @@ O código ativo agora sustenta ownership funcional Maestro para os 12 alvos: Job
 - Reexecutei a mesma suíte contra o banco local clean-room com a sequência canônica atual: `SUPABASE_TEST_PROJECT_REF=maestro-local-verify node scripts/verify-tenant-isolation.mjs` retornou `status: ok`, zero falhas e todas as assertions, inclusive as três citadas. O teste encerra sua transação com `ROLLBACK`.
 - A leitura de catálogo remota anterior confirma USAGE de schema `public` para `authenticated`, ao contrário do snapshot parcial que produziu `permission denied`; portanto esse snapshot não é equivalente em ACL. Não foi possível provar a causa exata das outras duas diferenças sem reconstruir o mesmo snapshot. O resultado clean-room confirma a migration sequence, não valida aquele upgrade representativo.
 - CI do HEAD `4dbd358768c6acf96d0912eb1de777797335087f`, run `36891765382`, concluiu com todos os jobs `success`. Sem escrita hospedada. Marco 4 continua aberto pelos bloqueios de ledger, upgrade representativo equivalente e backfill com dados representativos.
+
+### Snapshot atual dos ledgers após o checkpoint — 01/10/2026
+
+- Reexecutado `scripts/reconcile-migration-ledgers.mjs` usando as conexões esperadas verificadas pelo script, cada uma em transação `READ ONLY` com confirmação de `transaction_read_only=on` e `ROLLBACK`. Nenhuma migration, catálogo ou dado hospedado foi alterado.
+- O branch atual contém 176 migrations; Dev continua com 83 entradas e Produção com 111. Correspondências por fingerprint normalizado:
+
+| Ambiente | Identidade e conteúdo iguais | Mesma identidade, conteúdo diferente | Mesmo nome/outra versão, conteúdo igual | Mesmo nome/outra versão, conteúdo diferente | Mesmo conteúdo/outro nome | Conteúdo local sem fingerprint remoto | Conteúdo remoto sem fingerprint local |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Dev | 22 | 9 | 45 | 6 | 0 | 100 | 16 |
+| Produção | 15 | 2 | 60 | 23 | 10 | 89 | 26 |
+
+- As categorias se sobrepõem; não representam migrations independentes somáveis nem equivalência do estado do catálogo. Permanecem sem classificação statement-a-statement, em especial conteúdo local ausente e pares de mesma identidade com SQL divergente. A comparação comprova somente fingerprints do ledger.
+- Próxima ação: separar os pares divergentes e conteúdos remotos sem arquivo local por domínio/efeito e cruzá-los com o catálogo efetivo nos clones representativos antes de propor qualquer sequência de upgrade.
