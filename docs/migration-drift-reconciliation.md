@@ -23,6 +23,14 @@ Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-d
 
 ## Mesmo par versão/nome, SQL divergente
 
+### Scheduler WhatsApp — divergência classificada em 01/10/2026
+
+- Em consultas separadas `BEGIN READ ONLY` (com `transaction_read_only=on` e `ROLLBACK`), `whatsapp_automation_runner` está ativo em Dev e Produção com a mesma agenda `*/5 * * * *`.
+- Os comandos remotos têm a mesma estrutura tokenizada: 63/63 tokens coincidem após mascarar literais. Dos sete literais SQL, seis têm fingerprint idêntico entre ambientes; somente o literal de URL do endpoint diverge. Handler/ação, secret-key names, timeout, corpo e headers mantêm a mesma forma. URLs e valores de segredos não foram exibidos nem registrados.
+- A chave Vault `whatsapp_automation_project_url` não foi encontrada em nenhum dos ambientes na verificação read-only, embora os dois jobs atuais estejam ativos. Isso é compatível com a URL ter sido materializada como literal no comando cron quando o job foi criado; não prova como/por quem foi configurada.
+- **Risco operacional:** a migration local `20260910100000_enable_whatsapp_automation_scheduler.sql` primeiro remove o job existente e depois retorna sem recriá-lo quando essa chave Vault está ausente. Portanto, reaplicar/reexecutar essa migration agora pode desativar o worker em ambos os ambientes. Não fazer `db push`, repair, reschedule nem alterar Vault até recuperar a origem/configuração por procedimento seguro e testar a migration em clones.
+- Classificação: divergência de ledger ligada ao endpoint específico de cada ambiente, não diferença estrutural de lógica do worker; a equivalência funcional do runtime ainda depende da Edge Function implantada e do segredo válido, que esta auditoria não verificou.
+
 | Ambiente | Migrations |
 |---|---|
 | Dev | `0004/publish_imported_records`; `20260910100000/enable_whatsapp_automation_scheduler`; `20260923151011/persist_job_project_mutations_with_audit`; `20260923155416/restrict_rls_event_trigger_rpc`; `20260926004418/cxm_webhook_durable_queue`; `20260926005052/cxm_webhook_environment_scoped_cron`; `20260926005755/cxm_webhook_synthetic_test_gate`; `20260926235437/revoke_client_access_from_server_managed_tables`; `20260928031940/cxm_silence_due_jobs_organization_scope` |
