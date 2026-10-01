@@ -479,22 +479,6 @@ begin
     if v_error = 'TEST_FAIL reconciliation overwrote a task that was already linked' then raise; end if;
   end;
 
-  if not exists (
-    select 1 from public.job_task_reconciliation
-    where id in ('00000000-0000-0000-0000-00000000a502'::uuid,
-      '00000000-0000-0000-0000-00000000a503'::uuid)
-      and resolution_status='pending' and resolved_job_id is null
-    group by resolution_status
-    having count(*) = 2
-  ) or not exists (
-    select 1 from public.maestro_job_tasks
-    where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
-      and legacy_record_id='tenant-ci-reconciliation-already-linked'
-      and job_id='00000000-0000-0000-0000-00000000a401'::uuid
-      and resolution_status='linked'
-  ) then
-    raise exception 'TEST_FAIL rejected reconciliation changed a queue row or an already-linked task';
-  end if;
 end;
 $service_role_core_writes$;
 reset role;
@@ -530,6 +514,19 @@ begin
       and legacy_record_id='tenant-ci-reconciliation-task'
       and job_id='00000000-0000-0000-0000-00000000a401'::uuid and resolution_status='linked'
   ) then raise exception 'TEST_FAIL reconciliation did not atomically link the relational task and queue row'; end if;
+  if (select count(*) from public.job_task_reconciliation
+      where id in ('00000000-0000-0000-0000-00000000a502'::uuid,
+        '00000000-0000-0000-0000-00000000a503'::uuid)
+        and resolution_status='pending' and resolved_job_id is null) <> 2
+    or not exists (
+      select 1 from public.maestro_job_tasks
+      where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+        and legacy_record_id='tenant-ci-reconciliation-already-linked'
+        and job_id='00000000-0000-0000-0000-00000000a401'::uuid
+        and resolution_status='linked'
+    ) then
+    raise exception 'TEST_FAIL rejected reconciliation changed a queue row or an already-linked task';
+  end if;
 end;
 $verify_service_role_core_writes$;
 do $verify_legacy_projection_reference_compatibility$
