@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Fixtures SQL enviadas a containers precisam injetar migrations no host — 01/10/2026
+
+- **Evidência:** o CI executou um fixture via `docker exec -i ... psql < fixture.sql`; um `\ir` referenciado pelo fixture falhou com arquivo inexistente porque o checkout não está montado dentro do container. O log identificou esse caminho, enquanto o replay integral das migrations havia passado.
+- **Correção:** trocar `\ir` por uma barreira explícita; o runner concatena fixture inicial + migration + assertions finais no host e só então envia o fluxo SQL para o Postgres isolado.
+- **Aplicação:** novos testes que precisam intercalar migrations e fixtures através de `docker exec` devem usar o padrão de barreira já empregado pelos outros testes do workflow. A correção será considerada validada quando o gate CI dessa fixture passar.
+- Esforço ativo: não medido; CI anterior falhou no transporte do arquivo, não na migration nem no schema.
+
 ## Ledger divergente exige preflight de coluna e vínculo — 01/10/2026
 
 - **Evidência:** Dev e Produção tinham a relação `job_task_reconciliation`, mas só Produção tinha `organization_id`; por isso a migration de grants por coluna falhava em Dev embora o nome/tabela existisse. A relação Timesheet também estava ausente em Dev, bloqueando atualizações diretas e a migration core posterior. Consultas agregadas `READ ONLY` confirmaram 478/478 filas Dev com exatamente um vínculo `organization_legacy_records` por tenant e 496/496 filas Prod já corretamente escopadas.

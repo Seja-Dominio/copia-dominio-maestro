@@ -17,8 +17,7 @@ $preflight$;
 
 select cron.schedule('whatsapp_automation_runner', '*/5 * * * *', 'select 4815162342');
 
--- Apply the forward migration with an existing job and missing Vault config.
-\ir ../../supabase/migrations/20261001160000_preserve_whatsapp_scheduler_without_vault_config.sql
+-- WHATSAPP_SCHEDULER_MIGRATION_BARRIER
 
 do $assert_preserved$
 declare
