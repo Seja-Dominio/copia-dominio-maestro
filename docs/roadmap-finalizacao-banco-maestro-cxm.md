@@ -6,7 +6,7 @@
 - O perfil devolvido pelo login agora recebe o `id` canônico da linha de colaborador. O frontend valida formato/expiração e correspondência de `sub`, ID e organização antes de restaurar a sessão; isso é filtro de cache/UX, não verificação criptográfica. A assinatura e a membership continuam responsabilidade do servidor.
 - Evidências locais: testes Node compartilhados e de sessão passaram; ESLint dos arquivos alterados, build Vite, inventário funcional e `git diff --check` passaram. `verify:edge-function-product-boundaries` executa sem erros de classificação, mas continua `release_ready=false` por seis funções compartilhadas e oito funções não-CXM pendentes. Lint global permanece bloqueado por 85 imports não usados fora do escopo.
 - Limite: não houve E2E de login em homologação, deploy, escrita remota nem alteração de banco. O restante da remoção de Base44 continua aberto: `deleteAccount`, `fetchInstagramInsights`, `generateAIInsights`, SDK/adaptador/fallbacks e handlers legados requerem portabilidade e paridade antes de remoção.
-- Checkpoint deste marco: validar diff, commitar e enviar sem force-push; registrar SHA remoto e CI quando concluídos.
+- Checkpoint deste marco: commit `cc593656c5c316901ff701ee52fbc62d2f0d4dcb`, enviado sem force-push; SHA remoto confirmado. CI `36820838685` passou integralmente, incluindo replay clean-room das migrations, isolamento/RLS/tenant-aware, regressões, build, fronteiras de módulos, scanners de segurança e dependências. A validação foi no branch, sem deploy.
 
 Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
 
