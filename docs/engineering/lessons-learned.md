@@ -100,7 +100,7 @@
 
 ## Separar tenant provisionado da organização-base no replay — 01/10/2026
 
-- **Evidência:** CI `36928279142` replayou todas as migrations e falhou apenas no gate que exigia owner para qualquer organização ativa. O rastreamento identificou `20260926290000_scope_cxm_collaboration_tables.sql` criando a organização-base e migrations relacionais Maestro dependendo dela. O bootstrap candidato falha antes de mapear legado sem owner.
-- **Correção:** estreitar o contrato do teste para verificar mapeamento legado sem owner e conservar o caso sintético que exige erro/rollback. Não apagar a organização-base nem editar a migration de colaboração/CXM neste escopo.
+- **Evidência:** CI `36928279142` replayou todas as migrations e falhou no gate que exigia owner para qualquer organização ativa. O rastreamento identificou `20260926290000_scope_cxm_collaboration_tables.sql` criando a organização-base da qual migrations relacionais Maestro dependem. Os CI `36928957030` e `36929567414` passaram o replay e os cenários negativo e positivo: falha/rollback sem owner; com owner, quatro produtos e escopo legado únicos mesmo após duas execuções, seguido de rollback.
+- **Correção:** estreitar o contrato do teste para verificar mapeamento legado sem owner e conservar os casos sintéticos de erro/idempotência. Não apagar a organização-base nem editar a migration de colaboração/CXM neste escopo.
 - **Aplicação:** em replay multi-tenant, distinguir objeto técnico-base de tenant provisionado; validar efeitos e ownership por fluxo, não inferir semântica apenas por `status='active'`.
-- **Skill:** `dominio-database-migrations/SKILL.md` ganhou orientação para bootstrap compatível com dependências históricas. Revisão aguarda novo CI; esforço ativo não medido.
+- **Skill:** `dominio-database-migrations/SKILL.md` ganhou orientação para bootstrap compatível com dependências históricas. Evidência de regressão reproduzida e ambos caminhos validados em CI; esforço ativo não medido.
