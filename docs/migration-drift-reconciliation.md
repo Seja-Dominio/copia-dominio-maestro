@@ -19,7 +19,7 @@ Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-d
 
 “Conteúdo local sem fingerprint remoto” inclui casos de mesmo nome/outra versão cujo conteúdo difere; portanto essas colunas se sobrepõem e não devem ser somadas. “Conteúdo remoto sem fingerprint local” também inclui conteúdo divergente para a mesma identidade. Os valores classificam correspondência de conteúdo entre arquivos e ledger, não o efeito atualmente presente no schema.
 
-> A tabela acima permanece como evidência histórica da primeira coleta, não como contagem vigente. A revalidação posterior encontrou 174 arquivos; consulte o snapshot mais recente ao fim desta página.
+> A tabela e as listas de conflitos logo abaixo são evidência histórica da primeira coleta, não contagem vigente. Consulte a seção “Snapshot atual dos ledgers após o checkpoint” e a atualização mais recente no fim desta página.
 
 ## Mesmo par versão/nome, SQL divergente
 
@@ -493,7 +493,68 @@ O código ativo agora sustenta ownership funcional Maestro para os 12 alvos: Job
 ### Validação de candidatos a baseline e divergência do catálogo — 01/10/2026
 
 - CI do checkpoint `5cc4ff5dbff1422b19164c33ba208539846b9d91` terminou `success` no run `36896371397`, incluindo replay clean-room e regressões/autorização.
-- Inspeção somente de catálogo nos dois bancos locais existentes: `maestro-clean-room` tinha 171 entradas de ledger, `maestro-supabase-verify` 140; ambos reportaram zero linhas vivas estimadas nas tabelas públicas. São candidatos a snapshots de schema vazios, mas não clones representativos confirmados de Dev/Produção.
+- Inspeção somente de catálogo nos dois bancos locais existentes: `maestro-clean-room` tinha 171 entradas de ledger, `maestro-supabase-verify` 140; ambos reportaram zero linhas vivas estimadas nas tabelas públicas. Esses dois bancos não são o mesmo que os clones schema-only de upgrade que já existiam no container clean-room.
 - Auditoria remota em transações `READ ONLY` (`transaction_read_only=on`) sobre as relações selecionadas pelo auditor: ambas as bases mantêm RLS nas 12/12 relações Dev e 36/36 Produção, sem SELECT efetivo para `anon`/`authenticated` nesse subconjunto; Dev não apresenta policies nas relações selecionadas, enquanto Produção tem 132 policies distribuídas em 33 tabelas. Dev possui `ensure_rls` ativo e fila cron CXM; Produção não possui o event trigger e não tem esse cron. O cron WhatsApp está ativo em ambos a cada cinco minutos, porém os fingerprints de comando diferem. Esses dados comprovam drift de catálogo/configuração; não bastam para decidir que políticas, triggers ou comandos devam ser copiados entre ambientes.
-- Experimento local de clone schema-only em banco novo foi descartado como inválido: a restauração recusou `pg_cron` porque este runtime permite o scheduler apenas no banco configurado e falhou ao criar uma função `realtime` por privilégio em `log_min_messages`. O banco parcial temporário foi removido; os dois bancos de verificação originais permaneceram intactos. Nenhuma linha de negócio ou migration hospedada foi escrita.
-- Classificação: ainda não existe prova de upgrade representativo. O replay clean-room continua comprovado pelo CI; o upgrade requer snapshot completo com ACLs/roles, extensões e configuração Supabase coerentes, mais ledger/data sintética representativa. Próxima ação: provisionar um runtime Supabase local realmente isolado para cada baseline, reproduzir o event trigger Dev e a configuração Prod conforme catálogo observado, carregar somente fixtures anonimizadas necessárias e executar migrations pendentes em cópias descartáveis.
+- Um ensaio adicional de clone schema-only em banco novo foi descartado como incompleto: a restauração recusou `pg_cron` neste runtime e falhou ao criar uma função `realtime` por privilégio em `log_min_messages`. O banco parcial temporário foi removido; nenhum dos bancos de verificação existentes foi alterado.
+- Inspeção atual encontrou os clones válidos documentados anteriormente ainda presentes no container clean-room: `maestro_dev_upgrade_validation_20261001f` (39 tabelas públicas, RLS em 39, 7 policies) e `maestro_prod_upgrade_full_20261001d` (56 tabelas, RLS em 56, 136 policies). Ambos têm uma estimativa de linha viva somente em `legacy_cutover_registry`; isto é compatível com seed de catálogo, não dado de negócio. A sequência não-CXM de upgrade, fixtures transacionais e testes já executados nesses clones estão registrados na seção “Compatibilização do sufixo de upgrade Dev/Produção”. O sucesso comprova esse pacote direcionado, não o replay completo do histórico hospedado.
+- Limite atual: os clones schema-only não carregam o ledger `supabase_migrations.schema_migrations`; não podem provar um `supabase migration up` que siga automaticamente as histórias divergentes. O replay limpo e o upgrade direcionado estão comprovados; seguem pendentes a classificação statement-a-statement da matriz inteira, backfill com dados anonimizados representativos e decisão sobre os 29 responsáveis sem membership. Nenhuma escrita em Dev/Produção.
+
+### Conteúdo remoto sem fingerprint local — atualização READ ONLY — 01/10/2026
+
+O script `scripts/reconcile-migration-ledgers.mjs --details` foi reexecutado. As identidades abaixo são as entradas remotas cujo fingerprint de statements não aparece em nenhum arquivo local; a comparação por si só não prova que os efeitos estejam ausentes do catálogo.
+
+**Dev — 16 entradas:**
+
+```text
+0004/publish_imported_records
+20260910100000/enable_whatsapp_automation_scheduler
+20260923151011/persist_job_project_mutations_with_audit
+20260923155416/restrict_rls_event_trigger_rpc
+20260926004418/cxm_webhook_durable_queue
+20260926005052/cxm_webhook_environment_scoped_cron
+20260926005755/cxm_webhook_synthetic_test_gate
+20260926235437/revoke_client_access_from_server_managed_tables
+20260927023749/bootstrap_dominio_tenant
+20260927025837/revoke_unsafe_organization_grants_and_trigger_rpc
+20260928031940/cxm_silence_due_jobs_organization_scope
+20260928192851/cxm_pipeline_stage_automation_queue
+20260928193822/harden_cxm_pipeline_stage_event_identity
+20260929033032/core_tenant_dual_writes
+20260929175330/maestro_financial_entries_scoped_atomic_write
+20260929183217/allow_authenticated_membership_self_read
+```
+
+**Produção — 26 entradas:**
+
+```text
+0004/publish_imported_records
+20260910100000/enable_whatsapp_automation_scheduler
+20260925164251/restrict_rls_event_trigger_rpc
+20260926195638/stage_legacy_organization_scope
+20260926195902/create_relational_work_core
+20260926200458/dual_write_relational_work_core
+20260926200811/sync_relational_core_foreign_keys
+20260926201703/dual_write_relational_job_tasks
+20260926202026/dual_write_relational_financial_entries
+20260926202349/dual_write_relational_agenda_events
+20260926202648/dual_write_relational_timesheets
+20260926202939/dual_write_relational_notifications
+20260926203439/create_relational_job_history
+20260926203742/create_relational_webhook_receipts
+20260926203954/scope_reconciliation_queue
+20260926204339/create_reconciliation_resolution_rpc
+20260926204548/materialize_legacy_organization_scope
+20260926205033/scope_legacy_mutations
+20260926205230/scope_external_legacy_writes
+20260926205413/create_organization_integrations
+20260926205901/scope_ads_brain_by_organization
+20260926210341/scope_memory_audit_tables
+20260926210539/create_tenant_onboarding_rpc
+20260926225455/create_dual_write_health_view
+20260927011925/ads_brain_server_sync_scheduler_6h
+20260929183220/allow_authenticated_membership_self_read
+```
+
+- A extração sanitizada das referências `public.*` nas statements indica efeitos de CXM (filas de webhook/pipeline e silêncio) no ledger Dev; de Ads Brain (escopo de contas/autorização e scheduler) em ambos; e de core tenant/relacional, reconciliação, integrações, auditoria e permissões principalmente na Produção. É uma classificação inicial por objetos referenciados, não decisão final de ownership nem prova de paridade. `persist_job_project_mutations_with_audit`, `restrict_rls_event_trigger_rpc`, scheduler WhatsApp, publicação de legado e `organization_members` exigem comparar corpo, estado efetivo e consumidores antes de qualquer harmonização.
+- Prioridade proposta para a próxima rodada de classificação, usando os clones ainda presentes: **(1)** entradas Production do núcleo tenant/relacional e RPC de reconciliação versus objetos atuais; **(2)** conflitos de função/ACL e event trigger; **(3)** separar definitivamente CXM e schedulers externos da release não-CXM. Não usar `migration repair` nem assumir efeito pela identidade/nome.
+- As consultas de ledger foram `BEGIN READ ONLY`, conferiram a ref esperada e encerraram em `ROLLBACK`. Nenhum SQL remoto bruto, segredo ou dado de negócio foi emitido.

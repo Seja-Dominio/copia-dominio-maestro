@@ -63,3 +63,11 @@
 - **Aplicação:** auditorias que proponham `DROP FUNCTION`, `REVOKE` ou remoção de compatibilidade por falta de referências. Combine busca de código, consumidores implantados e estatística top-level por papel; cheque resets/evicções e mantenha o uso como desconhecido onde a cobertura não for comprovada.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com leitura cautelosa de `pg_stat_user_functions` e alternativa condicionada via `pg_stat_statements`.
 - Esforço ativo: não medido.
+
+## Snapshots Supabase podem compartilhar um container — 01/10/2026
+
+- **Evidência:** a listagem Docker mostrava apenas dois containers locais, mas a consulta a `pg_database` revelou vários clones Dev/Prod dentro do container `maestro-clean-room.xjrrql`, incluindo `maestro_dev_upgrade_validation_20261001f` e `maestro_prod_upgrade_full_20261001d`, cujos ensaios de upgrade estavam documentados e ainda podiam ser inspecionados.
+- **Erro evitado/corrigido:** uma tentativa schema-only separada falhou por limitações de `pg_cron`/Realtime; a lista incompleta de containers levou à conclusão incorreta de que não havia upgrade representativo. Os clones previamente validados permaneceram intactos.
+- **Aplicação:** antes de declarar ausência de cópia/snapshot local ou criar outra, enumerar os bancos existentes dentro de cada container Postgres relevante e conferir ledger/catálogo pelo nome do banco.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, regra pequena de descoberta de baselines.
+- Esforço ativo: não medido.

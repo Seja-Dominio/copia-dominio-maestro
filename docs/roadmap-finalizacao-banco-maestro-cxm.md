@@ -3,10 +3,10 @@
 ## Estado do Marco 4 — confirmação de CI e baseline de upgrade — 01/10/2026
 
 - CI `36896371397` do commit `5cc4ff5dbff1422b19164c33ba208539846b9d91` concluiu com sucesso em todos os jobs.
-- Os dois bancos locais candidatos são vazios por estimativa de catálogo, mas têm ledgers diferentes (171 e 140 registros) e não representam, por si sós, clones validados de Dev/Produção.
+- Os bancos `maestro-clean-room` e `maestro-supabase-verify` têm ledgers locais diferentes (171 e 140 registros), mas os clones de upgrade já validados ficam no container `maestro-clean-room`: Dev `maestro_dev_upgrade_validation_20261001f` e Prod `maestro_prod_upgrade_full_20261001d`. Inspeção atual confirmou 39/39 e 56/56 tabelas com RLS; as policies são 7 e 136, respectivamente. O clone Prod tem um seed estimado em `legacy_cutover_registry`; não foram observadas linhas de negócio conforme o ensaio schema-only documentado.
 - Auditoria remota READ ONLY confirmou drift selecionado de policies, event trigger e cron; os detalhes e limites estão em `docs/migration-drift-reconciliation.md`, seção “Validação de candidatos a baseline e divergência do catálogo”.
-- A primeira tentativa de clone schema-only foi rejeitada como baseline válido por limitações do runtime local (`pg_cron` restrito ao DB configurado e definição `realtime` bloqueada por privilégio). A base temporária incompleta foi removida, sem tocar as duas bases existentes.
-- **Marco 4 permanece parcial.** Replay clean-room e CI estão comprovados; falta upgrade a partir de cópias isoladas que reproduzam corretamente configuração, extensões, ACLs, ledger e fixtures anonimizadas. Nenhuma escrita em Dev/Produção.
+- Uma tentativa adicional de clone schema-only permaneceu incompleta por `pg_cron`/privilégio Realtime e foi removida; os clones Dev/Prod documentados não foram alterados. O upgrade direcionado desses clones está comprovado, mas seus schema-only snapshots não contêm o ledger remoto e não provam replay automático de todo o histórico divergente.
+- **Marco 4 permanece parcial.** Replay clean-room e upgrade direcionado Dev/Prod estão comprovados; faltam classificação statement-a-statement da matriz (a lista remota atualizada consta no relatório de drift), backfill com dados anonimizados representativos, decisão segura para os 29 responsáveis sem membership e tratamento das divergências de ledger sem `repair`/escrita remota.
 
 ## Revalidação do isolamento tenant no clean-room — 01/10/2026
 
