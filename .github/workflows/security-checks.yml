@@ -45,6 +45,12 @@ jobs:
             exit 1
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
+          {
+            sed '/^-- MIGRATION_BARRIER:/,$d' scripts/sql/reconcile-core-subtask-links-clone.test.sql
+            cat supabase/migrations/20261001140000_reconcile_core_subtask_links.sql
+            cat supabase/migrations/20261001140000_reconcile_core_subtask_links.sql
+            sed -n '/^-- MIGRATION_BARRIER:/,$p' scripts/sql/reconcile-core-subtask-links-clone.test.sql | sed '1d'
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/audit_core_tenant_integrity.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/test_core_tenant_policies_clone.sql
           docker exec -i "${db_containers[0]}" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < scripts/sql/test_dev_ensure_rls_event_trigger_clone.sql
