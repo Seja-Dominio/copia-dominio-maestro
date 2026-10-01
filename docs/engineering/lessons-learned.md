@@ -2,10 +2,10 @@
 
 ## Fixtures SQL enviadas a containers precisam injetar migrations no host — 01/10/2026
 
-- **Evidência:** o CI executou um fixture via `docker exec -i ... psql < fixture.sql`; um `\ir` referenciado pelo fixture falhou com arquivo inexistente porque o checkout não está montado dentro do container. O log identificou esse caminho, enquanto o replay integral das migrations havia passado.
-- **Correção:** trocar `\ir` por uma barreira explícita; o runner concatena fixture inicial + migration + assertions finais no host e só então envia o fluxo SQL para o Postgres isolado.
-- **Aplicação:** novos testes que precisam intercalar migrations e fixtures através de `docker exec` devem usar o padrão de barreira já empregado pelos outros testes do workflow. A correção será considerada validada quando o gate CI dessa fixture passar.
-- Esforço ativo: não medido; CI anterior falhou no transporte do arquivo, não na migration nem no schema.
+- **Evidência:** o CI executou um fixture via `docker exec -i ... psql < fixture.sql`; `\ir` falhou porque o checkout não está montado dentro do container (`36923194419`). A barreira/concatenação host-side fez o teste de ausência de configuração passar (`36925492604`). O teste do caminho configurado revelou uma expectativa errada de URL contígua: o comando cron guarda a origem literal e concatena o caminho como expressão SQL (`36925709878`).
+- **Correção validada:** o runner injeta fixture + migration + assertions numa sessão; assertions verificam origem e caminho separadamente. CI `36926128097` passou integralmente, incluindo configuração ausente e presente, com `ROLLBACK` das fixtures.
+- **Aplicação:** testes que intercalam migrations via `docker exec` usam barreiras e concatenação no host; ao inspecionar comandos SQL gerados por `format`, validar a forma armazenada da expressão sem confundi-la com o valor resolvido em runtime.
+- Esforço ativo: não medido; CI/espera foram separados do esforço ativo.
 
 ## Ledger divergente exige preflight de coluna e vínculo — 01/10/2026
 

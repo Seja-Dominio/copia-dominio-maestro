@@ -11,8 +11,8 @@
 
 - Adicionada migration candidata `20261001160000_preserve_whatsapp_scheduler_without_vault_config.sql`: se URL ou secret válido não estiver disponível, ela preserva o cron atual; só substitui o job depois de validar ambos. Não altera schedulers CXM/Ads Brain nem reescreve migrations históricas.
 - Adicionada fixture transacional `scripts/sql/whatsapp-scheduler-preservation-ci.test.sql` e gate no workflow de replay limpo: prova tanto a preservação do job existente sem configuração como a atualização quando URL e secret sintéticos estão presentes; também confirma que o secret não é embutido no comando. `ROLLBACK` descarta job e secrets da fixture.
-- O primeiro CI do código (`36923194419`) passou replay integral, mas falhou no teste por `\ir` tentar abrir arquivo ausente dentro do container; o log confirmou erro de transporte, não da migration. O fixture foi convertido para barreiras e concatenação do SQL no runner. O novo CI ainda precisa validar esta revisão.
-- `npm run verify:migration-files` passou (180 migrations; zero erros) e `git diff --check` passou. A correção está **em código, não validada nem implantada** até o novo CI concluir. Nenhuma escrita remota.
+- CI `36923194419` passou replay integral, mas falhou no fixture porque `\ir` tentou abrir no container um arquivo disponível apenas no runner. A barreira/concatenação no runner foi confirmada em `36925492604`; o seguinte (`36925709878`) detectou uma asserção incorreta que esperava URL completa contígua, embora o comando guarde a origem como literal e concatene o caminho em runtime. A asserção foi corrigida para validar origem e caminho separadamente.
+- CI `36926128097` passou integralmente no SHA `06a488191062e68ff64a819dac55542f0c88c576`, incluindo replay limpo, fixture nos dois caminhos (configuração ausente e presente), RLS/tenant, lint, build, testes e scanners. `npm run verify:migration-files` passou (180 migrations; zero erros) e `git diff --check` passou. Proteção **validada em código/CI, ainda não implantada**. Nenhuma escrita remota.
 
 ## Estado do Marco 4 — confirmação de CI e baseline de upgrade — 01/10/2026
 
