@@ -30,7 +30,14 @@
 
 ## Validar backfill histórico e função final de dual-write separadamente — 01/10/2026
 
-- **Evidência:** fixture rollback-only reproduziu que o parser na migration inicial de timesheets não projeta a duração como esperado. A sequência contém definições posteriores de `maestro_sync_relational_timesheet` com regex corrigida, então a falha histórica não identifica o comportamento da função live nem do estado final após replay.
-- **Correção/limite:** a migration de reparo existente já possui fixture CI repetida e preserva dados tipados; impacto em Prod foi apenas agregado/read-only e nenhum reparo foi aplicado. A definição live continua não confirmada.
+- **Evidência:** fixture rollback-only reproduziu o parser defeituoso na migration inicial; depois, inspeção live `READ ONLY` confirmou que Produção ainda usa esse trigger antigo (fallback single-org/`search_path=public`) e tem 8.938 projeções nulas recuperáveis.
+- **Correção/limite:** migration forward aditiva testada em clones schema-only Dev sem a tabela e Prod sem as chaves compostas, com backfill e dual-write isolados por tenant. Nenhum banco hospedado foi alterado.
 - **Aplicação:** para backfills e dual-writes evolutivos, testar (1) conversão de linhas históricas; (2) definição efetiva final do trigger após toda a sequência; (3) novos inserts/updates; não extrapolar bug de migration intermediária para a função final.
-- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, acrescentando esses três alvos de validação para parsing/backfills multi-etapa. Evidência de impacto alto reproduzida em fixture, com distinção da incerteza live.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, acrescentando esses três alvos de validação para parsing/backfills multi-etapa.
+
+## Validação de entrada não torna um cast seguro em `AND` — 01/10/2026
+
+- **Evidência:** o fixture da migration forward mostrou que `pg_input_is_valid(text, 'integer') AND text::integer` ainda pode avaliar o cast fora de faixa por reordenação do plano SQL; `2147483648` abortou a transação apesar do predicado de validação.
+- **Correção validada:** o dual-write agora faz parsing sequencial em ramos PL/pgSQL, com faixa numérica limitada antes do cast; backfill usa regex limitada, conversão a numeric e só então int. Fixtures de overflow, timestamp/boolean inválidos, replay duas vezes em clones Prod/Dev e CI `36818110977` passaram.
+- **Aplicação:** em SQL/PLpgSQL, não proteja casts inseguros com condição `AND`/`WHERE` que valide e converta o mesmo texto. Coloque o cast em ramo procedural após validação, ou use transformação cuja faixa seja segura por construção; mantenha testes de inválido e overflow.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`; regra pequena, reutilizável e sustentada por falha reproduzida com correção validada.
