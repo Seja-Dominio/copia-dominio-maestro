@@ -1,10 +1,10 @@
 # Reconciliação read-only dos ledgers de migrations
 
-Auditado em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`, commit `5013fa3a`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado.
+Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado.
 
 ## Método e limites
 
-- Arquivos locais na fotografia original desta reconciliação: 172 migrations; o checkout atual contém 173. A migration adicionada depois do fingerprint, `20260930170000_reject_cross_tenant_core_projection_references`, não está em nenhum dos dois ledgers remotos.
+- O checkout atual contém 173 migrations. A comparação foi reexecutada com `scripts/reconcile-migration-ledgers.mjs`, usando fingerprints SHA-256 de tokens SQL normalizados; comentários, espaços e terminadores não afetam o fingerprint, enquanto literais e corpos dollar-quoted são preservados.
 - Ledgers consultados em transação PostgreSQL `READ ONLY`, confirmada como `on`, depois de validar a ref da conexão: Dev `tqmfuskvllpqmvayjuqu`; Produção `fwpisypiiezjhtqxlmqv`.
 - Comparação usa sequência de statements tokenizada: terminadores, comentários e espaços não afetam fingerprint; strings, identificadores quoted e corpos dollar-quoted são preservados.
 - O relatório guarda identidades e contagens, não SQL remoto, URL, credenciais nem dados de negócio.
@@ -12,19 +12,19 @@ Auditado em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-c
 
 ## Resumo
 
-| Ambiente | Ledger remoto | Par versão/nome e SQL igual | Par exato com SQL diferente | Mesmo nome, outra versão: SQL igual | Mesmo nome, outra versão: SQL diferente | Conteúdo local sem equivalente no remoto | Conteúdo remoto sem equivalente local |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Dev | 83 | 22 | 9 | 47 | 4 | 91 | 14 |
-| Produção | 111 | 16 | 1 | 74 | 9 | 63 | 11 |
+| Ambiente | Ledger remoto | Mesmo par versão/nome e conteúdo igual | Mesmo par com conteúdo diferente | Mesmo nome/outra versão: conteúdo igual | Mesmo nome/outra versão: conteúdo diferente | Mesmo conteúdo/outro nome | Conteúdo local sem fingerprint remoto | Conteúdo remoto sem fingerprint local |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Dev | 83 | 22 | 9 | 45 | 6 | 0 | 97 | 16 |
+| Produção | 111 | 15 | 2 | 60 | 23 | 10 | 86 | 26 |
 
-Produção contém 10 fingerprints com alias em outra identidade/versão local, além das categorias exibidas. Dev não mostrou alias nesse cálculo. Os valores incluem a migration local adicional sem fingerprint remoto; os pares/fingerprints detalhados foram originalmente calculados sobre os 172 arquivos anteriores. Esses totais medem correspondência entre arquivos e ledger, não progresso de execução do schema.
+“Conteúdo local sem fingerprint remoto” inclui casos de mesmo nome/outra versão cujo conteúdo difere; portanto essas colunas se sobrepõem e não devem ser somadas. “Conteúdo remoto sem fingerprint local” também inclui conteúdo divergente para a mesma identidade. Os valores classificam correspondência de conteúdo entre arquivos e ledger, não o efeito atualmente presente no schema.
 
 ## Mesmo par versão/nome, SQL divergente
 
 | Ambiente | Migrations |
 |---|---|
 | Dev | `0004/publish_imported_records`; `20260910100000/enable_whatsapp_automation_scheduler`; `20260923151011/persist_job_project_mutations_with_audit`; `20260923155416/restrict_rls_event_trigger_rpc`; `20260926004418/cxm_webhook_durable_queue`; `20260926005052/cxm_webhook_environment_scoped_cron`; `20260926005755/cxm_webhook_synthetic_test_gate`; `20260926235437/revoke_client_access_from_server_managed_tables`; `20260928031940/cxm_silence_due_jobs_organization_scope` |
-| Produção | `20260910100000/enable_whatsapp_automation_scheduler` |
+| Produção | `0004/publish_imported_records`; `20260910100000/enable_whatsapp_automation_scheduler` |
 
 ## Mesmo nome em outra versão, SQL divergente
 
