@@ -1,5 +1,27 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Auditoria atual das relações core — 01/10/2026
+
+Executado `scripts/sql/audit_core_tenant_integrity.sql` contra Dev (`tqmfuskvllpqmvayjuqu`) e Produção (`fwpisypiiezjhtqxlmqv`), com refs conferidas, `BEGIN READ ONLY`, `transaction_read_only=on` e `ROLLBACK`. A consulta retorna somente contagens agregadas, catálogo de constraints e estado RLS; nenhum payload/identificador de negócio foi consultado ou registrado. Nenhum schema, dado, grant ou ledger foi alterado.
+
+| Relação / verificação | Dev | Produção |
+|---|---:|---:|
+| Job → Client: links tipados inválidos / legado sem tipagem no mesmo tenant | 0 / 0 | 0 / 2 |
+| Job → Project: links tipados cross-tenant / ponteiros legados sem pai / legado sem tipagem no mesmo tenant | 0 / 0 / 0 | 0 / 5 / 2 |
+| Project → Client: links tipados inválidos / legado sem tipagem no mesmo tenant | 0 / 0 | 0 / 8 |
+| Subtask → Job: links tipados inválidos / subtarefas sem FK mas com Job no tenant / sem pai legado resolvível | 0 / 0 / 478 | 0 / 114 / 502 |
+| Constraints core tenant-aware esperadas, presentes e validadas | 7 / 7 | 0 / 7 |
+| RLS habilitado nas quatro tabelas core | 4 / 4 | 4 / 4 |
+
+Em Dev, as 478 Subtasks sem pai resolvível coincidem com a fila legacy-only previamente inventariada; essa consulta isolada não classifica cada caso. Em Produção, a contagem de Subtask é compatível com o snapshot anterior (114 links recuperáveis por tenant e 502 sem pai resolvível), mas não substitui a classificação por chave já documentada. As cinco linhas Job com ponteiro legado para Project sem pai encontrado e as 2/2/8 referências legadas sem tipagem no mesmo tenant são novos itens a reconciliar em clone representativo. O inventário de constraints mostrou que Produção não tem as sete constraints compostas esperadas pelos nomes do schema atual, embora mantenha FKs antigas sem escopo de tenant (por exemplo `maestro_jobs_client_fk`, `maestro_jobs_project_fk` e `maestro_job_tasks_job_id_fkey`). Portanto o achado é ausência das proteções tenant-aware esperadas, não ausência de toda FK/UNIQUE; **não executar migration/DDL hospedado** com base neste achado.
+
+### Próxima ação e gate
+
+1. Reproduzir as contagens agregadas nos clones representativos e identificar quais migrations/ACLs explicam as sete constraints ausentes em Produção.
+2. Classificar os cinco Projects/Jobs sem pai e os ponteiros legados não tipados por efeito, sem exportar payload ou IDs para o relatório.
+3. Ensaiar em clone a sequência completa de upgrade, mantendo órfãos em exceção explícita e sem inventar vínculo; validar constraints, RLS e rollback.
+4. Só reavaliar rollout depois de comparar o catálogo e o ledger completos. Continuam proibidos `migration repair`, `db push` e escrita em ambientes hospedados nesta etapa.
+
 Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado. A tabela e listas iniciais desta página são fotografias históricas; a recontagem `READ ONLY` de 01/10/2026, registrada abaixo, prevalece para contagens do ledger.
 
 ## Método e limites
