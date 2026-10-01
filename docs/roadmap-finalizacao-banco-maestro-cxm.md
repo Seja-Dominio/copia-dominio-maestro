@@ -714,3 +714,8 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - O primeiro clone escolhido era um sufixo anterior e não tinha `maestro_upsert_project_scoped`; uma tentativa sob `postgres` no clone seguinte também parou no setup por owner mismatch. Nenhuma chamada à RPC ocorreu nesses ensaios e as transações foram revertidas.
 - Após conferir os bancos dentro do container Colima, selecionei `maestro_prod_upgrade_candidate_20261001a`, que contém as migrations/writers exigidos; executei a fixture como seu owner `supabase_admin`. Todo o contrato SQL (incluindo os dois cenários de falha e preservação) passou; `ROLLBACK` final e consulta posterior confirmaram zero organizações/filas de fixture e grant temporário desfeito. O CI `36940320919` também está verde.
 - Isso reforça apenas a validação do caminho candidato em clone schema-only, não o estado de dados atuais de Produção. Sem deploy ou alteração remota. Marco 4 segue parcial; ledger integral, backfills/órfãos reais, rollout e validação de snapshot representativo ainda são gates.
+
+### Divergência do gatilho global de RLS — 01/10/2026
+
+- Consulta read-only confirmou `ensure_rls` ativo apenas em Dev. Em clone Prod-shaped, reprodução transacional demonstrou que ele habilita RLS em toda tabela pública recém-criada, sem criar policy; o acesso autenticado fica default-deny. O hook não é instalado/removido pela migration versionada local que só revoga EXECUTE do helper.
+- Efeito reproduzido e rollback confirmado; nenhum banco hospedado foi alterado. Não replicar automaticamente Dev para Produção: padronizar se o hook é um controle desejado e exigir criação coordenada de policies por módulo/owner. Marco 4 continua parcial.
