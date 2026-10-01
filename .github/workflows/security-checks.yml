@@ -68,6 +68,27 @@ jobs:
             echo "Bootstrap guard fixture was not rolled back after the expected failure."
             exit 1
           fi
+      - name: Verify owner bootstrap scopes legacy data idempotently
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run positive bootstrap fixture."
+            exit 1
+          fi
+          {
+            printf '%s\n' "BEGIN;"
+            printf '%s\n' "INSERT INTO public.maestro_collaborators (id, login, password_hash, is_active, profile) VALUES ('bootstrap-owner-positive-ci', 'bootstrap-owner-positive-ci', '', true, '{\"access_level\":\"admin\"}'::jsonb);"
+            printf '%s\n' "INSERT INTO public.legacy_records (entity, record_id, payload) VALUES ('BootstrapOwnerGuardCIPositive', 'synthetic-owned-record', '{}'::jsonb);"
+            cat supabase/migrations/20260927023629_bootstrap_dominio_tenant.sql
+            cat supabase/migrations/20260927023629_bootstrap_dominio_tenant.sql
+            cat scripts/sql/bootstrap-owner-positive-ci.assert.sql
+            printf '%s\n' "ROLLBACK;"
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          if [ "$(docker exec "${db_containers[0]}" psql -U postgres -d postgres -Atqc "select not exists (select 1 from public.maestro_collaborators where id = 'bootstrap-owner-positive-ci') and not exists (select 1 from public.legacy_records where entity = 'BootstrapOwnerGuardCIPositive' and record_id = 'synthetic-owned-record')")" != "t" ]; then
+            echo "Positive bootstrap fixture left synthetic rows behind after rollback."
+            exit 1
+          fi
       - name: Verify missing WhatsApp scheduler config preserves an existing job
         shell: bash
         run: |
