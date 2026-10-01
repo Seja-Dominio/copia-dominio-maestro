@@ -1,5 +1,13 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Revalidação do isolamento tenant no clean-room — 01/10/2026
+
+- O relato anterior de falha no clone schema-only de upgrade Prod (`permission denied` em `maestro_clients`, além das verificações de reassociação legada e projeção Subtask) foi reavaliado contra um banco local clean-room com as migrations canônicas atuais. A suíte completa `scripts/verify-tenant-isolation.mjs` retornou `status: ok`, sem falhas, incluindo reassociação cross-tenant negada, dual-write Subtask vinculado e RLS autenticado de leitura própria/negação cross-tenant.
+- O CI do HEAD `4dbd358768c6acf96d0912eb1de777797335087f`, run `36891765382`, concluiu com sucesso em todos os jobs, inclusive replay limpo e regressões tenant/RLS.
+- A divergência de permissões do clone não deve ser tratada como defeito do schema canônico: o catálogo remoto lido anteriormente confirma USAGE em `public` para `authenticated`, enquanto o clone schema-only parcial pode não reproduzir essa ACL. A causa exata das duas outras diferenças observadas no clone anterior não foi isolada; o teste positivo no clean-room comprova o comportamento da sequência canônica, não a equivalência daquele snapshot de upgrade.
+- Estado do marco: **Marco 4 segue parcial**. Esta validação não substitui reconciliação statement-a-statement dos ledgers, upgrade representativo completo com catálogo/ACLs equivalentes, validação de backfill em dados representativos nem classificação de ownership/policies. Nenhum banco hospedado foi escrito.
+- Próxima ação segura: continuar a reconciliação por domínio dos efeitos de migrations e dos objetos/grants divergentes nos clones Prod e Dev, preservando a barreira contra repair de ledger e escrita remota.
+
 ## Marco de autenticação do app — 01/10/2026
 
 - O fluxo ativo de colaboradores foi consolidado no endpoint Supabase `collaborator-login` e no token de sessão HMAC que as Edge Functions protegidas realmente validam. O caminho de login JWT nativo do Supabase foi removido porque a leitura agregada `READ ONLY` encontrou zero contas `auth.users` e as APIs protegidas não aceitam esse tipo de JWT; o login não foi alterado no Supabase remoto.
