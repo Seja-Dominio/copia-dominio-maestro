@@ -64,6 +64,12 @@
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com leitura cautelosa de `pg_stat_user_functions` e alternativa condicionada via `pg_stat_statements`.
 - Esforço ativo: não medido.
 
+## Executar fixtures SQL com barreira de migration — 01/10/2026
+
+- **Evidência:** `reconcile-core-subtask-links-clone.test.sql` declara `MIGRATION_BARRIER`; executá-lo sozinho no clone falhou na primeira assertion pós-upgrade porque a migration ainda não tinha sido injetada. Inserir `20261001140000` e `20261001150000` no marcador permitiu que as assertions de relink same-tenant, isolamento, exceptions e recovery passassem com rollback. O workflow de CI já orquestra outros dois fixtures com o mesmo padrão.
+- **Aplicação:** antes de rodar fixture SQL de upgrade diretamente, procurar marcadores de barreira e revisar o workflow/orquestrador para inserir as migrations no ponto correto; preservar a ordem e o rollback do cenário.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com regra explícita para fixtures com `MIGRATION_BARRIER`. Amostra pequena, mas o contrato é explícito no próprio fixture e repetido em três cenários do CI; esforço ativo não medido.
+
 ## Snapshots Supabase podem compartilhar um container — 01/10/2026
 
 - **Evidência:** a listagem Docker mostrava apenas dois containers locais, mas a consulta a `pg_database` revelou vários clones Dev/Prod dentro do container `maestro-clean-room.xjrrql`, incluindo `maestro_dev_upgrade_validation_20261001f` e `maestro_prod_upgrade_full_20261001d`, cujos ensaios de upgrade estavam documentados e ainda podiam ser inspecionados.
