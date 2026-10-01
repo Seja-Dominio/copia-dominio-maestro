@@ -13,3 +13,10 @@
 - **Correção validada:** grants mínimos por coluna, leitura explícita apenas das colunas necessárias e lock transacional por item; regressão rollback-only passou para sucesso, isolamento cross-tenant, replay da resolução, privilégios mínimos e atomicidade.
 - **Aplicação:** RPCs PostgreSQL `SECURITY INVOKER` em migrations de qualquer módulo; validar com o papel real e testar permissões efetivas além do catálogo da função.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, acrescentando chamada real como papel invoker e teste transacional tenant-aware. Mudança pequena e acionável, sustentada por defeito funcional reproduzido e correção validada.
+
+## Gate de catálogo PostgreSQL no CI precisa de runtime declarado — 01/10/2026
+
+- **Evidência:** o workflow do banco executava `verify:rls-policy-catalog`, que importa `pg`, mas o job de migrations não instalava dependências Node; CI `36811273480` falhou com `ERR_MODULE_NOT_FOUND: pg` depois do replay limpo.
+- **Correção verificada:** setup Node 22 + `npm ci --ignore-scripts` no job DB; workflow `36811508738` passou todos os jobs, incluindo replay limpo e gate RLS.
+- **Aplicação:** qualquer script de CI que rode cliente PostgreSQL em Node deve declarar runtime e dependências no próprio job; sucesso no job de unit tests separado não satisfaz essa pré-condição.
+- **Skill:** sem alteração; a lição é específica do workflow e ficou registrada aqui, sem necessidade de generalizar instrução procedural para todas as migrations.
