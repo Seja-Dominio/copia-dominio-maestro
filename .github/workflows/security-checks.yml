@@ -34,7 +34,7 @@ jobs:
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Replay every migration from a clean database
         run: supabase db reset --local --no-seed
-      - name: Verify fresh tenant bootstrap never creates an ownerless organization
+      - name: Verify fresh tenant bootstrap does not scope legacy rows without an owner
         shell: bash
         run: |
           mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')

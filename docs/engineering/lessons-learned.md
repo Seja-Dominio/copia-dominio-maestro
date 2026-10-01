@@ -97,3 +97,10 @@
 - **Aplicação:** comparar contagem segundo modo de cutover e conferir o caminho efetivo de leitura/escrita do runtime. Uma configuração declarativa de source-of-truth não prova que o dispatcher a respeita. Preservar linhas relational-only até a origem ser comprovada; nunca forçar igualdade de totais.
 - **Skill:** nenhuma alteração automática. Registra-se a evidência deste domínio; ainda não há casos comparáveis suficientes para generalizar a mudança à skill global de migrations.
 - Esforço ativo: não medido.
+
+## Separar tenant provisionado da organização-base no replay — 01/10/2026
+
+- **Evidência:** CI `36928279142` replayou todas as migrations e falhou apenas no gate que exigia owner para qualquer organização ativa. O rastreamento identificou `20260926290000_scope_cxm_collaboration_tables.sql` criando a organização-base e migrations relacionais Maestro dependendo dela. O bootstrap candidato falha antes de mapear legado sem owner.
+- **Correção:** estreitar o contrato do teste para verificar mapeamento legado sem owner e conservar o caso sintético que exige erro/rollback. Não apagar a organização-base nem editar a migration de colaboração/CXM neste escopo.
+- **Aplicação:** em replay multi-tenant, distinguir objeto técnico-base de tenant provisionado; validar efeitos e ownership por fluxo, não inferir semântica apenas por `status='active'`.
+- **Skill:** `dominio-database-migrations/SKILL.md` ganhou orientação para bootstrap compatível com dependências históricas. Revisão aguarda novo CI; esforço ativo não medido.
