@@ -27,3 +27,10 @@
 - **Débito observado:** o preflight remoto agregado encontrou 29 IDs de responsável sem membership no mesmo tenant. A nova FK fica `NOT VALID` até conciliação; nada foi corrigido em Prod.
 - **Regra promovida:** antes de confiar num clone upgradeável, compare o catálogo com a origem; quando o ledger divergir, compare o estado real e execute os contratos sobre o baseline real. Não conclua integridade a partir do replay limpo.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, exigindo baseline schema-only com paridade de catálogo e distinção entre versão do ledger e estado efetivo. Evidência de alto impacto e correção exercitada em clone isolado.
+
+## Validar backfill histórico e função final de dual-write separadamente — 01/10/2026
+
+- **Evidência:** fixture rollback-only reproduziu que o parser na migration inicial de timesheets não projeta a duração como esperado. A sequência contém definições posteriores de `maestro_sync_relational_timesheet` com regex corrigida, então a falha histórica não identifica o comportamento da função live nem do estado final após replay.
+- **Correção/limite:** a migration de reparo existente já possui fixture CI repetida e preserva dados tipados; impacto em Prod foi apenas agregado/read-only e nenhum reparo foi aplicado. A definição live continua não confirmada.
+- **Aplicação:** para backfills e dual-writes evolutivos, testar (1) conversão de linhas históricas; (2) definição efetiva final do trigger após toda a sequência; (3) novos inserts/updates; não extrapolar bug de migration intermediária para a função final.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, acrescentando esses três alvos de validação para parsing/backfills multi-etapa. Evidência de impacto alto reproduzida em fixture, com distinção da incerteza live.
