@@ -14,6 +14,7 @@ begin
       'tenant-ci-relink-task', 'tenant-ci-missing-parent-task', 'tenant-ci-missing-assignee-task',
       'tenant-ci-cross-tenant-task'
     ))
+    or exists (select 1 from public.maestro_job_tasks where legacy_record_id like 'tenant-ci-parent-loss-task-%')
     or exists (select 1 from public.relational_integrity_exceptions where organization_id = '00000000-0000-0000-0000-00000000c001'::uuid) then
     raise exception 'Subtask reconciliation fixture collision; refusing to run';
   end if;
@@ -45,6 +46,19 @@ insert into public.maestro_job_tasks (
   ('00000000-0000-0000-0000-00000000c001', 'tenant-ci-missing-assignee-task', 'tenant-ci-relink-job',
     '00000000-0000-0000-0000-00000000c401', 'Historical assignee', '00000000-0000-0000-0000-00000000c999',
     'Former teammate', 'linked', '{"job_id":"tenant-ci-relink-job","responsible_id":"00000000-0000-0000-0000-00000000c999","responsible_name":"Former teammate"}');
+insert into public.maestro_job_tasks (
+  organization_id, legacy_record_id, legacy_job_record_id, job_id,
+  title, resolution_status, source_payload
+)
+select
+  '00000000-0000-0000-0000-00000000c001'::uuid,
+  'tenant-ci-parent-loss-task-' || task_no::text,
+  'tenant-ci-parent-loss-job-' || (((task_no - 1) % 96) + 1)::text,
+  null,
+  'Synthetic missing parent task ' || task_no::text,
+  'linked',
+  jsonb_build_object('job_id', 'tenant-ci-parent-loss-job-' || (((task_no - 1) % 96) + 1)::text)
+from generate_series(1, 496) as task_no;
 alter table public.maestro_job_tasks
   add constraint maestro_job_tasks_org_responsible_fk
   foreign key (organization_id, responsible_id)
@@ -81,6 +95,16 @@ begin
     join public.maestro_jobs j on j.id = t.job_id
     where t.legacy_record_id = 'tenant-ci-cross-tenant-task' and j.organization_id <> t.organization_id
   ) then raise exception 'Migration linked a task to another tenant Job'; end if;
+  if (select count(*) from public.maestro_job_tasks
+      where legacy_record_id like 'tenant-ci-parent-loss-task-%'
+        and job_id is null and resolution_status = 'pending'
+        and legacy_job_record_id = source_payload ->> 'job_id') <> 496
+    or (select count(*) from public.relational_integrity_exceptions
+      where entity = 'Subtask' and issue_type = 'missing_job_parent'
+        and resolution_status = 'pending'
+        and legacy_record_id like 'tenant-ci-parent-loss-task-%') <> 496 then
+    raise exception 'Scaled missing-parent cohort was not preserved and staged exactly once';
+  end if;
   if not exists (
     select 1 from public.maestro_job_tasks
     where legacy_record_id = 'tenant-ci-missing-assignee-task'
