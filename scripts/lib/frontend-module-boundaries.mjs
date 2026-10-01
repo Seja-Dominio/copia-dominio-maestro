@@ -73,3 +73,14 @@ export function hasRouteScopedErrorBoundary(appSource) {
   const pageWrapper = appSource.match(/const P\s*=\s*\(\{[\s\S]*?\n\s*\);/)?.[0] || "";
   return /<SafeBoundary>\s*<Suspense[\s\S]*?<\/Suspense>\s*<\/SafeBoundary>/.test(pageWrapper);
 }
+
+export function hasModuleRoutesWrapped(appSource, moduleNames) {
+  return moduleNames.every((name) => {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const route = new RegExp(
+      `<Route\\s+path=["']/` + escapedName + `["']\\s+element=\\{\\s*<P\\s+name=["']` + escapedName +
+        `["']\\s*>\\s*<` + escapedName + `\\s*/>\\s*</P>\\s*\\}\\s*/>`,
+    );
+    return route.test(appSource);
+  });
+}

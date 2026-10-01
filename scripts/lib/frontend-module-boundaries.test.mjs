@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   analyzeModuleBoundaries,
   extractLocalModuleSpecifiers,
+  hasModuleRoutesWrapped,
   hasRouteScopedErrorBoundary,
 } from "./frontend-module-boundaries.mjs";
 
@@ -58,4 +59,14 @@ test("requires a route-local error boundary around each lazy page", () => {
     );
   `), true);
   assert.equal(hasRouteScopedErrorBoundary(`const P = ({ children }) => <Suspense>{children}</Suspense>;`), false);
+});
+
+test("requires isolated module routes to use the protected page boundary", () => {
+  const app = `
+    <Route path="/Jobs" element={<P name="Jobs"><Jobs /></P>} />
+    <Route path="/AdsBrain" element={<P name="AdsBrain"><AdsBrain /></P>} />
+  `;
+  assert.equal(hasModuleRoutesWrapped(app, ["Jobs", "AdsBrain"]), true);
+  assert.equal(hasModuleRoutesWrapped(app.replace('<P name="AdsBrain"><AdsBrain /></P>', '<AdsBrain />'), ["Jobs", "AdsBrain"]), false);
+  assert.equal(hasModuleRoutesWrapped(app, ["Jobs", "Missing"]), false);
 });

@@ -16,6 +16,13 @@
 - Verificações locais: `verify:functional-inventory` passou (20 rotas, 21 contratos de acesso, 32 entidades, 119 operações; sem itens sem classificação); `verify:relational-dispatch` passou para 21/21 entidades/tabelas/field maps/payload maps; JSON de dispositions válido e `git diff --check` limpo. CI `36882460968` passou no commit documental anterior, sem alterações de runtime.
 - Decisão segura: ainda não criar tabela nem portar a sincronização/IA. A modelagem depende de definir a fonte/token Meta por organização, ownership de client/account, idempotência e retenção; nenhum acesso atual prova que esse domínio está pronto para cutover. Próximo gate é validar contrato de credenciais/escopo do provider sem misturar Insights e Ads Brain; depois desenhar migrations aditivas e testes clean replay + upgrade tenant-aware.
 
+## Gate de isolamento Ads Brain ↔ Jobs — 01/10/2026
+
+- O verificador existente já percorre imports locais transitivos e rejeita dependências cruzadas entre `src/pages/Jobs.jsx`/`src/pages/AdsBrain.jsx` e suas pastas de componentes. A boundary React ativa é `SafeBoundary` dentro do wrapper de página `P`, com fallback inline; uma classe antiga `LazyErrorBoundary` fixa não é usada pelo router ativo. Não houve mudança de UI.
+- Lacuna corrigida: o gate antes apenas verificava que o wrapper `P` continha uma boundary, mas não exigia que cada rota isolada realmente fosse renderizada por ele. Agora `verify:frontend-module-boundaries` falha se Jobs ou Ads Brain forem registrados fora de `<P>`; teste cobre rota protegida, rota direta e rota ausente.
+- Verificação local: suíte `scripts/lib/*.test.mjs` 67/67; build Vite e ESLint dos três arquivos do gate passaram; o verificador reporta `status: ok`, 2 módulos, route-scoped boundary e rotas isoladas envoltas, sem violações nem imports locais não resolvidos.
+- Limite: isso impede acoplamento por imports conhecidos e garante boundary na estrutura das rotas; ainda não simula erro de render em browser, quebra de dependência compartilhada em runtime nem preservação funcional do módulo vizinho. Um teste de browser/React isolado segue pendente antes de declarar o Marco 3 completo.
+
 Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
 
 ## Resultado que este plano chama de “banco finalizado”

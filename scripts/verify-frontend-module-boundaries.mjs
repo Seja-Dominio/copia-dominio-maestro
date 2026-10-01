@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyzeModuleBoundaries, hasRouteScopedErrorBoundary } from "./lib/frontend-module-boundaries.mjs";
+import { analyzeModuleBoundaries, hasModuleRoutesWrapped, hasRouteScopedErrorBoundary } from "./lib/frontend-module-boundaries.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(await fs.readFile(path.join(root, "scripts/config/frontend-module-boundaries.json"), "utf8"));
@@ -23,11 +23,14 @@ await readSources(path.join(root, "src"));
 const { violations, unresolved } = analyzeModuleBoundaries({ sources, modules: manifest.modules });
 const routeBoundaryPresent = hasRouteScopedErrorBoundary(appSource);
 if (!routeBoundaryPresent) violations.push("App: lazy routes must have a route-scoped error boundary");
+const moduleRoutesWrapped = hasModuleRoutesWrapped(appSource, Object.keys(manifest.modules));
+if (!moduleRoutesWrapped) violations.push("App: isolated module routes must render through the protected page boundary");
 
 console.log(JSON.stringify({
   status: violations.length || unresolved.length ? "failed" : "ok",
   modules_checked: Object.keys(manifest.modules).length,
   route_scoped_error_boundary: routeBoundaryPresent,
+  isolated_module_routes_wrapped: moduleRoutesWrapped,
   violations,
   unresolved,
 }, null, 2));
