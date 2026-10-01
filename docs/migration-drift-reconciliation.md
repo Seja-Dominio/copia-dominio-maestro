@@ -1,6 +1,6 @@
 # Reconciliação read-only dos ledgers de migrations
 
-Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado. A tabela e listas iniciais desta página são a fotografia da primeira coleta de 30/09; a seção “Revalidação atual após 451a60f” abaixo é a referência mais recente e prevalece quando os números divergem.
+Auditoria reexecutada em 30/09/2026 contra o checkout da branch `codex/maestro-db-canonical-candidate`. Nenhum `db push`, `migration repair`, alteração de catálogo ou DDL remoto foi executado. A tabela e listas iniciais desta página são fotografias históricas; a recontagem `READ ONLY` de 01/10/2026, registrada abaixo, prevalece para contagens do ledger.
 
 ## Método e limites
 
@@ -413,6 +413,12 @@ O código ativo agora sustenta ownership funcional Maestro para os 12 alvos: Job
 - Comparação feita entre Prod sob `BEGIN READ ONLY` e o clone: relations (58), colunas (632), constraints (228), índices (210), policies (136), triggers (19) e funções (33). Cada assinatura coletada igual; missing/extra/changed = 0; hash canônico `6350e067db96d50be1669aa4abf98f045d908b47d7d26200e6a5e079d88f868b` em ambos.
 - Escopo da prova: catálogo estrutural listado; não prova grants de API/roles, extensões, jobs cron, Vault, Auth, Storage, dados de negócio ou comportamento runtime. O clone anterior `maestro_prod_schema_snapshot_20260930` segue preservado.
 - CI `36811508738` (commit `2de3bb42ede791cd4d5dde3fcfd3cf32ce56184f`) passou integralmente após o job receber Node 22 e `npm ci --ignore-scripts`; replay limpo e nova verificação do catálogo RLS passaram. A tentativa anterior `36811273480` falhou somente por `ERR_MODULE_NOT_FOUND: pg`, causa agora corrigida.
+
+### Recontagem do ledger após migrations candidatas — 01/10/2026
+
+- `scripts/reconcile-migration-ledgers.mjs` foi executado novamente com conexões Dev (`tqmfuskvllpqmvayjuqu`) e Produção (`fwpisypiiezjhtqxlmqv`) explicitamente verificadas e consultas em `BEGIN READ ONLY`; ambos confirmaram `transaction_read_only=on` e encerraram em `ROLLBACK`. Nenhum schema, dado ou ledger foi alterado.
+- O checkout tem 176 migrations; os ledgers continuam com Dev 83 entradas e Produção 111. A contagem de conteúdo local sem fingerprint no ledger passou a Dev 100 e Produção 89; conteúdo remoto sem arquivo local permanece 16 e 26, respectivamente. Os outros grupos seguem Dev (22/9/45/6/0) e Produção (15/2/60/23/10), na ordem de colunas descrita no resumo desta página.
+- O aumento de dois arquivos locais desde a fotografia anterior corresponde às migrations candidatas `20261001090000_reconcile_production_core_tenant_integrity` e `20261001120000_reconcile_timesheet_tenant_projection`; ambas estão ausentes por conteúdo nos ledgers remotos. Isso confirma apenas a ausência histórica, não a equivalência de efeitos ou autorização de aplicação. O gate continua sendo classificar dependências e testar upgrade em clones.
 
 ### Upgrade sobre Produção: integridade multi-tenant efetiva — 01/10/2026
 
