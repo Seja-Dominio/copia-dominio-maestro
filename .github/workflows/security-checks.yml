@@ -60,6 +60,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test supabase/functions/_shared/*.test.mjs scripts/lib/*.test.mjs
+      - name: Build the Maestro frontend
+        run: npm run build
+      - name: Verify Jobs and Ads Brain module boundaries
+        run: npm run verify:frontend-module-boundaries
       - run: npm run verify:edge-function-product-boundaries
       - name: Verify relational dispatch when Maestro app sources are present
         run: |

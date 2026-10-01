@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "modules": {
+    "Jobs": {
+      "entry": "src/pages/Jobs.jsx",
+      "forbidden": [
+        "src/pages/AdsBrain.jsx",
+        "src/components/ads/"
+      ]
+    },
+    "AdsBrain": {
+      "entry": "src/pages/AdsBrain.jsx",
+      "forbidden": [
+        "src/pages/Jobs.jsx",
+        "src/components/jobs/"
+      ]
+    }
+  }
+}
