@@ -42,6 +42,7 @@ jobs:
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/audit_core_tenant_integrity.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/test_core_tenant_policies_clone.sql
           docker exec -i "${db_containers[0]}" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < scripts/sql/test_dev_ensure_rls_event_trigger_clone.sql
+          npm run verify:rls-policy-catalog
           {
             cat scripts/sql/timesheet-projection-repair-fixtures.sql
             cat supabase/migrations/20260930140000_repair_timesheet_payload_projection.sql
