@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { loginCollaborator } from "@/api/maestroClient";
-import { storeCollaboratorSession, supabase } from "@/api/supabaseClient";
+import { storeCollaboratorSession } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, ArrowRight, Download, Eye, EyeOff, Lock, MessageCircle, User } from "lucide-react";
@@ -84,24 +84,6 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
     setLoading(true);
 
     try {
-      // Native Supabase Auth accounts can sign in with an email address.
-      // Keep the collaborator endpoint for the existing username-based users.
-      if (supabase && login.includes("@")) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: login.trim(),
-          password,
-        });
-        if (!error && data.user) {
-          onLoginSuccess?.(data.user);
-          return;
-        }
-        if (error?.message?.toLowerCase().includes("email not confirmed")) {
-          setError("Confirme seu e-mail antes de entrar.");
-          return;
-        }
-        setError(error?.message || "Não foi possível validar seu e-mail. Tente novamente.");
-        return;
-      }
       const response = await loginCollaborator({
         login,
         password,

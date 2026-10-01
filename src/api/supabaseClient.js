@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { parseCollaboratorSession } from '@/lib/collaborator-session.mjs';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -37,27 +38,13 @@ export function getStoredSessionToken() {
 
 export function getStoredCollaborator() {
   const raw = getStoredValue(COLLABORATOR_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    const token = getStoredSessionToken();
-    if (token) {
-      const [body] = token.split('.');
-      if (body) {
-        const padded = body.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(body.length / 4) * 4, '=');
-        const tokenData = JSON.parse(atob(padded));
-        if (tokenData.exp && tokenData.exp < Math.floor(Date.now() / 1000)) {
-          clearStoredCollaboratorSession();
-          return null;
-        }
-      }
-    }
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  const collaborator = parseCollaboratorSession(raw, getStoredSessionToken());
+  if (!collaborator && (raw || getStoredSessionToken())) clearStoredCollaboratorSession();
+  return collaborator;
 }
 
 export function storeCollaboratorSession(collaborator, token) {
+  if (!collaborator?.id || !token) throw new Error('Resposta de autenticação incompleta.');
   const collaboratorJson = JSON.stringify(collaborator);
   sessionStorage.setItem(COLLABORATOR_STORAGE_KEY, collaboratorJson);
   localStorage.setItem(COLLABORATOR_STORAGE_KEY, collaboratorJson);
@@ -127,16 +114,9 @@ function assertSafeTarget() {
 
 export const supabase = url && anonKey ? createClient(url, anonKey) : null;
 
-function clearSupabaseAuthSession() {
-  // A token from another Supabase environment must not keep the UI in an
-  // apparently authenticated state after switching between Dev and Prod.
-  supabase?.auth.signOut().catch(() => {});
-}
-
 function throwSupabaseError(data, response, fallback, { clearSessionOnUnauthorized = true } = {}) {
   if (response.status === 401 && clearSessionOnUnauthorized) {
     clearStoredCollaboratorSession();
-    clearSupabaseAuthSession();
     if (window.location.pathname !== '/') window.location.replace('/');
   }
   const error = new Error(data.error || fallback);
@@ -148,7 +128,7 @@ function throwSupabaseError(data, response, fallback, { clearSessionOnUnauthoriz
 export async function invokeSupabaseFunction(name, body = {}, options = {}) {
   assertSafeTarget();
   if (!url || !anonKey) throw new Error('Supabase não está configurado neste ambiente.');
-  const sessionToken = getStoredSessionToken() || (await supabase?.auth.getSession())?.data?.session?.access_token;
+  const sessionToken = getStoredSessionToken();
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
   const response = await fetch(`${url}/functions/v1/${name}`, {

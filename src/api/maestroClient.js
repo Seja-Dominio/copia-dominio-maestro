@@ -144,11 +144,4 @@ export function logoutCollaborator() {
   clearStoredCollaboratorSession();
 }
 
-const authProvider = import.meta.env.VITE_MAESTRO_AUTH_PROVIDER || 'base44';
-
-export const loginCollaborator = async (credentials) => {
-  if (authProvider === 'supabase') {
-    return loginCollaboratorWithSupabase(credentials);
-  }
-  return maestro.functions.invoke('collaboratorLogin', credentials);
-};
+export const loginCollaborator = (credentials) => loginCollaboratorWithSupabase(credentials);

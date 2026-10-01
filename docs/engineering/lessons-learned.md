@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Sessão emitida precisa corresponder ao contrato dos consumidores — 01/10/2026
+
+- **Evidência:** o app podia autenticar por JWT nativo do Supabase, enquanto as Edge Functions protegidas aceitavam apenas sessão de colaborador assinada por HMAC. A UI marcava login como válido, mas as chamadas subsequentes falhavam; consulta agregada somente leitura também confirmou zero usuários nativos `auth.users` nos ambientes verificados.
+- **Correção validada localmente:** o login ativo usa o emissor HMAC já existente; perfil inclui ID canônico e o cache é rejeitado se token, `sub`, colaborador ou tenant não corresponderem. A suíte cobre sucesso, expiração, formato inválido, mismatch e o contrato emissor. Build, lint dos arquivos alterados e testes compartilhados passaram.
+- **Aplicação:** mudanças de autenticação ou migrações de provedor. Testar a cadeia emissor → armazenamento/restauração → API consumidora com o tipo de token e claims que o receptor realmente valida; sucesso visual de login não é prova de sessão operacional.
+- **Skill atualizada:** `dominio-integration-testing/SKILL.md`, acrescentando a checagem genérica desse contrato de autenticação. E2E em homologação ainda pendente.
+
 ## Migrations multi-relação: classificar alvos antes do pacote — 30/09/2026
 
 - **Evidência:** a migration `20260926520000_add_authenticated_organization_rls` mistura 33 tabelas; Produção tem 33 e 132 policies, Dev tem 9 e nenhuma policy, e 12 tabelas não aparecem no registry de ownership. Busca direta em `dominus-webhook`, `dominus-audit` e migrations de operações core ligou todos os 12 a consumidores Maestro, embora AppConfig e dados conversacionais/logs ainda exijam escopos de acesso específicos. O alvo SQL não faz guarda de existência. O caso demonstra que owner de produto não determina, por si só, autorização ou tenant policy.

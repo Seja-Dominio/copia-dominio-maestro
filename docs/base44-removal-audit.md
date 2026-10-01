@@ -4,8 +4,10 @@ Data da inspeção: 01/10/2026. Escopo: checkout ativo, sem incluir `base44-sour
 
 ## Fatos confirmados
 
-- `src/api/maestroClient.js` é a fronteira consumida pela aplicação (89 sites de import/uso). Mesmo assim, `VITE_MAESTRO_DATA_PROVIDER` e `VITE_MAESTRO_AUTH_PROVIDER` assumem `base44` quando não configurados. Os arquivos de ambiente e o `Dockerfile` configuram Supabase, mas isso não remove o fallback.
-- O adaptador Supabase ainda reutiliza `base44.auth`, `base44.functions` e `base44.integrations`; `AuthContext`, `ProtectedRoute`, cadastro e recuperação de senha chamam métodos de auth desse adaptador. `invokeMaestroFunction` também encaminha para o SDK quando a ação não está implementada no caminho Supabase. Portanto, retirar só a dependência NPM ou trocar os defaults seria insuficiente e pode quebrar login/rotas/ações.
+- `src/api/maestroClient.js` é a fronteira consumida pela aplicação (89 sites de import/uso). `VITE_MAESTRO_DATA_PROVIDER` ainda assume `base44` quando não configurado. Os arquivos de ambiente e o `Dockerfile` configuram Supabase, mas a fronteira mantém fallback.
+- Correção desta etapa: o router ativo usa `src/components/AuthContext.jsx` e `src/components/auth/ProtectedRoute.jsx`; esse fluxo já é de colaborador e foi consolidado no endpoint Supabase `collaborator-login`, que entrega sessão HMAC. O ramo que aceitava JWT nativo do Supabase foi removido porque as Edge Functions protegidas validam HMAC, não JWT nativo, e a consulta agregada read-only encontrou zero usuários `auth.users` no Dev e em Produção. A sessão local agora exige token não expirado com `sub`, ID de colaborador e organização coerentes; o servidor continua sendo a autoridade que valida HMAC/membership.
+- Os arquivos `src/lib/AuthContext.jsx`, `src/components/ProtectedRoute.jsx` e páginas antigas de registro/recuperação/OAuth não são montados pelo router atual; ainda contêm referências a auth Base44 e devem ser classificados/removidos em uma etapa separada, sem confundi-los com o fluxo ativo.
+- O adaptador Supabase ainda expõe `base44.auth`, `base44.functions` e `base44.integrations` para compatibilidade. `invokeMaestroFunction` encaminha para o SDK quando uma ação não está implementada no caminho Supabase. Portanto, retirar só a dependência NPM ou trocar os defaults continua insuficiente e pode quebrar ações.
 - `@base44/sdk` está em `package.json`/lockfile e é importado pelo `src/api/base44Client.js`. Há referência de runtime a assets remotos em `media.base44.com` no favicon e em componentes de marca/exportação.
 - Há 21 arquivos em `base44/functions/`: código legado de backend cuja equivalência com Edge Functions atuais ainda precisa ser cruzada função a função. Não assumir que seja dead code sem conferir deploy e consumidores.
 - `base44-source/` contém 315 arquivos de snapshot histórico. Não há import do diretório pelo build, mas ele preserva implementação e pode servir de fonte de paridade. A busca encontrou 677 linhas com referências nesse snapshot; isso não equivale a chamadas do app atual.
@@ -14,8 +16,8 @@ Data da inspeção: 01/10/2026. Escopo: checkout ativo, sem incluir `base44-sour
 
 ## Ordem segura para concluir
 
-1. Mapear cada operação de `maestroClient`/cada entidade e método auth à implementação Supabase/Edge, verificando paridade de sucesso, erro e permissões; listar qualquer consumidor sem substituto.
-2. Remover os fallbacks de runtime por domínio somente depois dos contratos e testes de fluxo; não substituir chamadas pendentes por sucesso vazio.
+1. Mapear cada operação de `maestroClient`/cada entidade e método auth à implementação Supabase/Edge, verificando paridade de sucesso, erro e permissões; listar qualquer consumidor sem substituto. Auth HMAC passou seu gate de forma local; falta E2E autenticado em homologação.
+2. Remover os fallbacks de runtime por domínio somente depois dos contratos e testes de fluxo; não substituir chamadas pendentes por sucesso vazio. Permanecem sem destino Supabase: `deleteAccount`, `fetchInstagramInsights` e `generateAIInsights`.
 3. Migrar os fluxos de autenticação e os ativos de marca para recursos locais, com testes de login, sessão, recuperação, rotas protegidas e logout.
 4. Retirar `@base44/sdk`, `base44Client`, parâmetros/proxies/envs e configuração do Docker, executando build e regressões com variáveis ausentes e com Dev/Prod explicitamente configurados.
 5. Desativar os antigos handlers em `base44/functions/` apenas após inventário de publicação e prova de equivalência das rotas Edge; preservar export/import apenas se ainda houver obrigação operacional de recuperação.

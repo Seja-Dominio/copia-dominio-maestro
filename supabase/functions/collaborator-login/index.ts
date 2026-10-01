@@ -167,6 +167,7 @@ Deno.serve(async (request) => {
     const accessLevel = accessLevelForOrganizationRole(membership.organization_role);
     const collaborator = {
       ...data.profile,
+      id: data.id,
       access_level: accessLevel,
       organization_id: membership.organization_id,
       organization_name: membership.organization_name,

@@ -1,5 +1,13 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Marco de autenticação do app — 01/10/2026
+
+- O fluxo ativo de colaboradores foi consolidado no endpoint Supabase `collaborator-login` e no token de sessão HMAC que as Edge Functions protegidas realmente validam. O caminho de login JWT nativo do Supabase foi removido porque a leitura agregada `READ ONLY` encontrou zero contas `auth.users` e as APIs protegidas não aceitam esse tipo de JWT; o login não foi alterado no Supabase remoto.
+- O perfil devolvido pelo login agora recebe o `id` canônico da linha de colaborador. O frontend valida formato/expiração e correspondência de `sub`, ID e organização antes de restaurar a sessão; isso é filtro de cache/UX, não verificação criptográfica. A assinatura e a membership continuam responsabilidade do servidor.
+- Evidências locais: testes Node compartilhados e de sessão passaram; ESLint dos arquivos alterados, build Vite, inventário funcional e `git diff --check` passaram. `verify:edge-function-product-boundaries` executa sem erros de classificação, mas continua `release_ready=false` por seis funções compartilhadas e oito funções não-CXM pendentes. Lint global permanece bloqueado por 85 imports não usados fora do escopo.
+- Limite: não houve E2E de login em homologação, deploy, escrita remota nem alteração de banco. O restante da remoção de Base44 continua aberto: `deleteAccount`, `fetchInstagramInsights`, `generateAIInsights`, SDK/adaptador/fallbacks e handlers legados requerem portabilidade e paridade antes de remoção.
+- Checkpoint deste marco: validar diff, commitar e enviar sem force-push; registrar SHA remoto e CI quando concluídos.
+
 Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
 
 ## Resultado que este plano chama de “banco finalizado”
