@@ -428,7 +428,37 @@ try {
     }
   }
 
-  console.log(JSON.stringify({ status: failures.length ? "failed" : "ok", reference_contracts_checked: referenceColumns.rows.length, reference_foreign_keys: referenceFks.rows, tables: tableResult.rows, scope: scopeRow, legacy_access: { ...legacyAccess.rows[0], select_policies: legacySelectPolicy.rows, indirect_paths: legacyIndirectAccess.rows }, server_managed_tables: serverManagedCheck.rows, organization_members_access: membership, tenant_foreign_keys: tenantForeignKeys.rows, tenant_fk_coverage: tenantFkCoverage.rows, server_managed_table_privileges: unmanagedTablePrivileges.rows, public_client_privileges: publicClientPrivileges.rows, default_client_privileges: defaultClientPrivileges.rows, deployed_webhook_relations: webhookSchema.rows, deployed_webhook_functions: webhookFunctions.rows, permissions: permissions.rows, failures }, null, 2));
+  const reconciliationColumnPrivileges = await client.query(`
+    select privilege_type, column_name
+    from information_schema.column_privileges
+    where table_schema='public' and table_name='job_task_reconciliation'
+      and grantee='service_role'
+      and privilege_type in ('SELECT', 'UPDATE')
+    order by privilege_type, column_name
+  `);
+  const expectedReconciliationPrivileges = new Set([
+    ...["id", "organization_id", "legacy_record_id", "resolution_status"].map((column) => `SELECT:${column}`),
+    ...["resolution_status", "resolved_job_id", "resolution_note", "resolved_at", "resolved_by"].map((column) => `UPDATE:${column}`),
+  ]);
+  const actualReconciliationPrivileges = new Set(reconciliationColumnPrivileges.rows.map(
+    ({ privilege_type, column_name }) => `${privilege_type}:${column_name}`,
+  ));
+  if (actualReconciliationPrivileges.size !== expectedReconciliationPrivileges.size
+    || [...expectedReconciliationPrivileges].some((privilege) => !actualReconciliationPrivileges.has(privilege))) {
+    failures.push("job_task_reconciliation: service_role_column_privileges_mismatch");
+  }
+  const reconciliationTablePrivileges = await client.query(`
+    select
+      has_table_privilege('service_role', 'public.job_task_reconciliation', 'SELECT') as table_select,
+      has_table_privilege('service_role', 'public.job_task_reconciliation', 'INSERT') as table_insert,
+      has_table_privilege('service_role', 'public.job_task_reconciliation', 'UPDATE') as table_update,
+      has_table_privilege('service_role', 'public.job_task_reconciliation', 'DELETE') as table_delete
+  `);
+  if (Object.values(reconciliationTablePrivileges.rows[0]).some(Boolean)) {
+    failures.push("job_task_reconciliation: service_role_table_wide_privilege_enabled");
+  }
+
+  console.log(JSON.stringify({ status: failures.length ? "failed" : "ok", reference_contracts_checked: referenceColumns.rows.length, reference_foreign_keys: referenceFks.rows, tables: tableResult.rows, scope: scopeRow, legacy_access: { ...legacyAccess.rows[0], select_policies: legacySelectPolicy.rows, indirect_paths: legacyIndirectAccess.rows }, server_managed_tables: serverManagedCheck.rows, organization_members_access: membership, tenant_foreign_keys: tenantForeignKeys.rows, tenant_fk_coverage: tenantFkCoverage.rows, server_managed_table_privileges: unmanagedTablePrivileges.rows, public_client_privileges: publicClientPrivileges.rows, default_client_privileges: defaultClientPrivileges.rows, deployed_webhook_relations: webhookSchema.rows, deployed_webhook_functions: webhookFunctions.rows, permissions: permissions.rows, reconciliation_column_privileges: reconciliationColumnPrivileges.rows, reconciliation_table_privileges: reconciliationTablePrivileges.rows[0], failures }, null, 2));
   process.exitCode = failures.length ? 1 : 0;
 } finally {
   await client.query("rollback").catch(() => {});

@@ -45,6 +45,10 @@ begin
       where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
         and legacy_record_id = 'tenant-ci-task-a'
   ) or exists (
+    select 1 from public.job_task_reconciliation
+    where id = '00000000-0000-0000-0000-00000000a501'::uuid
+      or (legacy_entity = 'Subtask' and legacy_record_id = 'tenant-ci-reconciliation-task')
+  ) or exists (
     select 1 from public.maestro_timesheets
       where legacy_record_id in ('tenant-ci-timesheet-delete-a', 'tenant-ci-timesheet-delete-b',
         'tenant-ci-timesheet-running-a', 'tenant-ci-timesheet-running-b')
@@ -53,6 +57,32 @@ begin
   end if;
 end;
 $preflight$;
+
+do $reconciliation_privilege_contract$
+begin
+  if has_table_privilege('service_role', 'public.job_task_reconciliation', 'SELECT')
+    or has_table_privilege('service_role', 'public.job_task_reconciliation', 'INSERT')
+    or has_table_privilege('service_role', 'public.job_task_reconciliation', 'UPDATE')
+    or has_table_privilege('service_role', 'public.job_task_reconciliation', 'DELETE') then
+    raise exception 'service_role must not have table-wide access to reconciliation queue';
+  end if;
+  if not has_column_privilege('service_role', 'public.job_task_reconciliation', 'id', 'SELECT')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'organization_id', 'SELECT')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'legacy_record_id', 'SELECT')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolution_status', 'SELECT')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolution_status', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolved_job_id', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolution_note', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolved_at', 'UPDATE')
+    or not has_column_privilege('service_role', 'public.job_task_reconciliation', 'resolved_by', 'UPDATE') then
+    raise exception 'service_role is missing a required reconciliation column privilege';
+  end if;
+  if has_column_privilege('service_role', 'public.job_task_reconciliation', 'payload', 'SELECT')
+    or has_column_privilege('service_role', 'public.job_task_reconciliation', 'id', 'UPDATE') then
+    raise exception 'service_role has an unapproved reconciliation column privilege';
+  end if;
+end;
+$reconciliation_privilege_contract$;
 
 insert into public.maestro_collaborators (id, login, password_hash, is_active, profile)
 values
@@ -92,12 +122,22 @@ values
 
 insert into public.maestro_job_tasks (
   organization_id, legacy_record_id, legacy_job_record_id, job_id, title,
-  responsible_id, responsible_name
+  responsible_id, responsible_name, resolution_status
 )
 values
   ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-task-a', 'tenant-ci-job-a',
     '00000000-0000-0000-0000-00000000a401', 'Tenant CI Task A',
-    '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A');
+    '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'linked'),
+  ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-reconciliation-task', 'legacy-pending-job',
+    null, 'Tenant CI Reconciliation Task', '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'pending');
+
+insert into public.job_task_reconciliation (
+  id, legacy_entity, legacy_record_id, legacy_job_id, payload,
+  source_status, resolution_status, organization_id
+) values (
+  '00000000-0000-0000-0000-00000000a501', 'Subtask', 'tenant-ci-reconciliation-task',
+  'legacy-pending-job', '{}'::jsonb, 'pending', 'pending', '00000000-0000-0000-0000-00000000a001'
+);
 
 insert into public.maestro_bank_accounts (legacy_record_id, organization_id, name)
 values ('tenant-ci-account-b', '00000000-0000-0000-0000-00000000b001', 'Tenant CI Account B');
@@ -153,6 +193,7 @@ do $service_role_core_writes$
 declare
   v_job_result jsonb;
   v_task_result jsonb;
+  v_reconciliation_result jsonb;
   v_job_id uuid;
   v_error text;
 begin
@@ -284,6 +325,50 @@ begin
   if v_task_result ->> 'job_id' <> 'tenant-ci-valid-job'
     or not exists (select 1 from public.maestro_job_tasks where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-valid-task' and job_id=v_job_id)
   then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
+
+  begin
+    perform public.resolve_job_task_reconciliation(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      '00000000-0000-0000-0000-00000000a501'::uuid,
+      '00000000-0000-0000-0000-00000000b401'::uuid,
+      'tenant-ci-a', 'cross-tenant rejection'
+    );
+    raise exception 'TEST_FAIL reconciliation accepted another tenant Job';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'target job does not belong to organization'
+      and v_error <> 'TEST_FAIL reconciliation accepted another tenant Job' then
+      raise exception 'TEST_FAIL unexpected reconciliation tenant rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL reconciliation accepted another tenant Job' then raise; end if;
+  end;
+
+  v_reconciliation_result := public.resolve_job_task_reconciliation(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    '00000000-0000-0000-0000-00000000a501'::uuid,
+    '00000000-0000-0000-0000-00000000a401'::uuid,
+    'tenant-ci-a', 'validated fixture resolution'
+  );
+  if v_reconciliation_result ->> 'status' <> 'linked'
+    or v_reconciliation_result ->> 'task_legacy_record_id' <> 'tenant-ci-reconciliation-task' then
+    raise exception 'TEST_FAIL reconciliation resolver returned unexpected result';
+  end if;
+  begin
+    perform public.resolve_job_task_reconciliation(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      '00000000-0000-0000-0000-00000000a501'::uuid,
+      '00000000-0000-0000-0000-00000000a401'::uuid,
+      'tenant-ci-a', 'repeat resolution'
+    );
+    raise exception 'TEST_FAIL reconciliation was resolved more than once';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'reconciliation item is already resolved'
+      and v_error <> 'TEST_FAIL reconciliation was resolved more than once' then
+      raise exception 'TEST_FAIL unexpected duplicate reconciliation rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL reconciliation was resolved more than once' then raise; end if;
+  end;
 end;
 $service_role_core_writes$;
 reset role;
@@ -306,6 +391,19 @@ begin
     where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
       and legacy_record_id='tenant-ci-valid-task' and job_id=v_job_id
   ) then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
+  if not exists (
+    select 1 from public.job_task_reconciliation
+    where id='00000000-0000-0000-0000-00000000a501'::uuid
+      and organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and resolution_status='linked' and resolved_job_id='tenant-ci-job-a'
+      and resolution_note='validated fixture resolution' and resolved_by='tenant-ci-a'
+      and resolved_at is not null
+  ) or not exists (
+    select 1 from public.maestro_job_tasks
+    where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id='tenant-ci-reconciliation-task'
+      and job_id='00000000-0000-0000-0000-00000000a401'::uuid and resolution_status='linked'
+  ) then raise exception 'TEST_FAIL reconciliation did not atomically link the relational task and queue row'; end if;
 end;
 $verify_service_role_core_writes$;
 do $verify_legacy_projection_reference_compatibility$
