@@ -17,6 +17,35 @@ const functionNames = [
 ];
 
 const relationNames = [
+  "maestro_financial_entries",
+  "maestro_agenda_events",
+  "maestro_timesheets",
+  "maestro_notifications",
+  "maestro_job_history",
+  "maestro_webhook_receipts",
+  "maestro_whatsapp_contacts",
+  "maestro_whatsapp_groups",
+  "maestro_bank_accounts",
+  "maestro_financial_categories",
+  "maestro_cost_centers",
+  "maestro_job_templates",
+  "maestro_proposals",
+  "maestro_notes",
+  "maestro_nps_entries",
+  "maestro_nps_history",
+  "maestro_job_comments",
+  "maestro_webhook_parsed_messages",
+  "maestro_dominus_query_logs",
+  "maestro_dominus_sent_messages",
+  "maestro_dominus_pending_messages",
+  "maestro_mini_tasks",
+  "maestro_delete_logs",
+  "maestro_conversation_states",
+  "maestro_audit_summaries",
+  "maestro_system_audit_logs",
+  "maestro_app_configs",
+  "maestro_squads",
+  "maestro_whatsapp_automations",
   "maestro_clients",
   "maestro_projects",
   "maestro_jobs",
@@ -101,6 +130,20 @@ for (const target of targets) {
       ["public", relationNames],
     );
 
+    const registryAvailable = await client.query(
+      "select to_regclass($1) is not null as available",
+      ["public.legacy_cutover_registry"],
+    );
+    const productOwnership = registryAvailable.rows[0]?.available
+      ? await client.query(
+        `select relational_table as relation, module_key as product
+           from public.legacy_cutover_registry
+          where relational_table = any($1::text[])
+          order by module_key, relational_table`,
+        [relationNames],
+      )
+      : { rows: [] };
+
     const eventTriggers = await client.query(
       `select e.evtname as name, e.evtenabled as enabled, p.proname as function_name
          from pg_event_trigger e
@@ -136,6 +179,8 @@ for (const target of targets) {
       functions: functions.rows,
       relations: relations.rows,
       policies: policies.rows,
+      registry_available: registryAvailable.rows[0]?.available || false,
+      product_ownership: productOwnership.rows,
       event_triggers: eventTriggers.rows,
       cron,
     });
