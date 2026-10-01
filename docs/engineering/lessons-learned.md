@@ -1,5 +1,13 @@
 # Lições de engenharia
 
+## Preview saudável sem dados não valida upgrade representativo — 01/10/2026
+
+- **Evidência:** duas branches preview Supabase acessíveis (`xpyvjchcrnvprvwgjibm` e `fwvpfmbkuosjibvyvbap`) reportam `ACTIVE_HEALTHY`, mas `with_data=false` e `MIGRATIONS_FAILED`. Consultas PostgreSQL `READ ONLY` confirmaram catálogo core e sete constraints tenant-aware, enquanto o projeto pai Produção não tem essas sete constraints; o Dev pai tem. A branch non-CXM consultada nem contém as quatro relações core.
+- **Conclusão:** branch operacionalmente saudável pode servir para inspecionar catálogo, mas não para afirmar replay de migrations, upgrade do estado pai, backfill ou integridade de dados. Catálogo idêntico não substitui dados/ledger representativos.
+- **Aplicação:** registrar estado de migrations, `with_data` e paridade do catálogo ao selecionar um preview; classificar explicitamente que tipo de prova ele suporta.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com a ressalva para branches preview sem dados e com migrations falhas.
+- Esforço ativo: não medido; esperas de CI foram separadas.
+
 ## Fixtures SQL enviadas a containers precisam injetar migrations no host — 01/10/2026
 
 - **Evidência:** o CI executou um fixture via `docker exec -i ... psql < fixture.sql`; `\ir` falhou porque o checkout não está montado dentro do container (`36923194419`). A barreira/concatenação host-side fez o teste de ausência de configuração passar (`36925492604`). O teste do caminho configurado revelou uma expectativa errada de URL contígua: o comando cron guarda a origem literal e concatena o caminho como expressão SQL (`36925709878`).
