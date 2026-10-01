@@ -49,18 +49,26 @@ select vault.create_secret(
 do $assert_configured$
 declare
   v_job cron.job%rowtype;
+  v_endpoint_ok boolean;
+  v_handler_ok boolean;
+  v_action_ok boolean;
+  v_secret_key_ok boolean;
+  v_secret_embedded boolean;
 begin
   select * into strict v_job
   from cron.job
   where jobname = 'whatsapp_automation_runner';
 
-  if not v_job.active
-    or v_job.schedule <> '*/5 * * * *'
-    or position('https://maestro-cron-fixture.invalid/functions/v1/whatsapp-send' in v_job.command) = 0
-    or position('processScheduled' in v_job.command) = 0
-    or position('whatsapp_automation_cron_secret' in v_job.command) = 0
-    or position(repeat('x', 64) in v_job.command) > 0 then
-    raise exception 'WhatsApp cron was not safely configured from synthetic Vault settings';
+  v_endpoint_ok := position('https://maestro-cron-fixture.invalid' in v_job.command) > 0;
+  v_handler_ok := position('/functions/v1/whatsapp-send' in v_job.command) > 0;
+  v_action_ok := position('processScheduled' in v_job.command) > 0;
+  v_secret_key_ok := position('whatsapp_automation_cron_secret' in v_job.command) > 0;
+  v_secret_embedded := position(repeat('x', 64) in v_job.command) > 0;
+
+  if not v_job.active or v_job.schedule <> '*/5 * * * *'
+    or not v_endpoint_ok or not v_handler_ok or not v_action_ok or not v_secret_key_ok or v_secret_embedded then
+    raise exception 'WhatsApp scheduler assertion failed: active=%, schedule_ok=%, endpoint_ok=%, handler_ok=%, action_ok=%, secret_key_ok=%, secret_embedded=%',
+      v_job.active, v_job.schedule = '*/5 * * * *', v_endpoint_ok, v_handler_ok, v_action_ok, v_secret_key_ok, v_secret_embedded;
   end if;
 end;
 $assert_configured$;
