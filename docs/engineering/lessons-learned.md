@@ -20,3 +20,10 @@
 - **Correção verificada:** setup Node 22 + `npm ci --ignore-scripts` no job DB; workflow `36811508738` passou todos os jobs, incluindo replay limpo e gate RLS.
 - **Aplicação:** qualquer script de CI que rode cliente PostgreSQL em Node deve declarar runtime e dependências no próprio job; sucesso no job de unit tests separado não satisfaz essa pré-condição.
 - **Skill:** sem alteração; a lição é específica do workflow e ficou registrada aqui, sem necessidade de generalizar instrução procedural para todas as migrations.
+
+## Replay limpo não substitui upgrade de baseline real — 01/10/2026
+
+- **Evidência:** replay limpo passou, mas clone estruturalmente idêntico ao catálogo de Prod falhou na suíte de upgrade: FKs simples permitiam vínculos cross-tenant e `service_role` mantinha ACL amplo na fila, apesar da migration de grants por coluna. Correção validada no clone com replay das oito migrations não-CXM posteriores ao ledger + migration forward corretiva; suíte transacional tenant-aware e catálogo RLS passaram.
+- **Débito observado:** o preflight remoto agregado encontrou 29 IDs de responsável sem membership no mesmo tenant. A nova FK fica `NOT VALID` até conciliação; nada foi corrigido em Prod.
+- **Regra promovida:** antes de confiar num clone upgradeável, compare o catálogo com a origem; quando o ledger divergir, compare o estado real e execute os contratos sobre o baseline real. Não conclua integridade a partir do replay limpo.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, exigindo baseline schema-only com paridade de catálogo e distinção entre versão do ledger e estado efetivo. Evidência de alto impacto e correção exercitada em clone isolado.
