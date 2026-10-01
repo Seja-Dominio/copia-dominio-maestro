@@ -719,3 +719,10 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 - Consulta read-only confirmou `ensure_rls` ativo apenas em Dev. Em clone Prod-shaped, reprodução transacional demonstrou que ele habilita RLS em toda tabela pública recém-criada, sem criar policy; o acesso autenticado fica default-deny. O hook não é instalado/removido pela migration versionada local que só revoga EXECUTE do helper.
 - Efeito reproduzido e rollback confirmado; nenhum banco hospedado foi alterado. Não replicar automaticamente Dev para Produção: padronizar se o hook é um controle desejado e exigir criação coordenada de policies por módulo/owner. Marco 4 continua parcial.
+
+### Gate P0 — importação histórica `0004/publish_imported_records` — 01/10/2026
+
+- Comparação agregada `READ ONLY` no snapshot Dev: 83.552 registros importáveis; 83.551 já tinham chave no destino; 71.185 payloads diferiam do snapshot, inclusive 70.109 com timestamp de origem igual; em 630 o destino tinha timestamp mais recente, e em nenhuma o snapshot era mais recente. Nenhum payload ou identificador foi exposto. Detalhes e limites em `docs/migration-drift-reconciliation.md`.
+- A migration local faz `ON CONFLICT ... DO UPDATE` sem condição de precedência e redefine `imported_at`; portanto reaplicá-la poderia substituir em massa o conteúdo atual por snapshot histórico. A extensão da divergência, sozinha, não permite dizer quais valores são autoritativos.
+- **Decisão de execução:** manter migration histórica e ledger intactos; não reaplicar, não promover seu corpo e não sincronizar Dev/Produção por `db push`/repair. Para destravar, obter snapshot anonimizado representativo e contrato de escrita/fonte de verdade da API; então especificar e testar regra de conflito com contagens de preservação/atualização e rollback num clone com dados. Não usar clone schema-only como substituto.
+- Marco 4 permanece parcial e sem liberação para escrita hospedada. O gate acrescenta risco de integridade de dados P0 à reconciliação statement-a-statement; não altera a estimativa global sem fechar um critério de saída.
