@@ -1,5 +1,76 @@
 -- Keep reconciliation resolution SECURITY INVOKER and grant only the columns
 -- the service-role RPC reads or changes. This avoids table-wide queue access.
+-- The current Dev baseline missed the earlier tenant-scope migration, so
+-- repair the queue's organization link here before granting the invoker access.
+do $$
+declare
+  v_definition text;
+begin
+  alter table public.job_task_reconciliation
+    add column if not exists organization_id uuid;
+
+  if exists (
+    select 1 from public.job_task_reconciliation
+    where legacy_entity <> 'Subtask'
+  ) then
+    raise exception 'Cannot scope job_task_reconciliation: unsupported legacy entity exists';
+  end if;
+
+  if exists (
+    select 1
+    from public.job_task_reconciliation r
+    where r.organization_id is not null
+      and not exists (
+        select 1 from public.organization_legacy_records olr
+        where olr.organization_id = r.organization_id
+          and olr.legacy_entity = r.legacy_entity
+          and olr.legacy_record_id = r.legacy_record_id
+      )
+  ) then
+    raise exception 'Cannot scope job_task_reconciliation: existing tenant mapping does not match its legacy record';
+  end if;
+
+  if exists (
+    select 1
+    from public.job_task_reconciliation r
+    where r.organization_id is null
+      and (
+        select count(distinct olr.organization_id)
+        from public.organization_legacy_records olr
+        where olr.legacy_entity = r.legacy_entity
+          and olr.legacy_record_id = r.legacy_record_id
+      ) <> 1
+  ) then
+    raise exception 'Cannot scope job_task_reconciliation: a queue row has no unique tenant mapping';
+  end if;
+
+  update public.job_task_reconciliation r
+  set organization_id = olr.organization_id
+  from public.organization_legacy_records olr
+  where r.organization_id is null
+    and olr.legacy_entity = r.legacy_entity
+    and olr.legacy_record_id = r.legacy_record_id;
+
+  alter table public.job_task_reconciliation
+    alter column organization_id set not null;
+
+  select pg_get_constraintdef(oid) into v_definition
+  from pg_constraint
+  where conrelid = 'public.job_task_reconciliation'::regclass
+    and conname = 'job_task_reconciliation_organization_fk';
+  if v_definition is null then
+    alter table public.job_task_reconciliation
+      add constraint job_task_reconciliation_organization_fk
+      foreign key (organization_id) references public.organizations(id);
+  elsif v_definition <> 'FOREIGN KEY (organization_id) REFERENCES organizations(id)' then
+    raise exception 'Unexpected job_task_reconciliation_organization_fk definition: %', v_definition;
+  end if;
+
+  create index if not exists idx_job_task_reconciliation_org_status
+    on public.job_task_reconciliation (organization_id, resolution_status, source_status);
+end
+$$;
+
 grant select (id, organization_id, legacy_record_id, resolution_status)
   on public.job_task_reconciliation to service_role;
 grant update (resolution_status, resolved_job_id, resolution_note, resolved_at, resolved_by)

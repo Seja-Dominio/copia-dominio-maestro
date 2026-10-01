@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Ledger divergente exige preflight de coluna e vínculo — 01/10/2026
+
+- **Evidência:** Dev e Produção tinham a relação `job_task_reconciliation`, mas só Produção tinha `organization_id`; por isso a migration de grants por coluna falhava em Dev embora o nome/tabela existisse. A relação Timesheet também estava ausente em Dev, bloqueando atualizações diretas e a migration core posterior. Consultas agregadas `READ ONLY` confirmaram 478/478 filas Dev com exatamente um vínculo `organization_legacy_records` por tenant e 496/496 filas Prod já corretamente escopadas.
+- **Correção validada em clones locais:** a migration agora exige mapeamento unívoco antes de backfill e constraint, permite que as migrations intermediárias pulem explicitamente o reparo Timesheet ausente e deixa a migration forward final criar/validar a projeção. No clone Dev passaram o caminho de upgrade desde ausência da tabela/coluna, backfill sintético de dois tenants, event trigger Dev equivalente e rollback; no clone Prod passaram o sufixo, isolamento/RPC, RLS/policies Timesheet e auditoria tenant-aware. A suíte direta Auth/RLS no clone Dev ficou inconclusiva por grants/policies ausentes no próprio snapshot. Nenhum banco hospedado foi escrito.
+- **Aplicação:** upgrades que partem de mais de um ambiente/ledger. Verificar colunas e constraints realmente consumidas em cada passo cronológico; para backfills, provar cardinalidade tenant-aware dos dados e falhar fechada para órfãos/ambiguidades; validar os caminhos Dev e Prod em clones separados.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, adicionando preflight de colunas, constraints, mapeamento e sequência completa por baseline.
+
 ## Sessão emitida precisa corresponder ao contrato dos consumidores — 01/10/2026
 
 - **Evidência:** o app podia autenticar por JWT nativo do Supabase, enquanto as Edge Functions protegidas aceitavam apenas sessão de colaborador assinada por HMAC. A UI marcava login como válido, mas as chamadas subsequentes falhavam; consulta agregada somente leitura também confirmou zero usuários nativos `auth.users` nos ambientes verificados.

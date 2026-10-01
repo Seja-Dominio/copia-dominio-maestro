@@ -1,5 +1,7 @@
 -- Reconcile production-shaped installs whose migration ledger advanced while
--- tenant-aware constraints or narrow RPC grants were not applied.
+-- tenant-aware constraints or narrow RPC grants were not applied. Timesheets
+-- are optional here because Dev's current baseline lacks the relation; the
+-- following 20261001120000 migration creates and validates that projection.
 
 do $$
 declare
@@ -10,7 +12,7 @@ begin
     into v_missing
   from unnest(array[
     'maestro_clients', 'maestro_projects', 'maestro_jobs', 'maestro_job_tasks',
-    'maestro_timesheets', 'maestro_job_history', 'organization_members',
+    'maestro_job_history', 'organization_members',
     'job_task_reconciliation'
   ]) as required(name)
   where to_regclass('public.' || required.name) is null;
@@ -98,15 +100,17 @@ begin
     raise exception 'Unexpected maestro_job_tasks_org_responsible_fk definition: %', v_definition;
   end if;
 
-  select pg_get_constraintdef(oid) into v_definition from pg_constraint
-    where conrelid='public.maestro_timesheets'::regclass and conname='maestro_timesheets_org_job_fk';
-  if v_definition is null then
-    alter table public.maestro_timesheets add constraint maestro_timesheets_org_job_fk
-      foreign key (organization_id, job_id)
-      references public.maestro_jobs (organization_id, id)
-      on delete set null (job_id) not valid;
-  elsif v_definition not like 'FOREIGN KEY (organization_id, job_id) REFERENCES maestro_jobs(organization_id, id)%' then
-    raise exception 'Unexpected maestro_timesheets_org_job_fk definition: %', v_definition;
+  if to_regclass('public.maestro_timesheets') is not null then
+    select pg_get_constraintdef(oid) into v_definition from pg_constraint
+      where conrelid='public.maestro_timesheets'::regclass and conname='maestro_timesheets_org_job_fk';
+    if v_definition is null then
+      alter table public.maestro_timesheets add constraint maestro_timesheets_org_job_fk
+        foreign key (organization_id, job_id)
+        references public.maestro_jobs (organization_id, id)
+        on delete set null (job_id) not valid;
+    elsif v_definition not like 'FOREIGN KEY (organization_id, job_id) REFERENCES maestro_jobs(organization_id, id)%' then
+      raise exception 'Unexpected maestro_timesheets_org_job_fk definition: %', v_definition;
+    end if;
   end if;
 
   select pg_get_constraintdef(oid) into v_definition from pg_constraint
@@ -132,18 +136,30 @@ create index if not exists maestro_job_tasks_org_job_id_idx
   on public.maestro_job_tasks (organization_id, job_id);
 create index if not exists maestro_job_tasks_org_responsible_id_idx
   on public.maestro_job_tasks (organization_id, responsible_id);
-create index if not exists maestro_timesheets_org_job_id_idx
-  on public.maestro_timesheets (organization_id, job_id);
+do $$
+begin
+  if to_regclass('public.maestro_timesheets') is not null then
+    execute 'create index if not exists maestro_timesheets_org_job_id_idx on public.maestro_timesheets (organization_id, job_id)';
+  end if;
+end
+$$;
 
--- Current Prod contains no cross-tenant links for these six constraints. If
--- that changes before rollout, validation fails closed and the transaction
--- leaves the migration unapplied for review.
+-- Current Prod contains no cross-tenant links for the available constraints.
+-- If Timesheets are absent (the current Dev baseline), their tenant FK and
+-- validation are completed by the following forward projection migration.
 alter table public.maestro_projects validate constraint maestro_projects_org_client_fk;
 alter table public.maestro_jobs validate constraint maestro_jobs_org_project_fk;
 alter table public.maestro_jobs validate constraint maestro_jobs_org_client_fk;
 alter table public.maestro_job_tasks validate constraint maestro_job_tasks_org_job_fk;
-alter table public.maestro_timesheets validate constraint maestro_timesheets_org_job_fk;
 alter table public.maestro_job_history validate constraint maestro_job_history_job_tenant_fk;
+
+do $$
+begin
+  if to_regclass('public.maestro_timesheets') is not null then
+    execute 'alter table public.maestro_timesheets validate constraint maestro_timesheets_org_job_fk';
+  end if;
+end
+$$;
 
 -- Production has 29 existing task assignee references with no membership in
 -- the same organization. Keep the constraint NOT VALID until those rows are
