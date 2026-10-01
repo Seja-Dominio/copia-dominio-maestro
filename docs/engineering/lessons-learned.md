@@ -74,7 +74,7 @@
 
 ## Interpretar contagem relacional conforme o modo de cutover — 01/10/2026
 
-- **Evidência:** em Produção, a projeção Subtask tem 7.392 linhas e o legado 7.102; todas as 7.102 chaves legadas têm projeção/escopo, enquanto 290 linhas relacionais-only são compatíveis com o registry `read_mode=relational`, `write_mode=relational`, `legacy_write_allowed=false`. Permanecem 27 payloads divergentes e 120 tarefas sem Job, classificados separadamente, sem mutação remota.
-- **Aplicação:** antes de tratar contagens distintas entre legado e projeção como perda/duplicação, consultar modo e status de cutover, comparar cobertura bidirecional por chave e payload, e separar registros canônicos pós-cutover das exceções reais. Nunca apagar nem regravar para forçar igualdade de totais.
-- **Skill:** nenhuma alteração automática. Este é um caso confirmado no domínio Subtask, mas ainda não há dois domínios/casos comparáveis para generalizar a regra à skill global de migrations.
+- **Evidência revisada:** a auditoria READ ONLY em Produção encontrou 7.392 linhas Subtask relacionais e 7.102 legadas; todas as chaves legadas têm projeção/escopo, mas a origem das 290 linhas relational-only permanece desconhecida. A revisão do checkout confirmou que o dispatcher anterior ignorava `write_mode`. Esta branch agora inclui despacho relacional fail-closed para entidades congeladas e writer scoped de Project; a migration e testes de tenant passaram em clone local isolado. Produção não foi alterada; implantação e origem das 290 linhas não estão comprovadas.
+- **Aplicação:** comparar contagem segundo modo de cutover e conferir o caminho efetivo de leitura/escrita do runtime. Uma configuração declarativa de source-of-truth não prova que o dispatcher a respeita. Preservar linhas relational-only até a origem ser comprovada; nunca forçar igualdade de totais.
+- **Skill:** nenhuma alteração automática. Registra-se a evidência deste domínio; ainda não há casos comparáveis suficientes para generalizar a mudança à skill global de migrations.
 - Esforço ativo: não medido.

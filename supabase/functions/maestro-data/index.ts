@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { accessLevelForOrganizationRole, organizationRoleForAccessLevel, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
 import { entityHasProductClassification, hasActiveOrganizationProduct, hasEntityProductAccess } from "../_shared/organization-products.mjs";
+import { getCutoverWritePlan } from "../_shared/cutover-write-contract.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -444,7 +445,7 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   const { data: registryEntry, error: registryError } = await supabase
     .from("legacy_cutover_registry")
-    .select("module_key")
+    .select("module_key,status,write_mode,legacy_write_allowed")
     .eq("entity", entity)
     .maybeSingle();
   if (registryError) throw registryError;
@@ -458,6 +459,10 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
   if (productsError) throw productsError;
   if (!hasEntityProductAccess(entity, registryEntry?.module_key, products || [])) {
     return json({ error: "Produto não habilitado para esta organização" }, 403, origin);
+  }
+  const cutoverWritePlan = getCutoverWritePlan(registryEntry, entity, operation);
+  if (cutoverWritePlan.mode === "unsupported") {
+    return json({ error: "Esta operação ainda não tem um gravador relacional seguro." }, 409, origin);
   }
 
   const isWrite = ["create", "update", "bulkCreate", "delete", "transferSubtasks"].includes(operation);
@@ -592,39 +597,93 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
     delete payload.organization_id;
     let nextPayload = { ...payload, id: recordId };
+    let currentPayload: Record<string, unknown> | null = null;
     if (operation === "update") {
-      const { data: current, error: currentError } = await supabase
-        .from("legacy_records")
-        .select("payload")
-        .eq("entity", entity)
-        .eq("record_id", recordId)
-        .eq("organization_id", session.organization_id)
-        .maybeSingle();
+      const relationalTableByEntity: Record<string, string> = {
+        Project: "maestro_projects",
+        Job: "maestro_jobs",
+        Subtask: "maestro_job_tasks",
+        FinancialEntry: "maestro_financial_entries",
+      };
+      const relationalTable = relationalTableByEntity[entity];
+      if (cutoverWritePlan.mode === "relational" && !relationalTable) {
+        return json({ error: "Esta entidade não tem leitura relacional para edição." }, 409, origin);
+      }
+      const currentQuery = cutoverWritePlan.mode === "relational"
+        ? await supabase.from(relationalTable as string)
+          .select("source_payload")
+          .eq("organization_id", session.organization_id)
+          .eq("legacy_record_id", recordId)
+          .maybeSingle()
+        : await supabase.from("legacy_records")
+          .select("payload")
+          .eq("entity", entity)
+          .eq("record_id", recordId)
+          .eq("organization_id", session.organization_id)
+          .maybeSingle();
+      const { data: current, error: currentError } = currentQuery;
       if (currentError) throw currentError;
       if (!current) return json({ error: "Registro não encontrado nesta organização" }, 404, origin);
+      currentPayload = (cutoverWritePlan.mode === "relational" ? current.source_payload : current.payload) || {};
       if (canMarkOwnNotificationRead) {
-        const ownerId = current?.payload?.user_id || current?.payload?.collaborator_id;
+        const ownerId = currentPayload?.user_id || currentPayload?.collaborator_id;
         if (String(ownerId || "") !== String(session?.sub || "")) {
           return json({ error: "Você só pode marcar as próprias notificações como lidas" }, 403, origin);
         }
         // Keep this exception intentionally narrow: the authenticated user
         // may change only is_read on a notification that belongs to them.
-        nextPayload = { ...(current?.payload || {}), is_read: payload.is_read, id: recordId };
+        nextPayload = { ...currentPayload, is_read: payload.is_read, id: recordId };
       }
       if (
         entity === "Timesheet"
         && !["master", "gestor"].includes(accessLevel)
-        && String(current?.payload?.collaborator_id || "") !== String(session?.sub || "")
+        && String(currentPayload?.collaborator_id || "") !== String(session?.sub || "")
       ) {
         return json({ error: "Você só pode atualizar o próprio Timesheet" }, 403, origin);
       }
       if (entity === "Timesheet" && !["master", "gestor"].includes(accessLevel)) {
-        payload.collaborator_id = current?.payload?.collaborator_id;
-        payload.collaborator_name = current?.payload?.collaborator_name;
+        payload.collaborator_id = currentPayload?.collaborator_id;
+        payload.collaborator_name = currentPayload?.collaborator_name;
       }
       if (!canMarkOwnNotificationRead) {
-        nextPayload = { ...(current?.payload || {}), ...payload, id: recordId };
+        nextPayload = { ...currentPayload, ...payload, id: recordId };
       }
+    }
+
+    if (cutoverWritePlan.mode === "relational") {
+      let data: unknown;
+      if (cutoverWritePlan.writer === "project-rpc") {
+        const result = await supabase.rpc("maestro_upsert_project_scoped", {
+          p_organization_id: session.organization_id,
+          p_action: operation,
+          p_record_id: recordId,
+          p_payload: nextPayload,
+        });
+        if (result.error) throw result.error;
+        data = result.data;
+      } else if (cutoverWritePlan.writer === "core-history-rpc") {
+        const result = await supabase.rpc("maestro_write_frozen_core_with_history", {
+          p_organization_id: session.organization_id,
+          p_entity: entity,
+          p_action: operation,
+          p_record_id: recordId,
+          p_payload: nextPayload,
+          p_actor_id: session.sub,
+          p_actor_name: String(session.display_name || ""),
+        });
+        if (result.error) throw result.error;
+        data = result.data;
+      } else if (cutoverWritePlan.writer === "financial-rpc") {
+        const result = await supabase.rpc("maestro_upsert_financial_entries_scoped", {
+          p_organization_id: session.organization_id,
+          p_entries: [nextPayload],
+        });
+        if (result.error) throw result.error;
+        data = Array.isArray(result.data) ? result.data[0] : nextPayload;
+      } else {
+        return json({ error: "O gravador relacional não está configurado para esta operação." }, 409, origin);
+      }
+      return json({ data: sanitizePayload(entity, (data || nextPayload) as Record<string, unknown>) }, 200, origin);
     }
 
     const now = new Date().toISOString();
@@ -683,6 +742,14 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
       delete payload.organization_id;
       return { entity, record_id: id, organization_id: session.organization_id, payload, source_created_at: payload.created_date || now, source_updated_at: now };
     });
+    if (cutoverWritePlan.mode === "relational" && cutoverWritePlan.writer === "financial-rpc") {
+      const { data, error } = await supabase.rpc("maestro_upsert_financial_entries_scoped", {
+        p_organization_id: session.organization_id,
+        p_entries: rows.map((row) => row.payload),
+      });
+      if (error) throw error;
+      return json({ data }, 200, origin);
+    }
     const { error } = await supabase.from("legacy_records").upsert(rows, { onConflict: "entity,record_id" });
     if (error) throw error;
     return json({ data: rows.map((row) => row.payload) }, 200, origin);
@@ -690,6 +757,31 @@ async function handleOperation(body: Record<string, unknown>, origin = "", sessi
 
   if (operation === "delete") {
     const recordId = String(body.id || "");
+    if (cutoverWritePlan.mode === "relational") {
+      let result;
+      if (cutoverWritePlan.writer === "project-delete-rpc" || cutoverWritePlan.writer === "financial-delete-rpc") {
+        result = await supabase.rpc(cutoverWritePlan.writer === "project-delete-rpc"
+          ? "maestro_delete_project_scoped"
+          : "maestro_delete_financial_entry_scoped", {
+          p_organization_id: session.organization_id,
+          p_record_id: recordId,
+          p_actor_id: session.sub,
+          p_actor_name: String(session.display_name || ""),
+        });
+      } else {
+        result = await supabase.rpc("maestro_write_frozen_core_with_history", {
+          p_organization_id: session.organization_id,
+          p_entity: entity,
+          p_action: "delete",
+          p_record_id: recordId,
+          p_payload: {},
+          p_actor_id: session.sub,
+          p_actor_name: String(session.display_name || ""),
+        });
+      }
+      if (result.error) throw result.error;
+      return json({ data: result.data || { id: recordId, deleted: true } }, 200, origin);
+    }
     const { error } = await supabase.from("legacy_records").delete()
       .eq("entity", entity)
       .eq("record_id", recordId)

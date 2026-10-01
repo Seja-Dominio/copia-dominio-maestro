@@ -69,6 +69,26 @@ if (!source.includes('body.read_source === "relational"')
   || !source.includes("if (!rows) rows = await listRows(session.organization_id, entity, readOptions);")) {
   errors.push("reader deve reportar a origem real, limitar tenant e cair para legacy quando não puder mapear o filtro");
 }
+if (!source.includes("getCutoverWritePlan")
+  || !source.includes('.select("module_key,status,write_mode,legacy_write_allowed")')
+  || !source.includes('if (cutoverWritePlan.mode === "relational")')) {
+  errors.push("writer precisa consultar o registry e despachar pelo write_mode antes de usar legacy_records");
+}
+for (const writer of [
+  "maestro_upsert_project_scoped",
+  "maestro_write_frozen_core_with_history",
+  "maestro_upsert_financial_entries_scoped",
+  "maestro_delete_project_scoped",
+  "maestro_delete_financial_entry_scoped",
+]) {
+  if (!source.includes(`"${writer}"`)) {
+    errors.push(`cutover writer ${writer} não está conectado ao dispatcher`);
+  }
+}
+if (!migrationSource.includes("create or replace function public.maestro_upsert_project_scoped")
+  || !migrationSource.includes("Project relational write cutover is not active")) {
+  errors.push("Project relational RPC precisa existir e falhar fechado quando o cutover não estiver ativo");
+}
 if (envText.includes("VITE_MAESTRO_RELATIONAL_READS=")
   && JSON.stringify([...envEntities].sort()) !== JSON.stringify([...configuredEntities].sort())) {
   errors.push(".env.production.local diverge de scripts/config/relational-read-entities.json");

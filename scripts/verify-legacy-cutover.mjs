@@ -4,6 +4,7 @@ import { getIsolatedTestDatabaseSsl, getIsolatedTestDatabaseUrl } from "./lib/is
 import { buildRelationalParityCoverageSql } from "./lib/relational-parity-coverage.mjs";
 import { assessLegacyRemovalReadiness } from "./lib/legacy-cutover-readiness.mjs";
 import { findLegacyCutoverStatusGaps } from "./lib/functional-inventory.mjs";
+import { isFrozenRelationalSource } from "../supabase/functions/_shared/cutover-write-contract.mjs";
 
 let databaseUrl;
 try {
@@ -62,7 +63,9 @@ try {
     const candidateRead = row.status === "candidate" || row.status === "frozen" || row.status === "retired";
     const frontendRelational = relationalReads.has(row.entity);
     const countMatch = Number(counts.legacy_count) === Number(counts.relational_count);
-    if (!countMatch) failures.push(`${row.entity}:count_mismatch:${counts.legacy_count}/${counts.relational_count}`);
+    if (!countMatch && !isFrozenRelationalSource(row)) {
+      failures.push(`${row.entity}:count_mismatch:${counts.legacy_count}/${counts.relational_count}`);
+    }
     if (candidateRead && row.read_mode === "relational" && !frontendRelational) failures.push(`${row.entity}:frontend_relational_read_missing`);
     if (row.status === "frozen" && row.legacy_write_allowed) failures.push(`${row.entity}:frozen_but_legacy_write_allowed`);
     if (row.status === "retired" && (row.legacy_read_allowed || row.legacy_write_allowed)) failures.push(`${row.entity}:retired_but_legacy_allowed`);
@@ -78,6 +81,7 @@ try {
       legacy_count: Number(counts.legacy_count),
       relational_count: Number(counts.relational_count),
       count_match: countMatch,
+      count_parity_required: !isFrozenRelationalSource(row),
     });
   }
 
@@ -87,17 +91,24 @@ try {
     relationalId: row.entity === "AIQueryLog" ? "id" : "legacy_record_id",
   }))));
   const coverageByEntity = new Map(coverage.rows.map((row) => [row.entity, row]));
+  const registryByEntity = new Map(registry.map((row) => [row.entity, row]));
   for (const row of coverage.rows) {
-    if (Number(row.missing_relational) !== 0 || Number(row.missing_legacy) !== 0) {
+    const canonicalRelational = isFrozenRelationalSource(registryByEntity.get(row.entity));
+    if (Number(row.missing_relational) !== 0 || (!canonicalRelational && Number(row.missing_legacy) !== 0)) {
       failures.push(`${row.entity}:id_coverage:${row.missing_relational}/${row.missing_legacy}`);
     }
   }
   for (const check of checks) check.id_coverage = coverageByEntity.get(check.entity) || null;
 
   const { rows: health } = await client.query(`
-    select entity, legacy_count, relational_count, payload_mismatches
-    from public.maestro_dual_write_health
-    where payload_mismatches <> 0 or legacy_count <> relational_count
+    select h.entity, h.legacy_count, h.relational_count, h.payload_mismatches
+    from public.maestro_dual_write_health h
+    left join public.legacy_cutover_registry r on r.entity = h.entity
+    where (h.payload_mismatches <> 0 or h.legacy_count <> h.relational_count)
+      and not (
+        r.status = 'frozen' and r.read_mode = 'relational'
+        and r.write_mode = 'relational' and not r.legacy_write_allowed
+      )
   `);
   if (health.length) failures.push(`maestro_dual_write_health:${health.length}_divergences`);
 

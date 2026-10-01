@@ -24,11 +24,16 @@ begin
     )
   ) or exists (
     select 1 from public.maestro_projects
-    where id = '00000000-0000-0000-0000-00000000b301'::uuid
+    where id in ('00000000-0000-0000-0000-00000000b301'::uuid,
+      '00000000-0000-0000-0000-00000000a302'::uuid)
   ) or exists (
     select 1 from public.maestro_jobs
     where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
       and legacy_record_id in ('tenant-ci-cross-job', 'tenant-ci-cross-client-job', 'tenant-ci-valid-job')
+  ) or exists (
+    select 1 from public.maestro_projects
+    where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id in ('tenant-ci-cross-project-write', 'tenant-ci-relational-project')
   ) or exists (
     select 1 from public.maestro_job_tasks
     where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
@@ -36,7 +41,12 @@ begin
   ) or exists (
     select 1 from public.legacy_records
     where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client',
-      'tenant-ci-cross-job-project', 'tenant-ci-unresolved-project')
+      'tenant-ci-cross-job-project', 'tenant-ci-unresolved-project',
+      'tenant-ci-cross-project-write', 'tenant-ci-relational-project')
+  ) or exists (
+    select 1 from public.organization_legacy_records
+    where legacy_entity = 'Project'
+      and legacy_record_id in ('tenant-ci-cross-project-write', 'tenant-ci-relational-project')
   ) or exists (
     select 1 from public.maestro_bank_accounts
     where legacy_record_id = 'tenant-ci-account-b'
@@ -98,6 +108,14 @@ insert into public.organization_members (organization_id, collaborator_id, role,
 values
   ('00000000-0000-0000-0000-00000000a001', '00000000-0000-0000-0000-00000000a101', 'owner', 'active'),
   ('00000000-0000-0000-0000-00000000b001', '00000000-0000-0000-0000-00000000b101', 'owner', 'active');
+
+insert into public.legacy_cutover_registry (
+  entity, module_key, relational_table, read_mode, write_mode,
+  legacy_read_allowed, legacy_write_allowed, status, evidence
+) values (
+  'Project', 'maestro', 'maestro_projects', 'relational', 'relational',
+  true, false, 'frozen', 'Tenant isolation test fixture for the canonical Project writer.'
+) on conflict (entity) do nothing;
 
 insert into public.maestro_clients (id, organization_id, legacy_record_id, name)
 values
@@ -191,12 +209,56 @@ reset role;
 set local role service_role;
 do $service_role_core_writes$
 declare
+  v_project_result jsonb;
   v_job_result jsonb;
   v_task_result jsonb;
   v_reconciliation_result jsonb;
   v_job_id uuid;
   v_error text;
 begin
+  begin
+    perform public.maestro_upsert_project_scoped(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      'create', 'tenant-ci-cross-project-write',
+      '{"name":"Cross-tenant client","client_id":"tenant-ci-client-b"}'::jsonb
+    );
+    raise exception 'TEST_FAIL cross-tenant client accepted by relational Project writer';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'project client must belong to the same organization'
+      and v_error <> 'TEST_FAIL cross-tenant client accepted by relational Project writer' then
+      raise exception 'TEST_FAIL unexpected relational Project rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL cross-tenant client accepted by relational Project writer' then raise; end if;
+  end;
+
+  v_project_result := public.maestro_upsert_project_scoped(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    'create', 'tenant-ci-relational-project',
+    '{"name":"Relational project","client_id":"tenant-ci-client-a"}'::jsonb
+  );
+  if v_project_result ->> 'name' <> 'Relational project'
+    or not exists (select 1 from public.maestro_projects p
+      where p.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+        and p.legacy_record_id='tenant-ci-relational-project'
+        and p.client_id='00000000-0000-0000-0000-00000000a201'::uuid)
+    or exists (select 1 from public.legacy_records l
+      where l.entity='Project' and l.record_id='tenant-ci-relational-project') then
+    raise exception 'TEST_FAIL canonical Project create must persist relationally without recreating legacy row';
+  end if;
+
+  v_project_result := public.maestro_upsert_project_scoped(
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    'update', 'tenant-ci-project-a',
+    '{"schedule_patch":{"2026-10-02":[{"title":"Fixture"}]}}'::jsonb
+  );
+  if v_project_result #>> '{schedule_data,2026-10-02,0,title}' <> 'Fixture'
+    or v_project_result ? 'schedule_patch'
+    or exists (select 1 from public.legacy_records l
+      where l.entity='Project' and l.record_id='tenant-ci-project-a') then
+    raise exception 'TEST_FAIL canonical Project update must merge schedule and avoid legacy writes';
+  end if;
+
   begin
     perform public.maestro_write_frozen_core_with_history(
       '00000000-0000-0000-0000-00000000a001'::uuid,
