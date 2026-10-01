@@ -584,6 +584,14 @@ Esta classificação reduz o conjunto de conflitos que devem bloquear diretament
 - Implicação para `0004`: `legacy_records` não pode ser tratado como snapshot descartável nem a divergência de payload ser “corrigida” por reaplicação. O registry prova apenas que parte do núcleo migrou; o restante pode depender do fallback legado, e a proteção de remoção do legado permanece bloqueada por critérios de cutover/integridade. A origem de verdade precisa ser decidida por entidade e versão implantada, não por um timestamp global.
 - Próxima prova segura: comparar no mesmo checkpoint de release a versão deployada do dispatcher/Edge Functions com o registry remoto por entidade, e testar a convivência relacional/legada em clone de dados anonimizado. Nenhuma escrita hospedada.
 
+### Drift de Edge Functions entre checkout, Dev e Produção — 01/10/2026
+
+- `supabase functions list` (metadata read-only) encontrou `maestro-data` ativo na versão 52 em Dev e 85 em Produção; `maestro-core-data` ativo na versão 7 em Dev e 2 em Produção. Os metadados não provam qual versão o cliente web chama.
+- O checkout contém `supabase/functions/maestro-data`, mas não diretório `maestro-core-data`; a busca por consumidores de runtime só encontrou o cliente chamando `maestro-data`. O manifesto atual classifica `maestro-data` como compartilhado/bloqueado e não classifica `maestro-core-data`; o gate de release segue `release_ready=false`.
+- As fontes implantadas de `maestro-core-data` foram baixadas por operação read-only para comparação local temporária, sem registrar o código bruto. Os arquivos principais diferem entre Dev e Produção; o helper `financial-entry-bulk-write.mjs` teve hash idêntico. Extração estrutural encontrou nos dois os mesmos conjuntos de operações (`create/update/delete/bulkCreate`), entidades (FinancialEntry, Job, JobHistory, Project, Subtask), tabelas e RPCs consultadas. Essa igualdade parcial de nomes não prova semântica, segurança ou paridade dos corpos.
+- Classificação: **drift de runtime P0 para corte/release**. Há um backend ativo sem fonte versionada/manifesto e com versões diferentes por ambiente, enquanto o frontend do checkout aponta ao dispatcher antigo. Não inferir que `maestro-core-data` é órfão: consumidor externo, tráfego efetivo e data de cutover não foram consultados. Não fazer deploy/rollback para “alinhar” até recuperar a origem canônica e inventariar consumidores.
+- Gate seguinte: reconciliar o código remoto ao Git em branch isolada; comparar handlers, auth/tenant e efeitos por operação; confirmar cliente/tráfego e definir um dispatcher canônico com testes de contrato/falha entre módulos. Nenhuma Edge Function foi alterada.
+
 ### Validação de candidatos a baseline e divergência do catálogo — 01/10/2026
 
 - CI do checkpoint `5cc4ff5dbff1422b19164c33ba208539846b9d91` terminou `success` no run `36896371397`, incluindo replay clean-room e regressões/autorização.
