@@ -55,3 +55,11 @@
 - **Correção validada:** o dual-write agora faz parsing sequencial em ramos PL/pgSQL, com faixa numérica limitada antes do cast; backfill usa regex limitada, conversão a numeric e só então int. Fixtures de overflow, timestamp/boolean inválidos, replay duas vezes em clones Prod/Dev e CI `36818110977` passaram.
 - **Aplicação:** em SQL/PLpgSQL, não proteja casts inseguros com condição `AND`/`WHERE` que valide e converta o mesmo texto. Coloque o cast em ramo procedural após validação, ou use transformação cuja faixa seja segura por construção; mantenha testes de inválido e overflow.
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`; regra pequena, reutilizável e sustentada por falha reproduzida com correção validada.
+
+## Ausência de telemetria de função não prova RPC sem consumidores — 01/10/2026
+
+- **Evidência:** a busca no checkout atual não encontrou chamada às RPCs `maestro_apply_legacy_mutation` e `maestro_apply_legacy_mutation_scoped`; o endpoint corrente `maestro-data` usa upsert tenant-scoped e os testes de contrato/integração desse caminho passaram. `track_functions=none` nos dois ambientes, mas `pg_stat_statements` está ativo com tracking `top`, reset anterior à migration e `dealloc=0`. Desde o reset, a consulta direta à RPC registra 3 chamadas como role `postgres` em Dev e nenhuma em Produção; não há chamada registrada como `service_role`. A estatística não atribui as chamadas `postgres` a um consumidor, e versões implantadas/externas ainda não foram inventariadas.
+- **Classificação:** não há evidência de invocação da RPC pelo papel do caminho ativo Edge→service_role na janela observável, mas isso não prova que todos os consumidores antigos/externos estejam ausentes nem explica as três chamadas administrativas em Dev.
+- **Aplicação:** auditorias que proponham `DROP FUNCTION`, `REVOKE` ou remoção de compatibilidade por falta de referências. Combine busca de código, consumidores implantados e estatística top-level por papel; cheque resets/evicções e mantenha o uso como desconhecido onde a cobertura não for comprovada.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com leitura cautelosa de `pg_stat_user_functions` e alternativa condicionada via `pg_stat_statements`.
+- Esforço ativo: não medido.
