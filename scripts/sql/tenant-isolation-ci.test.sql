@@ -37,7 +37,8 @@ begin
   ) or exists (
     select 1 from public.maestro_job_tasks
     where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
-      and legacy_record_id in ('tenant-ci-cross-task', 'tenant-ci-valid-task')
+      and legacy_record_id in ('tenant-ci-cross-task', 'tenant-ci-valid-task',
+        'tenant-ci-reconciliation-already-linked')
   ) or exists (
     select 1 from public.legacy_records
     where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client',
@@ -57,7 +58,10 @@ begin
   ) or exists (
     select 1 from public.job_task_reconciliation
     where id = '00000000-0000-0000-0000-00000000a501'::uuid
-      or (legacy_entity = 'Subtask' and legacy_record_id = 'tenant-ci-reconciliation-task')
+      or id in ('00000000-0000-0000-0000-00000000a502'::uuid,
+        '00000000-0000-0000-0000-00000000a503'::uuid)
+      or (legacy_entity = 'Subtask' and legacy_record_id in ('tenant-ci-reconciliation-task',
+        'tenant-ci-queue-without-task', 'tenant-ci-reconciliation-already-linked'))
   ) or exists (
     select 1 from public.maestro_timesheets
       where legacy_record_id in ('tenant-ci-timesheet-delete-a', 'tenant-ci-timesheet-delete-b',
@@ -147,7 +151,10 @@ values
     '00000000-0000-0000-0000-00000000a401', 'Tenant CI Task A',
     '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'linked'),
   ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-reconciliation-task', 'legacy-pending-job',
-    null, 'Tenant CI Reconciliation Task', '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'pending');
+    null, 'Tenant CI Reconciliation Task', '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'pending'),
+  ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-reconciliation-already-linked', 'tenant-ci-job-a',
+    '00000000-0000-0000-0000-00000000a401', 'Already linked task',
+    '00000000-0000-0000-0000-00000000a101', 'Tenant CI User A', 'linked');
 
 insert into public.job_task_reconciliation (
   id, legacy_entity, legacy_record_id, legacy_job_id, payload,
@@ -155,6 +162,12 @@ insert into public.job_task_reconciliation (
 ) values (
   '00000000-0000-0000-0000-00000000a501', 'Subtask', 'tenant-ci-reconciliation-task',
   'legacy-pending-job', '{}'::jsonb, 'pending', 'pending', '00000000-0000-0000-0000-00000000a001'
+), (
+  '00000000-0000-0000-0000-00000000a502', 'Subtask', 'tenant-ci-queue-without-task',
+  'legacy-missing-parent', '{}'::jsonb, 'pending', 'pending', '00000000-0000-0000-0000-00000000a001'
+), (
+  '00000000-0000-0000-0000-00000000a503', 'Subtask', 'tenant-ci-reconciliation-already-linked',
+  'tenant-ci-job-a', '{}'::jsonb, 'pending', 'pending', '00000000-0000-0000-0000-00000000a001'
 );
 
 insert into public.maestro_bank_accounts (legacy_record_id, organization_id, name)
@@ -431,6 +444,57 @@ begin
     end if;
     if v_error = 'TEST_FAIL reconciliation was resolved more than once' then raise; end if;
   end;
+
+  begin
+    perform public.resolve_job_task_reconciliation(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      '00000000-0000-0000-0000-00000000a502'::uuid,
+      '00000000-0000-0000-0000-00000000a401'::uuid,
+      'tenant-ci-a', 'queue without relational task'
+    );
+    raise exception 'TEST_FAIL reconciliation accepted a queue row without exactly one pending task';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'expected exactly one pending relational task, updated 0'
+      and v_error <> 'TEST_FAIL reconciliation accepted a queue row without exactly one pending task' then
+      raise exception 'TEST_FAIL unexpected missing-task reconciliation result: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL reconciliation accepted a queue row without exactly one pending task' then raise; end if;
+  end;
+
+  begin
+    perform public.resolve_job_task_reconciliation(
+      '00000000-0000-0000-0000-00000000a001'::uuid,
+      '00000000-0000-0000-0000-00000000a503'::uuid,
+      '00000000-0000-0000-0000-00000000a401'::uuid,
+      'tenant-ci-a', 'do not overwrite an already-linked task'
+    );
+    raise exception 'TEST_FAIL reconciliation overwrote a task that was already linked';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'expected exactly one pending relational task, updated 0'
+      and v_error <> 'TEST_FAIL reconciliation overwrote a task that was already linked' then
+      raise exception 'TEST_FAIL unexpected already-linked reconciliation result: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL reconciliation overwrote a task that was already linked' then raise; end if;
+  end;
+
+  if not exists (
+    select 1 from public.job_task_reconciliation
+    where id in ('00000000-0000-0000-0000-00000000a502'::uuid,
+      '00000000-0000-0000-0000-00000000a503'::uuid)
+      and resolution_status='pending' and resolved_job_id is null
+    group by resolution_status
+    having count(*) = 2
+  ) or not exists (
+    select 1 from public.maestro_job_tasks
+    where organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and legacy_record_id='tenant-ci-reconciliation-already-linked'
+      and job_id='00000000-0000-0000-0000-00000000a401'::uuid
+      and resolution_status='linked'
+  ) then
+    raise exception 'TEST_FAIL rejected reconciliation changed a queue row or an already-linked task';
+  end if;
 end;
 $service_role_core_writes$;
 reset role;
