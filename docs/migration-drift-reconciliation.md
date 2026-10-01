@@ -577,6 +577,13 @@ Uma consulta de catálogo/ledger em `READ ONLY` extraiu apenas nomes de objetos 
 
 Esta classificação reduz o conjunto de conflitos que devem bloquear diretamente um pacote de migrations core (três CXM nomeados ficam em trilha própria), mas **não** os exclui da reconciliação integral do Goal. Permanecem transversais os riscos de `0004`, scheduler WhatsApp, RPC de mutação, hook global e grants compartilhados. Nenhum objeto foi alterado nos bancos hospedados.
 
+### Fonte de verdade e fallback legado — registry e contrato local — 01/10/2026
+
+- Consulta agregada `READ ONLY` à `legacy_cutover_registry` confirmou no Prod 21 entidades `frozen/relational` com `legacy_write_allowed=false`: 15 Maestro, 4 CXM e 2 Insights. No Dev há quatro entradas, todas Maestro e com a mesma configuração. Ambos confirmaram `transaction_read_only=on` e `ROLLBACK`. A diferença Dev/Prod é um risco de configuração/entitlement a reconciliar; não extrapolar esses counts para as 32 entidades reconhecidas pelo frontend.
+- No checkout, `getCutoverWritePlan` encaminha entidades congeladas e relacionais aos writers tipados e falha fechado para operações sem writer; entidades não congeladas continuam no caminho legado. `maestro-data` ainda possui upsert/update/delete em `legacy_records` nesse caminho. Isso é evidência do contrato do código local, **não** prova de qual versão/registry está implantado atualmente.
+- Implicação para `0004`: `legacy_records` não pode ser tratado como snapshot descartável nem a divergência de payload ser “corrigida” por reaplicação. O registry prova apenas que parte do núcleo migrou; o restante pode depender do fallback legado, e a proteção de remoção do legado permanece bloqueada por critérios de cutover/integridade. A origem de verdade precisa ser decidida por entidade e versão implantada, não por um timestamp global.
+- Próxima prova segura: comparar no mesmo checkpoint de release a versão deployada do dispatcher/Edge Functions com o registry remoto por entidade, e testar a convivência relacional/legada em clone de dados anonimizado. Nenhuma escrita hospedada.
+
 ### Validação de candidatos a baseline e divergência do catálogo — 01/10/2026
 
 - CI do checkpoint `5cc4ff5dbff1422b19164c33ba208539846b9d91` terminou `success` no run `36896371397`, incluindo replay clean-room e regressões/autorização.
