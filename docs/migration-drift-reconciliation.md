@@ -559,6 +559,24 @@ O código ativo agora sustenta ownership funcional Maestro para os 12 alvos: Job
 - Testes da fronteira Edge→banco: `node --test supabase/functions/_shared/maestro-tenant.test.mjs` passou 18/18, cobrindo leitura/mutação de `maestro-data` limitadas à organização da sessão. `scripts/verify-tenant-isolation.mjs` no banco local clean-room passou com todas as assertions, incluindo dual-write Subtask, reassociação entre tenants negada, FKs/RLS e auditoria de Timesheet; a transação de fixtures foi revertida. CI `36895117503` do commit `480c4da9ee6fc068e5eeaa2da5170599a2ff83e3` passou integralmente.
 - Telemetria adicional `READ ONLY`: `pg_stat_statements` não expôs SQL nem parâmetros, apenas contagens agrupadas por papel/RPC. O escopo observado desde `stats_reset` e com `dealloc=0` sustenta a ausência de chamadas top-level como `service_role` na janela; não identifica quem executou como `postgres` nem exclui consumidores externos fora da cobertura.
 
+### Fronteira de ownership dos conflitos Dev — classificação por referências — 01/10/2026
+
+Uma consulta de catálogo/ledger em `READ ONLY` extraiu apenas nomes de objetos `public.*` referenciados nos nove pares Dev com identidade igual e corpo SQL divergente; confirmou `transaction_read_only=on` e terminou em `ROLLBACK`. A lista de objetos é evidência de dependência sintática, não prova de ownership completo nem de consumidores runtime.
+
+| Identidade | Recorte de referências | Leitura de fronteira / prioridade |
+|---|---|---|
+| `0004/publish_imported_records` | `legacy_records` | Caminho de importação legado compartilhado; prioridade P0 de integridade pelos conflitos de payload documentados acima. |
+| `20260910100000/enable_whatsapp_automation_scheduler` | `get_whatsapp_automation_cron_secret` | Integração operacional externa/cross-cutting; efeito global de scheduler, não migration exclusiva de UI/módulo. |
+| `20260923151011/persist_job_project_mutations_with_audit` | `legacy_records`, `maestro_apply_legacy_mutation` | Núcleo de mutações do Maestro; contrato de gravação legado compartilhado. |
+| `20260923155416/restrict_rls_event_trigger_rpc` | `rls_auto_enable` | Hook global de DDL/RLS; afeta qualquer módulo que crie tabela pública. |
+| `20260926004418/cxm_webhook_durable_queue` | `cxm_webhook_event_receipts` e RPCs `cxm_webhook_*` | CXM claramente nomeado; tratar em pacote CXM e não misturar com o corte não-CXM, mantendo análise de contrato/ledger própria. |
+| `20260926005052/cxm_webhook_environment_scoped_cron` | sem referência `public.*` extraída | Identidade indica scheduler CXM, mas referência ausente não prova efeito isolado; inspecionar catálogo de cron/config antes de qualquer mudança. |
+| `20260926005755/cxm_webhook_synthetic_test_gate` | `cxm_webhook_event_receipts`, `cxm_webhook_queue_enqueue` | Fixture/contrato CXM; separar do release Maestro core, não descartar sem validar gate de webhook. |
+| `20260926235437/revoke_client_access_from_server_managed_tables` | colaboradores e `team_chat_*` mais tabelas Maestro | Escopo de privilégios misto/compartilhado; requer matriz por tabela, papéis e consumidores, não deve ser promovido como “CXM-only” nem como core-only. |
+| `20260928031940/cxm_silence_due_jobs_organization_scope` | `cxm_silence_due_jobs`, `legacy_records`, `organizations` e validador CXM | Feature CXM com dependências compartilhadas de tenant/legado; separar ownership do dado do ownership da feature antes de empacotar. |
+
+Esta classificação reduz o conjunto de conflitos que devem bloquear diretamente um pacote de migrations core (três CXM nomeados ficam em trilha própria), mas **não** os exclui da reconciliação integral do Goal. Permanecem transversais os riscos de `0004`, scheduler WhatsApp, RPC de mutação, hook global e grants compartilhados. Nenhum objeto foi alterado nos bancos hospedados.
+
 ### Validação de candidatos a baseline e divergência do catálogo — 01/10/2026
 
 - CI do checkpoint `5cc4ff5dbff1422b19164c33ba208539846b9d91` terminou `success` no run `36896371397`, incluindo replay clean-room e regressões/autorização.

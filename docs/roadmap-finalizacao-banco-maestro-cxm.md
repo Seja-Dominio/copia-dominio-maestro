@@ -727,3 +727,8 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Rechecagem dos ledgers remotos em transações `READ ONLY` confirmou o mesmo upsert incondicional/reset de `imported_at` nos corpos Dev e Produção; somente Produção possui guard de snapshot opcional. Não copiar nenhum dos corpos entre ambientes nem reexecutar o de Dev; o guard de Produção não torna a precedência dos conflitos segura.
 - **Decisão de execução:** manter migration histórica e ledger intactos; não reaplicar, não promover seu corpo e não sincronizar Dev/Produção por `db push`/repair. Para destravar, obter snapshot anonimizado representativo e contrato de escrita/fonte de verdade da API; então especificar e testar regra de conflito com contagens de preservação/atualização e rollback num clone com dados. Não usar clone schema-only como substituto.
 - Marco 4 permanece parcial e sem liberação para escrita hospedada. O gate acrescenta risco de integridade de dados P0 à reconciliação statement-a-statement; não altera a estimativa global sem fechar um critério de saída.
+
+### Separação de conflitos por ownership — 01/10/2026
+
+- A extração read-only dos objetos `public.*` dos nove conflitos Dev distinguiu trilhas CXM (`cxm_webhook_*` e `cxm_silence_due_jobs`), Maestro core, integrações cross-cutting e objetos de privilégio misto (`team_chat_*`/colaboradores + tabelas Maestro). Evidência e limites em `docs/migration-drift-reconciliation.md`.
+- Isso permite sequenciar o pacote não-CXM sem confundir identidade da feature com ownership dos dados; não remove CXM do Goal nem comprova que conflitos do Maestro estejam resolvidos. A reconciliação completa do Marco 4 continua aberta; bancos hospedados inalterados.
