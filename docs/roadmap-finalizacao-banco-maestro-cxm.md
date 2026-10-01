@@ -2,6 +2,8 @@
 
 ## Estado do Marco 4 — confirmação de CI e baseline de upgrade — 01/10/2026
 
+- Reconciliação READ ONLY de Subtask em Produção: 7.392 linhas relacionais contra 7.102 registros legados; todas as linhas legadas têm projeção e escopo, enquanto 290 linhas relational-only são compatíveis com o registry pós-cutover (escrita relacional, legado congelado). Permanecem 27 divergências de payload, 120 tarefas sem Job e 29 responsáveis sem membership; sem escrita. Evidências detalhadas em `docs/migration-drift-reconciliation.md`.
+
 - CI `36896371397` do commit `5cc4ff5dbff1422b19164c33ba208539846b9d91` concluiu com sucesso em todos os jobs.
 - Os bancos `maestro-clean-room` e `maestro-supabase-verify` têm ledgers locais diferentes (171 e 140 registros), mas os clones de upgrade já validados ficam no container `maestro-clean-room`: Dev `maestro_dev_upgrade_validation_20261001f` e Prod `maestro_prod_upgrade_full_20261001d`. Inspeção atual confirmou 39/39 e 56/56 tabelas com RLS; as policies são 7 e 136, respectivamente. O clone Prod tem um seed estimado em `legacy_cutover_registry`; não foram observadas linhas de negócio conforme o ensaio schema-only documentado.
 - Auditoria remota READ ONLY confirmou drift selecionado de policies, event trigger e cron; os detalhes e limites estão em `docs/migration-drift-reconciliation.md`, seção “Validação de candidatos a baseline e divergência do catálogo”.
