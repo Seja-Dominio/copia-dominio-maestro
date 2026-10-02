@@ -4,7 +4,8 @@
 
 - Por orientação do usuário, todo o trabalho hospedado deste goal fica restrito ao Dev; Produção não deve ser consultada, alterada, receber migration nem deploy nesta execução.
 - Revalidação `READ ONLY` explícita do Dev: 181 migrations locais, 84 entradas remotas, 23 identidades/conteúdos exatos, nove conflitos sob a mesma identidade e 16 conteúdos remotos sem fingerprint local. Os `statements` foram comparados em memória; nenhum corpo bruto foi registrado. Evidência detalhada em `docs/migration-drift-reconciliation.md`.
-- Marco 4 segue parcial: o novo snapshot confirma que o ledger Dev avançou com a migration de escopo tenant, mas os conflitos de histórico continuam sem classificação completa. Próxima atividade: classificar os efeitos remotos restantes contra o catálogo e contratos Dev, sem sincronização automática.
+- Classificação estrutural Dev do conflito `core_tenant_dual_writes`: três funções de projeção tenant-aware estão presentes, com `SECURITY INVOKER`, ACL esperada e triggers ativos. Foi adicionada fixture transacional multi-tenant para Subtask, FinancialEntry e JobHistory; CI/replay limpo ainda precisa confirmá-la. O clone Dev-shaped disponível divergiu nos grants/policy antes de chegar aos novos casos e foi descartado como evidência para essa fixture; checagem posterior confirmou rollback sem resíduos.
+- Marco 4 segue parcial: o próximo gate é CI/replay limpo da nova cobertura e execução em clone com baseline compatível; continuam pendentes os demais efeitos do catálogo e não haverá sincronização automática.
 
 ## Regressão de tenant encontrada e isolada para Dev — 02/10/2026
 

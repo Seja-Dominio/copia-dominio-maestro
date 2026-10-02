@@ -43,18 +43,33 @@ begin
     select 1 from public.legacy_records
     where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client',
       'tenant-ci-cross-job-project', 'tenant-ci-unresolved-project',
-      'tenant-ci-cross-project-write', 'tenant-ci-relational-project')
+      'tenant-ci-cross-project-write', 'tenant-ci-relational-project',
+      'tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
+      'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
+      'tenant-ci-legacy-projection-history')
   ) or exists (
     select 1 from public.organization_legacy_records
     where legacy_entity = 'Project'
       and legacy_record_id in ('tenant-ci-cross-project-write', 'tenant-ci-relational-project')
   ) or exists (
+    select 1 from public.organization_legacy_records
+      where legacy_record_id in ('tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
+        'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
+        'tenant-ci-legacy-projection-history')
+  ) or exists (
     select 1 from public.maestro_bank_accounts
-    where legacy_record_id = 'tenant-ci-account-b'
+    where legacy_record_id in ('tenant-ci-account-a', 'tenant-ci-account-b')
   ) or exists (
     select 1 from public.maestro_job_tasks
       where organization_id = '00000000-0000-0000-0000-00000000a001'::uuid
-        and legacy_record_id = 'tenant-ci-task-a'
+        and legacy_record_id in ('tenant-ci-task-a', 'tenant-ci-legacy-projection-task',
+          'tenant-ci-cross-tenant-projection-task')
+  ) or exists (
+    select 1 from public.maestro_financial_entries
+      where legacy_record_id in ('tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry')
+  ) or exists (
+    select 1 from public.maestro_job_history
+      where legacy_record_id = 'tenant-ci-legacy-projection-history'
   ) or exists (
     select 1 from public.job_task_reconciliation
     where id = '00000000-0000-0000-0000-00000000a501'::uuid
@@ -171,7 +186,9 @@ insert into public.job_task_reconciliation (
 );
 
 insert into public.maestro_bank_accounts (legacy_record_id, organization_id, name)
-values ('tenant-ci-account-b', '00000000-0000-0000-0000-00000000b001', 'Tenant CI Account B');
+values
+  ('tenant-ci-account-a', '00000000-0000-0000-0000-00000000a001', 'Tenant CI Account A'),
+  ('tenant-ci-account-b', '00000000-0000-0000-0000-00000000b001', 'Tenant CI Account B');
 
 -- The product's authenticated frontend currently uses Edge Functions. Granting
 -- SELECT only inside this transaction lets this test exercise the RLS policy
@@ -401,6 +418,68 @@ begin
     or not exists (select 1 from public.maestro_job_tasks where organization_id='00000000-0000-0000-0000-00000000a001'::uuid and legacy_record_id='tenant-ci-valid-task' and job_id=v_job_id)
   then raise exception 'TEST_FAIL valid service_role Subtask write did not preserve tenant-scoped Job relation'; end if;
 
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Subtask', 'tenant-ci-legacy-projection-task',
+    '{"title":"Legacy dual-write task","job_id":"tenant-ci-job-a"}'::jsonb);
+  if not exists (
+    select 1 from public.maestro_job_tasks t
+    join public.maestro_jobs j on j.id=t.job_id and j.organization_id=t.organization_id
+    where t.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and t.legacy_record_id='tenant-ci-legacy-projection-task'
+      and j.legacy_record_id='tenant-ci-job-a'
+  ) then raise exception 'TEST_FAIL legacy Subtask dual-write did not preserve same-tenant Job'; end if;
+
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Subtask', 'tenant-ci-cross-tenant-projection-task',
+      '{"title":"Cross-tenant legacy dual-write task","job_id":"tenant-ci-job-b"}'::jsonb);
+    raise exception 'TEST_FAIL legacy Subtask dual-write accepted another tenant Job';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Subtask job must belong to the same organization'
+      and v_error <> 'TEST_FAIL legacy Subtask dual-write accepted another tenant Job' then
+      raise exception 'TEST_FAIL unexpected legacy Subtask projection rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL legacy Subtask dual-write accepted another tenant Job' then raise; end if;
+  end;
+
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'FinancialEntry', 'tenant-ci-legacy-projection-entry',
+    '{"title":"Legacy dual-write entry","type":"income","amount":"123.45","client_id":"tenant-ci-client-a","bank_account_id":"tenant-ci-account-a"}'::jsonb);
+  if not exists (
+    select 1 from public.maestro_financial_entries e
+    join public.maestro_bank_accounts a
+      on a.organization_id=e.organization_id and a.legacy_record_id=e.bank_account_legacy_record_id
+    where e.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and e.legacy_record_id='tenant-ci-legacy-projection-entry'
+      and e.amount=123.45 and a.legacy_record_id='tenant-ci-account-a'
+  ) then raise exception 'TEST_FAIL legacy FinancialEntry dual-write did not preserve tenant/account'; end if;
+
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'FinancialEntry', 'tenant-ci-cross-tenant-projection-entry',
+      '{"title":"Cross-tenant legacy dual-write entry","type":"income","amount":"12.00","client_id":"tenant-ci-client-a","bank_account_id":"tenant-ci-account-b"}'::jsonb);
+    raise exception 'TEST_FAIL legacy FinancialEntry dual-write accepted another tenant account';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Financial entry bank account must belong to the same organization'
+      and v_error <> 'TEST_FAIL legacy FinancialEntry dual-write accepted another tenant account' then
+      raise exception 'TEST_FAIL unexpected legacy FinancialEntry projection rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL legacy FinancialEntry dual-write accepted another tenant account' then raise; end if;
+  end;
+
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'JobHistory', 'tenant-ci-legacy-projection-history',
+    '{"job_id":"tenant-ci-job-a","type":"status_changed","field":"status","old_value":"open","new_value":"done","text":"Fixture history"}'::jsonb);
+  if not exists (
+    select 1 from public.maestro_job_history h
+    join public.maestro_jobs j on j.id=h.job_id and j.organization_id=h.organization_id
+    where h.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and h.legacy_record_id='tenant-ci-legacy-projection-history'
+      and j.legacy_record_id='tenant-ci-job-a'
+  ) then raise exception 'TEST_FAIL legacy JobHistory dual-write did not preserve same-tenant Job'; end if;
+
   begin
     perform public.resolve_job_task_reconciliation(
       '00000000-0000-0000-0000-00000000a001'::uuid,
@@ -533,8 +612,19 @@ do $verify_legacy_projection_reference_compatibility$
 begin
   if exists (
     select 1 from public.legacy_records
-    where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client', 'tenant-ci-cross-job-project')
+    where record_id in ('tenant-ci-cross-project-client', 'tenant-ci-cross-job-client', 'tenant-ci-cross-job-project',
+      'tenant-ci-cross-tenant-projection-task', 'tenant-ci-cross-tenant-projection-entry')
   ) then raise exception 'TEST_FAIL rejected cross-tenant legacy core write persisted'; end if;
+  if exists (
+    select 1 from public.maestro_job_tasks
+    where legacy_record_id='tenant-ci-cross-tenant-projection-task'
+  ) or exists (
+    select 1 from public.maestro_financial_entries
+    where legacy_record_id='tenant-ci-cross-tenant-projection-entry'
+  ) or exists (
+    select 1 from public.organization_legacy_records
+    where legacy_record_id in ('tenant-ci-cross-tenant-projection-task', 'tenant-ci-cross-tenant-projection-entry')
+  ) then raise exception 'TEST_FAIL rejected legacy dual-write left a projection or tenant mapping'; end if;
   if not exists (
     select 1 from public.legacy_records l
     join public.maestro_projects p on p.organization_id=l.organization_id and p.legacy_record_id=l.record_id
