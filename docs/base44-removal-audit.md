@@ -26,3 +26,11 @@ Data da inspeção: 02/10/2026. Escopo: checkout ativo, sem incluir `base44-sour
 ## Gate de conclusão
 
 Busca no runtime/build/config/documentação operacional sem dependência Base44; nenhuma rota, entidade, auth ou integração cai em fallback; testes de paridade e autorização passam; `@base44/sdk` e endpoints/ativos remotos não aparecem no bundle; handlers antigos têm disposição documentada. Snapshot e migrations históricas são excluídos do gate de runtime e permanecem preservados até decisão explícita de retenção.
+
+## Checkpoint Dev — 02/10/2026
+
+- `resolveMaestroProvider` agora seleciona Supabase quando `VITE_MAESTRO_DATA_PROVIDER` está ausente e falha explicitamente para valores não suportados. Base44 continua disponível apenas por seleção explícita; os fallbacks das ações ainda não portadas não foram removidos neste checkpoint.
+- Testes locais: 112/112 Node, build Vite, verificação de fronteiras Jobs/Ads Brain, verificação de classificação das Edge Functions e `git diff --check` passaram.
+- Commit `2987d52d34c96189041c8eec8c033d9135b6c9dd` na branch `codex/maestro-db-canonical-candidate`; CI `37079337122` concluiu com sucesso, incluindo replay limpo das migrations, testes de tenant/RLS, regressões, Semgrep, Trivy e secret scan.
+- Nenhuma consulta, escrita, migration ou deploy foi feito em Produção ou nos bancos hospedados Dev nesta alteração. O commit somente atualiza a branch de trabalho remota; não é publicação do aplicativo.
+- Escopo restante: remover fallbacks apenas após mapear/portar contratos; as operações sem destino Supabase continuam `deleteAccount`, `fetchInstagramInsights` e `generateAIInsights`. O marco maior permanece aberto.
