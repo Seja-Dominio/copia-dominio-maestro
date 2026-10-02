@@ -1,10 +1,10 @@
 # Auditoria para remoção do Base44
 
-Data da inspeção: 01/10/2026. Escopo: checkout ativo, sem incluir `base44-source/` na busca de runtime. Nenhum deploy, banco ou dado foi alterado nesta auditoria.
+Data da inspeção: 02/10/2026. Escopo: checkout ativo, sem incluir `base44-source/` na busca de runtime. Nenhum deploy, banco ou dado foi alterado nesta auditoria. As alterações desta etapa ficam restritas à branch de trabalho Dev.
 
 ## Fatos confirmados
 
-- `src/api/maestroClient.js` é a fronteira consumida pela aplicação (89 sites de import/uso). `VITE_MAESTRO_DATA_PROVIDER` ainda assume `base44` quando não configurado. Os arquivos de ambiente e o `Dockerfile` configuram Supabase, mas a fronteira mantém fallback.
+- `src/api/maestroClient.js` é a fronteira consumida pela aplicação. `VITE_MAESTRO_DATA_PROVIDER` agora assume `supabase` quando ausente e rejeita valores desconhecidos; `base44` só pode ser selecionado explicitamente. Isso remove a seleção implícita do backend legado, mas não remove ainda o SDK/fallbacks explicitamente preservados.
 - Correção desta etapa: o router ativo usa `src/components/AuthContext.jsx` e `src/components/auth/ProtectedRoute.jsx`; esse fluxo já é de colaborador e foi consolidado no endpoint Supabase `collaborator-login`, que entrega sessão HMAC. O ramo que aceitava JWT nativo do Supabase foi removido porque as Edge Functions protegidas validam HMAC, não JWT nativo, e a consulta agregada read-only encontrou zero usuários `auth.users` no Dev e em Produção. A sessão local agora exige token não expirado com `sub`, ID de colaborador e organização coerentes; o servidor continua sendo a autoridade que valida HMAC/membership.
 - Os arquivos `src/lib/AuthContext.jsx`, `src/components/ProtectedRoute.jsx` e páginas antigas de registro/recuperação/OAuth não são montados pelo router atual; ainda contêm referências a auth Base44 e devem ser classificados/removidos em uma etapa separada, sem confundi-los com o fluxo ativo.
 - O adaptador Supabase ainda expõe `base44.auth`, `base44.functions` e `base44.integrations` para compatibilidade. `invokeMaestroFunction` encaminha para o SDK quando uma ação não está implementada no caminho Supabase. Portanto, retirar só a dependência NPM ou trocar os defaults continua insuficiente e pode quebrar ações.

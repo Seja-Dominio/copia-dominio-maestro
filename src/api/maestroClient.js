@@ -7,8 +7,9 @@
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
 import { callMaestroData, createSupabaseEntities, getStoredCollaborator, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, refreshFileUrlFromSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase, clearStoredCollaboratorSession } from '@/api/supabaseClient';
+import { resolveMaestroProvider } from '@/api/maestro-provider.mjs';
 
-const dataProvider = import.meta.env.VITE_MAESTRO_DATA_PROVIDER || 'base44';
+const dataProvider = resolveMaestroProvider(import.meta.env.VITE_MAESTRO_DATA_PROVIDER);
 
 // Do not spread the SDK client here: it contains an enumerable `asServiceRole`
 // getter that is intentionally unavailable in the browser and causes a blank
