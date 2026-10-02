@@ -1,5 +1,11 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Fotografia atual somente Dev — ledger e scheduler — 02/10/2026
+
+- Consultas autenticadas exclusivamente ao Dev `tqmfuskvllpqmvayjuqu`, sempre `BEGIN READ ONLY`/`ROLLBACK`, encontraram 186 arquivos locais e 86 entradas no ledger. Fingerprints: 25 identidade+conteúdo iguais; nove conflitos sob a mesma identidade; 45 conteúdos equivalentes sob mesmo nome/outra versão; seis outros conteúdos divergentes sob mesmo nome/outra versão; 107 conteúdos locais sem fingerprint no ledger e 16 conteúdos remotos sem fingerprint local. As categorias se sobrepõem. Nenhuma linha de Produção foi consultada.
+- O cron `whatsapp_automation_runner` no Dev está ativo a cada cinco minutos; `pg_cron` e `pg_net` existem. Sem revelar valores: a URL de projeto não está no Vault, enquanto o segredo satisfaz o comprimento mínimo que o scheduler candidato requer. A migration histórica `20260910100000` remove o job antes de retornar quando a URL está ausente; portanto não deve ser reaplicada. A migration forward `20261001160000_preserve_whatsapp_scheduler_without_vault_config.sql` retorna antes de alterar o job, preservando o worker no estado atual. Essa proteção tem fixture CI aprovada; não foi aplicada ao Dev hospedado.
+- Não executar `migration repair`, replays de conflitos ou `db push` integral. Próximo trabalho é classificar os nove conflitos pela versão/catálogo Dev sem copiar histórico automaticamente; CXM permanece fora do escopo de rollout.
+
 ## Upgrade de projeções no catálogo Dev exato — somente local/Dev — 02/10/2026
 
 - O projeto Supabase consultado foi exclusivamente Dev (`tqmfuskvllpqmvayjuqu`), por leituras de catálogo em transações `READ ONLY`; nenhuma escrita, migration ou deploy hospedado foi feito nesta etapa. Produção não foi consultada.
