@@ -1,5 +1,5 @@
--- Preserva o tenant da tarefa e garante que o responsável pertença à mesma organização.
--- SET NULL apenas no responsável permite remover a membership sem apagar a tarefa.
+-- Mantém o identificador legado como snapshot e aplica a FK somente ao vínculo tipado.
+-- Ao remover membership, limpa o vínculo atual sem apagar a atribuição histórica.
 do $$
 begin
   if not exists (
@@ -10,9 +10,9 @@ begin
   ) then
     alter table public.maestro_mini_tasks
       add constraint maestro_mini_tasks_org_collaborator_fk
-      foreign key (organization_id, collaborator_legacy_record_id)
+      foreign key (organization_id, collaborator_id)
       references public.organization_members (organization_id, collaborator_id)
-      on delete set null (collaborator_legacy_record_id)
+      on delete set null (collaborator_id)
       not valid;
   end if;
 end

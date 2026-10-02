@@ -32,17 +32,20 @@ begin
 
   if new.entity = 'MiniTask' then
     insert into public.maestro_mini_tasks (
-      legacy_record_id, organization_id, title, collaborator_legacy_record_id,
+      legacy_record_id, organization_id, title, collaborator_legacy_record_id, collaborator_id,
       due_date, due_time, priority, is_completed, task_payload, source_updated_at
     ) values (
       new.record_id, v_org, coalesce(new.payload->>'title',''),
       nullif(new.payload->>'collaborator_id',''),
+      (select m.collaborator_id from public.organization_members m
+       where m.organization_id=v_org and m.collaborator_id=nullif(new.payload->>'collaborator_id','')),
       case when new.payload->>'due_date' ~ '^\\d{4}-\\d{2}-\\d{2}' then (new.payload->>'due_date')::date else null end,
       nullif(new.payload->>'due_time',''), coalesce((new.payload->>'priority')::integer,0),
       coalesce((new.payload->>'is_completed')::boolean,false), new.payload, new.source_updated_at
     ) on conflict (legacy_record_id) do update set
       organization_id=excluded.organization_id, title=excluded.title,
       collaborator_legacy_record_id=excluded.collaborator_legacy_record_id,
+      collaborator_id=excluded.collaborator_id,
       due_date=excluded.due_date, due_time=excluded.due_time,
       priority=excluded.priority, is_completed=excluded.is_completed,
       task_payload=excluded.task_payload, source_updated_at=excluded.source_updated_at,

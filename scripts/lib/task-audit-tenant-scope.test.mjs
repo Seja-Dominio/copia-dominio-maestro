@@ -9,6 +9,14 @@ const migration = await fs.readFile(
   path.join(root, "supabase/migrations/20260929220702_task_audit_log_scope_from_row_org_id.sql"),
   "utf8",
 );
+const projectionMigration = await fs.readFile(
+  path.join(root, "supabase/migrations/20260926460000_create_relational_task_audit_logs.sql"),
+  "utf8",
+);
+const assigneeConstraintMigration = await fs.readFile(
+  path.join(root, "supabase/migrations/20260927060831_enforce_mini_task_assignee_tenant_scope.sql"),
+  "utf8",
+);
 const sqlContract = await fs.readFile(
   path.join(root, "scripts/sql/verify_task_audit_tenant_scope.sql"),
   "utf8",
@@ -27,6 +35,16 @@ test("task and delete-log projection trusts row tenant before legacy mapping", (
   assert.doesNotMatch(migration, /order by created_at asc/i);
   assert.match(migration, /tenant scope required for % record %/i);
   assert.match(migration, /revoke execute on function public\.maestro_sync_task_audit_log\(\) from public, anon, authenticated/i);
+  assert.match(migration, /collaborator_legacy_record_id, collaborator_id/i);
+  assert.match(migration, /collaborator_id=excluded\.collaborator_id/i);
+  assert.match(migration, /m\.organization_id=v_org and m\.collaborator_id=nullif\(new\.payload->>'collaborator_id',''\)/i);
+});
+
+test("inactive legacy assignees remain snapshots while typed relations require same-tenant membership", () => {
+  assert.match(projectionMigration, /collaborator_legacy_record_id text,[\s\S]*collaborator_id text/i);
+  assert.match(projectionMigration, /left join public\.organization_members m on m\.organization_id=s\.organization_id and m\.collaborator_id=nullif\(l\.payload->>'collaborator_id',''\)/i);
+  assert.match(assigneeConstraintMigration, /foreign key \(organization_id, collaborator_id\)/i);
+  assert.match(assigneeConstraintMigration, /on delete set null \(collaborator_id\)/i);
 });
 
 test("rollback contract covers ambiguity rejection and tenant-routed task projection", () => {
@@ -35,6 +53,8 @@ test("rollback contract covers ambiguity rejection and tenant-routed task projec
   assert.match(sqlContract, /unscoped task write was accepted/i);
   assert.match(sqlContract, /tenant scope required for MiniTask record %/i);
   assert.match(sqlContract, /where legacy_record_id=v_task and organization_id=v_org/i);
+  assert.match(sqlContract, /deactivated assignee snapshot/i);
+  assert.match(sqlContract, /cross-tenant legacy assignee/i);
 });
 
 test("financial recovery fixture remains independent from optional task-audit schema", () => {
