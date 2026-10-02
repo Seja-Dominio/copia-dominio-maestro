@@ -26,6 +26,7 @@
     "hash-collaborator-password": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "marketing-mix-snapshot": { "product": "insights", "intended_release": "non_cxm_candidate" },
     "meta-ads-oauth": { "product": "ads_brain", "intended_release": "non_cxm_candidate" },
+    "maestro-core-data": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "team-chat": { "product": "maestro", "intended_release": "non_cxm_candidate" },
     "traffic-copilot": { "product": "ads_brain", "intended_release": "non_cxm_candidate" }
   },

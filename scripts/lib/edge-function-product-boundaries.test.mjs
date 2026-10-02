@@ -32,7 +32,10 @@ test("repository Edge Functions are exhaustively classified and CXM is excluded 
   assert.deepEqual(result.pending_cxm_functions, []);
   assert.deepEqual(result.excluded_cxm_functions, ["cxm-data", "cxm-deskcomm-sso"]);
   assert.ok(result.blocked_shared_functions.length > 0);
-  assert.equal(result.pending_non_cxm_functions.length, 8);
+  assert.equal(result.pending_non_cxm_functions.length, 9);
+  assert.ok(result.pending_non_cxm_functions.includes("maestro-core-data"));
+  assert.ok(!liveManifest.non_cxm_candidate.functions.includes("maestro-core-data"));
+  assert.ok(result.release_blockers.some((blocker) => blocker.startsWith("maestro-core-data: non-CXM function is pending reconciliation")));
   assert.ok(result.release_blockers.some((blocker) => blocker.startsWith("admin-timesheets: non-CXM function is pending reconciliation")));
   assert.ok(result.release_blockers.some((blocker) => blocker.includes("maestro-data: shared function")));
   assert.equal(liveManifest.functions["system-reports"].product, "maestro");
