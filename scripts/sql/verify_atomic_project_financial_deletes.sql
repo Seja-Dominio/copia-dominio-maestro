@@ -1,13 +1,13 @@
--- Rollback-only contract for audited project and financial-entry deletes.
+-- Rollback-only contract for audited financial-entry deletes.
 -- Run only against the disposable local verification database or isolated preview.
 begin;
 
 do $preflight$
 begin
-  if to_regclass('public.maestro_projects') is null
-    or to_regclass('public.maestro_financial_entries') is null
-    or to_regclass('public.maestro_delete_logs') is null then
-    raise exception 'TEST_PREREQUISITE project, financial-entry, or delete-log projection schema is not installed';
+  if to_regclass('public.maestro_financial_entries') is null
+    or to_regclass('public.maestro_delete_logs') is null
+    or to_regprocedure('public.maestro_delete_financial_entry_scoped(uuid,text,text,text)') is null then
+    raise exception 'TEST_PREREQUISITE financial-entry delete projection schema or RPC is not installed';
   end if;
 end;
 $preflight$;
@@ -17,7 +17,6 @@ declare
   v_org uuid := gen_random_uuid();
   v_other_org uuid := gen_random_uuid();
   v_client text := 'atomic-delete-client-' || gen_random_uuid()::text;
-  v_project text := 'atomic-delete-project-' || gen_random_uuid()::text;
   v_entry text := 'atomic-delete-entry-' || gen_random_uuid()::text;
   v_result jsonb;
   v_financial_payload jsonb;
@@ -28,27 +27,6 @@ begin
   values
     (v_other_org, 'Atomic delete older tenant', 'atomic-delete-' || left(v_other_org::text, 8), 'active', now() - interval '1 day'),
     (v_org, 'Atomic delete test tenant', 'atomic-delete-' || left(v_org::text, 8), 'active', now());
-
-  insert into public.legacy_records(organization_id, entity, record_id, payload)
-  values (v_org, 'Client', v_client, jsonb_build_object('id', v_client, 'name', 'Atomic delete test client'));
-  insert into public.legacy_records(organization_id, entity, record_id, payload)
-  values (v_org, 'Project', v_project, jsonb_build_object('id', v_project, 'name', 'Atomic delete test project', 'client_id', v_client));
-
-  if not exists (
-    select 1 from public.maestro_projects
-    where organization_id = v_org and legacy_record_id = v_project
-  ) then raise exception 'TEST_FAIL project fixture was not projected'; end if;
-
-  select public.maestro_apply_legacy_mutation_scoped(
-    v_org, 'delete', 'Project', v_project, '{}'::jsonb, 'test-actor', 'Test Actor'
-  ) into v_result;
-
-  if coalesce(v_result->>'deleted', 'false') <> 'true'
-    or exists (select 1 from public.legacy_records where organization_id=v_org and entity='Project' and record_id=v_project)
-    or exists (select 1 from public.maestro_projects where organization_id=v_org and legacy_record_id=v_project)
-    or not exists (select 1 from public.legacy_records where organization_id=v_org and entity='DeleteLog' and payload->>'entity_id'=v_project and payload->>'entity_type'='project')
-    or not exists (select 1 from public.legacy_records where organization_id=v_org and entity='SystemAuditLog' and payload->>'entity'='Project' and payload->>'record_id'=v_project and payload->>'action'='delete')
-  then raise exception 'TEST_FAIL project delete, relational projection, or audit was not atomic'; end if;
 
   insert into public.legacy_records(organization_id, entity, record_id, payload)
   values (v_org, 'FinancialEntry', v_entry, jsonb_build_object(

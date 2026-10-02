@@ -17,6 +17,10 @@ const financialSqlContract = await fs.readFile(
   path.join(root, "scripts/sql/verify_atomic_project_financial_deletes.sql"),
   "utf8",
 );
+const projectSqlContract = await fs.readFile(
+  path.join(root, "scripts/sql/verify_atomic_project_delete.sql"),
+  "utf8",
+);
 
 test("task and delete-log projection trusts row tenant before legacy mapping", () => {
   assert.match(migration, /v_org := new\.organization_id;[\s\S]*?from public\.organization_legacy_records/i);
@@ -35,8 +39,15 @@ test("rollback contract covers ambiguity rejection and tenant-routed task projec
 
 test("financial recovery fixture remains independent from optional task-audit schema", () => {
   assert.doesNotMatch(financialSqlContract, /MiniTask|maestro_mini_tasks/i);
-  assert.match(financialSqlContract, /TEST_PREREQUISITE project, financial-entry, or delete-log projection schema is not installed/i);
+  assert.doesNotMatch(financialSqlContract, /maestro_projects|maestro_apply_legacy_mutation_scoped/i);
+  assert.match(financialSqlContract, /TEST_PREREQUISITE financial-entry delete projection schema or RPC is not installed/i);
   assert.match(financialSqlContract, /v_deleted_payload is distinct from \(v_financial_payload \|\| jsonb_build_object\('id', v_entry\)\)/i);
   assert.match(financialSqlContract, /from public\.maestro_delete_logs[\s\S]*?deleted_payload=\(v_financial_payload/i);
   assert.match(financialSqlContract, /payload->'before'=\(v_financial_payload/i);
+});
+
+test("scoped project delete fixture has an independent preflight and audit assertion", () => {
+  assert.match(projectSqlContract, /TEST_PREREQUISITE scoped project delete contract is not installed/i);
+  assert.match(projectSqlContract, /maestro_apply_legacy_mutation_scoped[\s\S]*?SystemAuditLog/i);
+  assert.match(projectSqlContract, /ROLLBACK;/i);
 });
