@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { collaboratorCanReadJob } from "../_shared/attachment-access.js";
-import { canReadFinancialData, collaboratorJobPatchAllowed, collaboratorJobPatchMaySkipAssignment, collaboratorSubtaskCreateAllowed } from "../_shared/mutation-access.js";
+import { authorizeCollaboratorJobPatch, canReadFinancialData, collaboratorJobPatchAllowed, collaboratorSubtaskCreateAllowed } from "../_shared/mutation-access.js";
 import { loadCurrentCollaboratorSession } from "../_shared/session-authorization.js";
 import { listRelationalJobHistoryRows } from "../_shared/relational-job-history.js";
 import { mergeProjectSchedulePatch } from "../_shared/project-schedule.js";
@@ -356,8 +356,7 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
   } else if (entity === "Project") {
     if (!["master", "admin", "gestor"].includes(role)) return response({ error: "Sem permissão para alterar projetos" }, 403, origin);
   } else if (entity === "Job" && role === "collaborator") {
-    if (operation === "create" || operation === "delete" || !collaboratorJobPatchAllowed(rawPayload)) return response({ error: "Colaboradores só podem atualizar campos operacionais autorizados dos próprios jobs" }, 403, origin);
-    if (!collaboratorJobPatchMaySkipAssignment(rawPayload)) await assertCollaboratorJob(session, id);
+    if (operation === "create" || operation === "delete" || !await authorizeCollaboratorJobPatch(rawPayload, () => assertCollaboratorJob(session, id))) return response({ error: "Colaboradores só podem atualizar campos operacionais autorizados dos próprios jobs" }, 403, origin);
   } else if (entity === "Subtask" && role === "collaborator") {
     if (operation === "delete") return response({ error: "Colaboradores não podem excluir tarefas" }, 403, origin);
     if (operation === "create") {

@@ -24,9 +24,10 @@ export function collaboratorJobPatchAllowed(payload = {}) {
   return payload.status === undefined || String(payload.status).trim().toLowerCase() !== "cancelled";
 }
 
-export function collaboratorJobPatchMaySkipAssignment(payload = {}) {
-  const keys = Object.keys(payload);
-  return keys.length > 0 && keys.every((key) => key === "attachments");
+export async function authorizeCollaboratorJobPatch(payload = {}, assertAssignment) {
+  if (!collaboratorJobPatchAllowed(payload)) return false;
+  await assertAssignment();
+  return true;
 }
 
 export function collaboratorSubtaskCreateAllowed(payload = {}) {
