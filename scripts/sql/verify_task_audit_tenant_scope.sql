@@ -1,6 +1,7 @@
 -- Rollback-only contract for tenant-scoped MiniTask/DeleteLog projections.
 -- Run only in an isolated database with the task-audit migration installed.
 begin;
+set local role service_role;
 
 do $preflight$
 begin
@@ -51,4 +52,5 @@ begin
 end;
 $verify$;
 
+reset role;
 rollback;

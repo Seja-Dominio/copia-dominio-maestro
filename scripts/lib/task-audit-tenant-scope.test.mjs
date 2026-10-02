@@ -31,6 +31,7 @@ test("task and delete-log projection trusts row tenant before legacy mapping", (
 
 test("rollback contract covers ambiguity rejection and tenant-routed task projection", () => {
   assert.match(sqlContract, /TEST_PREREQUISITE task-audit projection schema or trigger is not installed/i);
+  assert.match(sqlContract, /set local role service_role/i);
   assert.match(sqlContract, /older tenant[\s\S]*now\(\) - interval '1 day'/i);
   assert.match(sqlContract, /unscoped task write was accepted/i);
   assert.match(sqlContract, /tenant scope required for MiniTask record %/i);
@@ -40,7 +41,9 @@ test("rollback contract covers ambiguity rejection and tenant-routed task projec
 test("financial recovery fixture remains independent from optional task-audit schema", () => {
   assert.doesNotMatch(financialSqlContract, /MiniTask|maestro_mini_tasks/i);
   assert.doesNotMatch(financialSqlContract, /maestro_projects|maestro_apply_legacy_mutation_scoped/i);
-  assert.match(financialSqlContract, /TEST_PREREQUISITE financial-entry delete projection schema or RPC is not installed/i);
+  assert.match(financialSqlContract, /set local role service_role/i);
+  assert.match(financialSqlContract, /TEST_PREREQUISITE client\/financial-entry\/delete-log projection schema or financial delete RPC is not installed/i);
+  assert.match(financialSqlContract, /'Client',[\s\S]*?'FinancialEntry'/i);
   assert.match(financialSqlContract, /v_deleted_payload is distinct from \(v_financial_payload \|\| jsonb_build_object\('id', v_entry\)\)/i);
   assert.match(financialSqlContract, /from public\.maestro_delete_logs[\s\S]*?deleted_payload=\(v_financial_payload/i);
   assert.match(financialSqlContract, /payload->'before'=\(v_financial_payload/i);
@@ -48,6 +51,7 @@ test("financial recovery fixture remains independent from optional task-audit sc
 
 test("scoped project delete fixture has an independent preflight and audit assertion", () => {
   assert.match(projectSqlContract, /TEST_PREREQUISITE scoped project delete contract is not installed/i);
+  assert.match(projectSqlContract, /set local role service_role/i);
   assert.match(projectSqlContract, /maestro_apply_legacy_mutation_scoped[\s\S]*?SystemAuditLog/i);
   assert.match(projectSqlContract, /ROLLBACK;/i);
 });

@@ -1,6 +1,7 @@
 -- Rollback-only contract for scoped project deletion and audit persistence.
 -- Run only against Dev or an isolated verification database.
 begin;
+set local role service_role;
 
 do $preflight$
 begin
@@ -45,4 +46,5 @@ begin
 end;
 $verify$;
 
+reset role;
 rollback;

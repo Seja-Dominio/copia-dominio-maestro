@@ -1,13 +1,15 @@
 -- Rollback-only contract for audited financial-entry deletes.
 -- Run only against the disposable local verification database or isolated preview.
 begin;
+set local role service_role;
 
 do $preflight$
 begin
-  if to_regclass('public.maestro_financial_entries') is null
+  if to_regclass('public.maestro_clients') is null
+    or to_regclass('public.maestro_financial_entries') is null
     or to_regclass('public.maestro_delete_logs') is null
     or to_regprocedure('public.maestro_delete_financial_entry_scoped(uuid,text,text,text)') is null then
-    raise exception 'TEST_PREREQUISITE financial-entry delete projection schema or RPC is not installed';
+    raise exception 'TEST_PREREQUISITE client/financial-entry/delete-log projection schema or financial delete RPC is not installed';
   end if;
 end;
 $preflight$;
@@ -27,6 +29,9 @@ begin
   values
     (v_other_org, 'Atomic delete older tenant', 'atomic-delete-' || left(v_other_org::text, 8), 'active', now() - interval '1 day'),
     (v_org, 'Atomic delete test tenant', 'atomic-delete-' || left(v_org::text, 8), 'active', now());
+
+  insert into public.legacy_records(organization_id, entity, record_id, payload)
+  values (v_org, 'Client', v_client, jsonb_build_object('id', v_client, 'name', 'Atomic delete test client'));
 
   insert into public.legacy_records(organization_id, entity, record_id, payload)
   values (v_org, 'FinancialEntry', v_entry, jsonb_build_object(
@@ -85,4 +90,5 @@ begin
 end;
 $verify$;
 
+reset role;
 rollback;
