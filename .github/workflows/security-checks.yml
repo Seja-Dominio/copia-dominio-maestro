@@ -116,6 +116,8 @@ jobs:
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/legacy-mutation-tenant-context-ci.test.sql
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/verify_task_audit_tenant_scope.sql
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/verify_atomic_project_financial_deletes.sql
           {
             sed '/^-- MIGRATION_BARRIER:/,$d' scripts/sql/reconcile-core-subtask-links-clone.test.sql
             cat supabase/migrations/20261001140000_reconcile_core_subtask_links.sql

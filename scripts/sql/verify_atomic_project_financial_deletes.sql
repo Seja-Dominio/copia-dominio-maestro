@@ -2,6 +2,16 @@
 -- Run only against the disposable local verification database or isolated preview.
 begin;
 
+do $preflight$
+begin
+  if to_regclass('public.maestro_projects') is null
+    or to_regclass('public.maestro_financial_entries') is null
+    or to_regclass('public.maestro_delete_logs') is null then
+    raise exception 'TEST_PREREQUISITE project, financial-entry, or delete-log projection schema is not installed';
+  end if;
+end;
+$preflight$;
+
 do $verify$
 declare
   v_org uuid := gen_random_uuid();
@@ -9,7 +19,6 @@ declare
   v_client text := 'atomic-delete-client-' || gen_random_uuid()::text;
   v_project text := 'atomic-delete-project-' || gen_random_uuid()::text;
   v_entry text := 'atomic-delete-entry-' || gen_random_uuid()::text;
-  v_task text := 'atomic-delete-task-' || gen_random_uuid()::text;
   v_result jsonb;
   v_financial_payload jsonb;
   v_delete_log_id text;
@@ -19,26 +28,6 @@ begin
   values
     (v_other_org, 'Atomic delete older tenant', 'atomic-delete-' || left(v_other_org::text, 8), 'active', now() - interval '1 day'),
     (v_org, 'Atomic delete test tenant', 'atomic-delete-' || left(v_org::text, 8), 'active', now());
-
-  perform set_config('maestro.organization_id', '', true);
-  begin
-    insert into public.legacy_records(entity, record_id, payload)
-    values ('MiniTask', v_task || '-unscoped', jsonb_build_object('id', v_task || '-unscoped', 'title', 'Must be rejected'));
-    raise exception 'TEST_FAIL unscoped task write was accepted with multiple active tenants';
-  exception when others then
-    if sqlerrm = 'TEST_FAIL unscoped task write was accepted with multiple active tenants' then raise; end if;
-    if sqlerrm not like 'tenant scope required for MiniTask record %' then raise; end if;
-  end;
-  if exists (select 1 from public.legacy_records where record_id=v_task || '-unscoped') then
-    raise exception 'TEST_FAIL rejected unscoped task write left a legacy row';
-  end if;
-
-  insert into public.legacy_records(organization_id, entity, record_id, payload)
-  values (v_org, 'MiniTask', v_task, jsonb_build_object('id', v_task, 'title', 'Scoped task audit test'));
-  if not exists (
-    select 1 from public.maestro_mini_tasks
-    where legacy_record_id=v_task and organization_id=v_org and title='Scoped task audit test'
-  ) then raise exception 'TEST_FAIL task audit projection was attached to another tenant'; end if;
 
   insert into public.legacy_records(organization_id, entity, record_id, payload)
   values (v_org, 'Client', v_client, jsonb_build_object('id', v_client, 'name', 'Atomic delete test client'));
