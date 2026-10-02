@@ -9,6 +9,8 @@
 - **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com esse padrão delimitado ao escopo materializado já comprovado.
 - Esforço ativo: não medido.
 
+- **Confirmação Dev-only (02/10/2026):** dump schema-only não carrega event triggers; o clone exato precisou reconstituir `ensure_rls` e reproduzir owners/default ACLs antes do upgrade. A primeira criação local do event trigger falhou porque o PostgreSQL descartável exige função proprietária superuser; ajustar o owner apenas no clone permitiu validar o mesmo corpo/efeito sem alterar o projeto Dev. Preflight remoto agregado das 57 fontes não encontrou as classes de abort por escopo ou conversão; nenhuma linha/identidade foi copiada. O replay no clone passou e terminou em rollback com zero resíduos. A orientação existente de comparar/recriar event triggers e privilégios bastou; **nenhuma skill foi alterada**. CI `37077364015` passou no SHA `d692d7cb1acf32a5fb7fc20d34ee2c541cc4bd54`; esforço ativo não medido.
+
 ## Dual-write não deve inferir tenant pelo primeiro registro ativo — 02/10/2026
 
 - **Evidência:** em clone local Dev-shaped vazio, a migration NPS anterior recebeu dois tenants ativos e um `NpsHistory` sem organization/map; gravou a projeção no tenant A enquanto a linha-fonte e o mapa permaneceram sem tenant. A fixture terminou com `ROLLBACK`. Na candidata forward, sob `service_role`, same-tenant (`NpsEntry`/`NpsHistory`) persistiu mapa e projeção; escopo ausente em multi-tenant, mapa ambíguo/divergente e tentativa de mover projeção foram rejeitados sem resíduos, também com rollback.
