@@ -443,6 +443,20 @@ begin
     if v_error = 'TEST_FAIL legacy Subtask dual-write accepted another tenant Job' then raise; end if;
   end;
 
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'Subtask', 'tenant-ci-missing-parent-projection-task',
+      '{"title":"Missing parent projection task","job_id":"tenant-ci-missing-job"}'::jsonb);
+    raise exception 'TEST_FAIL legacy Subtask dual-write accepted a missing Job';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Subtask job must belong to the same organization'
+      and v_error <> 'TEST_FAIL legacy Subtask dual-write accepted a missing Job' then
+      raise exception 'TEST_FAIL unexpected missing-parent Subtask projection rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL legacy Subtask dual-write accepted a missing Job' then raise; end if;
+  end;
+
   insert into public.legacy_records (organization_id, entity, record_id, payload)
   values ('00000000-0000-0000-0000-00000000a001'::uuid, 'FinancialEntry', 'tenant-ci-legacy-projection-entry',
     '{"title":"Legacy dual-write entry","type":"income","amount":"123.45","client_id":"tenant-ci-client-a","bank_account_id":"tenant-ci-account-a"}'::jsonb);

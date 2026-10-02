@@ -745,8 +745,8 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 #### Projeção de JobHistory no escopo Dev — 02/10/2026
 
-- A comparação de catálogo foi somente leitura e limitada ao Dev. Identificou-se que a função de projeção instalada não rejeita explicitamente `job_id` legado sem Job correspondente no mesmo tenant.
-- Migration forward `20261002150000_restore_tenant_scoped_job_history_projection.sql` e testes de mesmo tenant, cross-tenant e pai ausente foram preparados no branch. A fixture foi aprovada em clone local Dev-shaped sob `service_role`, com rollback; CI de replay limpo e a comparação semântica restante são os próximos gates.
+- A comparação de catálogo foi somente leitura e limitada ao Dev. A comparação tokenizada classificou a projeção FinancialEntry como idêntica, Task como diferindo apenas por duas declarações não utilizadas e JobHistory como faltando a rejeição explícita de `job_id` sem Job no mesmo tenant.
+- Migration forward `20261002150000_restore_tenant_scoped_job_history_projection.sql` e testes de same-tenant, cross-tenant e parent ausente foram preparados no branch. A fixture JobHistory passou no clone local Dev-shaped sob `service_role`, com rollback; CI `37069336129` aprovou replay limpo e a suíte de isolamento. A regressão de parent ausente para Subtask está adicionada e aguarda o CI deste checkpoint.
 - Por orientação operacional, esta continuação fica em Dev: sem consulta ou escrita em Produção, sem promoção/deploy remoto. Marco 4 segue parcial.
 
 ### Separação de conflitos por ownership — 01/10/2026
