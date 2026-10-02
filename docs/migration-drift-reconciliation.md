@@ -1,5 +1,13 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Revalidação do ledger somente em Dev — 02/10/2026
+
+- Consulta explícita ao projeto Dev `tqmfuskvllpqmvayjuqu` via Supabase CLI em `BEGIN READ ONLY`/`ROLLBACK`; `transaction_read_only=on`. Produção não foi consultada nem alterada nesta revalidação.
+- Snapshot atual: 181 arquivos locais e 84 entradas no ledger Dev; 23 pares têm identidade e conteúdo exatos, nove identidades existentes têm conteúdo divergente, 113 arquivos locais não têm fingerprint no ledger e 16 conteúdos do ledger não têm fingerprint em arquivo local. As categorias de conteúdo podem se sobrepor; não são uma contagem aditiva de migrations pendentes.
+- O novo par exato é `20261002090000/restore_scoped_tenant_context_for_legacy_mutations`, já aplicado e validado em Dev no marco anterior. Os nove conflitos de identidade continuam os mesmos registrados abaixo; não foram reparados nem reaplicados.
+- Comparação realizada em memória com `scripts/lib/sql-token-fingerprint.mjs`; somente contagens e identidades sanitizadas foram impressas. Os `statements` remotos brutos não foram salvos. O utilitário `scripts/reconcile-migration-ledgers.mjs` não foi executado porque consulta Dev e Produção no mesmo fluxo; para respeitar a restrição atual, a leitura foi limitada ao ref Dev.
+- **Próximo gate:** classificar cada identidade divergente e cada efeito remoto sem equivalente local por impacto e ownership, começando por catálogo Dev e dependências; manter bloqueadas sincronização em lote, `migration repair` e promoção de histórico até validar replay/upgrade em clones isolados.
+
 ## Contexto de tenant da RPC de mutação — Dev-only — 02/10/2026
 
 - Consulta `READ ONLY` explícita ao projeto Dev (`tqmfuskvllpqmvayjuqu`) confirmou `transaction_read_only=on`, RPC `maestro_apply_legacy_mutation_scoped(...)` existente e trigger `trg_maestro_scope_legacy_record` ativo. O corpo instalado não lê `current_setting`/`maestro.organization_id` nem resolve `organization_legacy_records`; a tabela `organization_legacy_records` existe, enquanto `organization_integrations` não existe. O ledger Dev não contém as versões locais `20260926253000`, `20260926260000`, `20260926263000` ou `20260926270000`.

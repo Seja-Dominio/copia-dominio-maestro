@@ -1,5 +1,11 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Escopo operacional vigente — somente Dev — 02/10/2026
+
+- Por orientação do usuário, todo o trabalho hospedado deste goal fica restrito ao Dev; Produção não deve ser consultada, alterada, receber migration nem deploy nesta execução.
+- Revalidação `READ ONLY` explícita do Dev: 181 migrations locais, 84 entradas remotas, 23 identidades/conteúdos exatos, nove conflitos sob a mesma identidade e 16 conteúdos remotos sem fingerprint local. Os `statements` foram comparados em memória; nenhum corpo bruto foi registrado. Evidência detalhada em `docs/migration-drift-reconciliation.md`.
+- Marco 4 segue parcial: o novo snapshot confirma que o ledger Dev avançou com a migration de escopo tenant, mas os conflitos de histórico continuam sem classificação completa. Próxima atividade: classificar os efeitos remotos restantes contra o catálogo e contratos Dev, sem sincronização automática.
+
 ## Regressão de tenant encontrada e isolada para Dev — 02/10/2026
 
 - A inspeção `READ ONLY` de Dev encontrou a RPC scoped ativa, mas o trigger de `legacy_records` instalado não lê o GUC tenant que a RPC define. A tabela de registry de integrações CXM não está instalada; a correção candidata não a cria e mantém o roteamento de webhook opcional apenas em ambientes que já tenham essa relação.
