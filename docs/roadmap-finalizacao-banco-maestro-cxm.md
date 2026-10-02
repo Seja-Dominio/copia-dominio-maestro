@@ -4,8 +4,8 @@
 
 - A inspeção `READ ONLY` de Dev encontrou a RPC scoped ativa, mas o trigger de `legacy_records` instalado não lê o GUC tenant que a RPC define. A tabela de registry de integrações CXM não está instalada; a correção candidata não a cria e mantém o roteamento de webhook opcional apenas em ambientes que já tenham essa relação.
 - Em clone local Dev-shaped, a fixture multi-tenant reproduziu create sem `organization_id`, seguido de update rejeitado. A migration candidata `20261002090000_restore_scoped_tenant_context_for_legacy_mutations.sql` e uma nova fixture transacional foram criadas; após aplicar a candidata no clone, create, patch parcial e negação cross-tenant passaram. `ROLLBACK` confirmou que as fixtures não persistem.
-- Replay limpo/CI passou (`37022526669`, SHA `75bc989007a8265ca2a5e349ce6d5b04e166f4d6`); diff revisto e commit/push conferidos com SHA local/remoto iguais. A migração **não foi aplicada ao Supabase Dev**: o ledger atual tem divergências e não existe ainda um mecanismo seguro de aplicar só esta migration e confirmar sua entrada sem repair ou `db push` integral. O gate de deploy Dev permanece fechado; Produção não deve ser tocada.
-- Marco 4 avança, mas permanece parcial: falta criar um caminho de rollout Dev com ledger rastreável, validar o upgrade no baseline apropriado e continuar classificando os demais desvios.
+- Replay limpo/CI passou (`37022526669`, SHA `75bc989007a8265ca2a5e349ce6d5b04e166f4d6`); diff revisto e commits/push sincronizados. Depois foi aplicada **somente esta migration** em Dev, com lock e guardas, e ledger atualizado na mesma transação. A fixture multi-tenant real terminou em rollback e a consulta posterior confirmou zero resíduos; o hash do statement no ledger bate com o arquivo local. Nenhum `db push`/`migration repair` nem alteração em Produção.
+- Marco 4 avança e permanece parcial: a aplicação foi um procedimento específico, não um mecanismo genérico para migrations pendentes. Falta validar o upgrade no baseline apropriado, automatizar o caminho auditável para migrations futuras e continuar classificando os demais desvios.
 
 ## Checkpoint read-only dos ledgers — 01/10/2026
 
