@@ -743,6 +743,12 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - **Decisão de execução:** manter migration histórica e ledger intactos; não reaplicar, não promover seu corpo e não sincronizar Dev/Produção por `db push`/repair. Para destravar, obter snapshot anonimizado representativo e contrato de escrita/fonte de verdade da API; então especificar e testar regra de conflito com contagens de preservação/atualização e rollback num clone com dados. Não usar clone schema-only como substituto.
 - Marco 4 permanece parcial e sem liberação para escrita hospedada. O gate acrescenta risco de integridade de dados P0 à reconciliação statement-a-statement; não altera a estimativa global sem fechar um critério de saída.
 
+#### Projeção de JobHistory no escopo Dev — 02/10/2026
+
+- A comparação de catálogo foi somente leitura e limitada ao Dev. Identificou-se que a função de projeção instalada não rejeita explicitamente `job_id` legado sem Job correspondente no mesmo tenant.
+- Migration forward `20261002150000_restore_tenant_scoped_job_history_projection.sql` e testes de mesmo tenant, cross-tenant e pai ausente foram preparados no branch. A fixture foi aprovada em clone local Dev-shaped sob `service_role`, com rollback; CI de replay limpo e a comparação semântica restante são os próximos gates.
+- Por orientação operacional, esta continuação fica em Dev: sem consulta ou escrita em Produção, sem promoção/deploy remoto. Marco 4 segue parcial.
+
 ### Separação de conflitos por ownership — 01/10/2026
 
 - A extração read-only dos objetos `public.*` dos nove conflitos Dev distinguiu trilhas CXM (`cxm_webhook_*` e `cxm_silence_due_jobs`), Maestro core, integrações cross-cutting e objetos de privilégio misto (`team_chat_*`/colaboradores + tabelas Maestro). Evidência e limites em `docs/migration-drift-reconciliation.md`.

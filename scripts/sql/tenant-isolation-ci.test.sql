@@ -481,6 +481,34 @@ begin
   ) then raise exception 'TEST_FAIL legacy JobHistory dual-write did not preserve same-tenant Job'; end if;
 
   begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'JobHistory', 'tenant-ci-cross-tenant-projection-history',
+      '{"job_id":"tenant-ci-job-b","type":"status_changed","field":"status","text":"Must reject cross-tenant parent"}'::jsonb);
+    raise exception 'TEST_FAIL legacy JobHistory dual-write accepted another tenant Job';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Job history job must belong to the same organization'
+      and v_error <> 'TEST_FAIL legacy JobHistory dual-write accepted another tenant Job' then
+      raise exception 'TEST_FAIL unexpected cross-tenant JobHistory projection rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL legacy JobHistory dual-write accepted another tenant Job' then raise; end if;
+  end;
+
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'JobHistory', 'tenant-ci-missing-job-projection-history',
+      '{"job_id":"tenant-ci-missing-job","type":"status_changed","field":"status","text":"Must reject missing parent"}'::jsonb);
+    raise exception 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'Job history job must belong to the same organization'
+      and v_error <> 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job' then
+      raise exception 'TEST_FAIL unexpected missing-parent JobHistory projection rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job' then raise; end if;
+  end;
+
+  begin
     perform public.resolve_job_task_reconciliation(
       '00000000-0000-0000-0000-00000000a001'::uuid,
       '00000000-0000-0000-0000-00000000a501'::uuid,

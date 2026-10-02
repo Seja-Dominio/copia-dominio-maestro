@@ -1,5 +1,14 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Revalidação Dev-only das projeções core — 02/10/2026
+
+- Escopo desta rodada foi fixado pelo usuário em Dev. A consulta ao projeto `tqmfuskvllpqmvayjuqu` foi somente leitura; nenhuma consulta, escrita, migration ou deploy foi feito em Produção.
+- Predicados sanitizados do catálogo confirmam que as funções remotas `maestro_sync_relational_job_task` e `maestro_sync_relational_job_history` usam `SECURITY INVOKER`, `search_path` vazio, rejeitam mapping ambíguo, tenant inativo e organization mismatch, e usam fallback somente quando há uma organização ativa. A projeção de tarefa também rejeita Job não resolvido no tenant e usa chave de upsert composta.
+- A função de histórico em Dev não tinha a guarda local que rejeita um `job_id` não vazio sem Job resolvido no mesmo tenant. O efeito observado é material: a linha poderia continuar como histórico sem `job_id` tipado, preservando a chave legada incompatível, em vez de falhar atomicamente.
+- Criada a migration aditiva `20261002150000_restore_tenant_scoped_job_history_projection.sql`, com pré-condições fail-closed e reassert da função invoker tenant-aware. A regressão CI agora cobre Job do mesmo tenant, Job de outro tenant e Job inexistente.
+- A migration foi aplicada somente ao clone local Dev-shaped `maestro_dev_history_acl_gap_upgrade_20261002`, como owner `supabase_admin`. Fixture sob `service_role`: o pai same-tenant projetou corretamente; os casos cross-tenant e pai ausente falharam com a mensagem esperada; a transação terminou em `ROLLBACK`. A instalação limpa/replay ainda depende do CI desta alteração.
+- A referência Dev hospedada não foi alterada: seu ledger continua divergente e não se executou `db push`, migration repair, DDL ou gravação remota. O clone isolado é evidência de comportamento candidato, não autorização para aplicá-lo no Dev hospedado. O marco de reconciliação permanece aberto até CI verde, comparação semântica dos demais ramos e validação de upgrade representativo.
+
 ## Gate de reconciliação MiniTask antes da projeção relacional — Dev-only — 02/10/2026
 
 - Correção de escopo da evidência: consulta `READ ONLY` ao projeto Dev (`tqmfuskvllpqmvayjuqu`) confirmou que `maestro_mini_tasks` e `maestro_delete_logs` **não existem** no schema hospedado. Portanto, as contagens seguintes são do ledger legado `legacy_records` unido ao mapeamento `organization_legacy_records`, não de linhas da projeção relacional. Nenhuma consulta foi executada em Produção.
