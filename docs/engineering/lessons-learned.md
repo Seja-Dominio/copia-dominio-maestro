@@ -1,5 +1,14 @@
 # Lições de engenharia
 
+## Reconciliar projeções usando escopo materializado exige preflight completo — 02/10/2026
+
+- **Evidência:** consulta agregada `READ ONLY` somente ao Dev encontrou 57 linhas sem `organization_legacy_records` (5 `DominusAuditSummary`, 30 `Notification`, 22 `NpsHistory`); todas tinham `legacy_records.organization_id` e organização existente/ativa, enquanto as três tabelas relacionais-alvo e entradas correspondentes no registry não existem no catálogo hospedado. Nenhum ID/payload de negócio foi lido.
+- **Candidata validada localmente:** a migration `20261002170000_reconcile_source_scoped_legacy_projections.sql` usa o tenant materializado apenas após rejeitar ausências, órfãos, mapas conflitantes/não confirmados/ambíguos, projeções em outro tenant e valores fora de faixa. Clone Dev-shaped `maestro_dev_projection_backfill_candidate_20261002`, como owner `supabase_admin`: quatro fixtures em dois tenants criaram mapa e projeções corretos; segunda execução preservou contagens; conflito de mapeamento e overflow foram rejeitados antes de escrita. Todos os cenários finalizaram em `ROLLBACK`, sem resíduos.
+- **Limite:** a fixture não prova upgrade com dados de negócio, registry/ownership permanece pendente, e o catálogo Dev hospedado não possui as três projeções necessárias. A migration está somente em branch, sem aplicação hospedada; CI deste checkpoint ainda pendente. Produção não foi consultada.
+- **Aplicação:** backfills de registros legados cuja coluna de organização já foi validada como fonte. Fazer preflight de toda a coorte e dos mapas/projeções existentes antes de qualquer DML; criar mapa e projeção na mesma migration transacional, falhar fechada e testar repetição/conflito.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com esse padrão delimitado ao escopo materializado já comprovado.
+- Esforço ativo: não medido.
+
 ## Dual-write não deve inferir tenant pelo primeiro registro ativo — 02/10/2026
 
 - **Evidência:** em clone local Dev-shaped vazio, a migration NPS anterior recebeu dois tenants ativos e um `NpsHistory` sem organization/map; gravou a projeção no tenant A enquanto a linha-fonte e o mapa permaneceram sem tenant. A fixture terminou com `ROLLBACK`. Na candidata forward, sob `service_role`, same-tenant (`NpsEntry`/`NpsHistory`) persistiu mapa e projeção; escopo ausente em multi-tenant, mapa ambíguo/divergente e tentativa de mover projeção foram rejeitados sem resíduos, também com rollback.

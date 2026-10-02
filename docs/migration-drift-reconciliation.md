@@ -1,5 +1,14 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Projeções ausentes para linhas com escopo legado confirmado — somente Dev — 02/10/2026
+
+- Consulta `READ ONLY` somente ao projeto Dev `tqmfuskvllpqmvayjuqu`: 57 linhas sem mapeamento de organização, em agregados de 5 `DominusAuditSummary`, 30 `Notification` e 22 `NpsHistory`. Todas têm `legacy_records.organization_id` preenchido, as organizações existem/estão ativas e não há projeções relacionais locais no catálogo hospedado para esses tipos. Nenhum payload nem identidade foi consultado; Produção não foi acessada.
+- O ownership de domínio está descrito no mapa funcional (Notification e resumo de auditoria: Maestro; NpsHistory: Insights), mas essas três entidades continuam ausentes do registry/cutover do Dev; isso não define por si só grants, acesso, retenção ou readiness de cutover.
+- Migration local forward-only `20261002170000_reconcile_source_scoped_legacy_projections.sql` exige as três tabelas de projeção, valida coorte sem escopo/órfãos, mappings ausentes/conflitantes/não confirmados/ambíguos e projeções existentes noutro tenant; também valida os casts antes de inserir. Só então cria mappings confirmados a partir do `organization_id` validado e materializa Notification, NpsHistory e DominusAuditSummary sem sobrescrever conflitos.
+- Em clone local Dev-shaped `maestro_dev_projection_backfill_candidate_20261002`, criado a partir do baseline vazio documentado, as migrations históricas de criação das tabelas foram preparadas como owner `supabase_admin`. Fixture sintética de quatro registros em dois tenants comprovou mapeamentos/projeções same-tenant e idempotência da candidata, tudo em transação com `ROLLBACK`; mapa divergente e inteiro NPS fora de faixa abortaram como esperado, e consultas posteriores confirmaram rollback/zero resíduos. Isso testa o algoritmo em schema de instalação, não constitui upgrade com dados representativos nem reproduz o catálogo remoto completo.
+- Fixtures SQL e gates de CI foram adicionados para caminho positivo/idempotente, conflito tenant e overflow. **CI ainda pendente neste checkpoint.** Não houve aplicação no Dev hospedado: o schema atual não tem as três tabelas e a candidata falha fechada até a reconciliação do ledger/pré-requisitos. Nenhum deploy, `db push` ou migration repair; Produção não foi consultada.
+- Próxima etapa: validar o workflow/CI no branch, depois construir um baseline de upgrade com catálogo Dev observado e ensaiar todas as dependências cronológicas, sem dados reais e sem escrita hospedada. Marco 4 continua parcial.
+
 ## Revalidação Dev-only das projeções core — 02/10/2026
 
 - Escopo desta rodada foi fixado pelo usuário em Dev. A consulta ao projeto `tqmfuskvllpqmvayjuqu` foi somente leitura; nenhuma consulta, escrita, migration ou deploy foi feito em Produção.

@@ -34,6 +34,71 @@ jobs:
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Replay every migration from a clean database
         run: supabase db reset --local --no-seed
+      - name: Verify source-scoped legacy projection reconciliation
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run projection reconciliation fixtures."
+            exit 1
+          fi
+          {
+            sed '/^-- LEGACY_PROJECTION_RECONCILE_MIGRATION_BARRIER$/,$d' scripts/sql/legacy-projection-reconcile-ci.test.sql
+            cat supabase/migrations/20261002170000_reconcile_source_scoped_legacy_projections.sql
+            sed -n '/^-- LEGACY_PROJECTION_RECONCILE_MIGRATION_BARRIER$/,$p' scripts/sql/legacy-projection-reconcile-ci.test.sql | sed '1d' | sed '/^-- LEGACY_PROJECTION_RECONCILE_IDEMPOTENCE_BARRIER$/,$d'
+            cat supabase/migrations/20261002170000_reconcile_source_scoped_legacy_projections.sql
+            sed -n '/^-- LEGACY_PROJECTION_RECONCILE_IDEMPOTENCE_BARRIER$/,$p' scripts/sql/legacy-projection-reconcile-ci.test.sql | sed '1d'
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
+      - name: Verify source-scope conflicts abort before reconciliation writes
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run projection conflict fixture."
+            exit 1
+          fi
+          set +e
+          migration_output=$(
+            {
+              sed '/^-- LEGACY_PROJECTION_RECONCILE_CONFLICT_MIGRATION_BARRIER$/,$d' scripts/sql/legacy-projection-reconcile-conflict-ci.test.sql
+              cat supabase/migrations/20261002170000_reconcile_source_scoped_legacy_projections.sql
+            } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 2>&1
+          )
+          migration_status=$?
+          set -e
+          if [ "$migration_status" -eq 0 ] || ! grep -Fq "existing tenant mapping conflicts with source scope" <<< "$migration_output"; then
+            echo "Expected reconciliation to reject a mapping that conflicts with legacy_records.organization_id."
+            exit 1
+          fi
+          if [ "$(docker exec "${db_containers[0]}" psql -U postgres -d postgres -Atqc "select not exists (select 1 from public.legacy_records where record_id = 'projection-reconcile-conflict') and not exists (select 1 from public.organization_legacy_records where legacy_record_id = 'projection-reconcile-conflict') and not exists (select 1 from public.organizations where id in ('00000000-0000-0000-0000-00000000c111','00000000-0000-0000-0000-00000000c112'))")" != "t" ]; then
+            echo "The expected conflict rollback left fixture rows behind."
+            exit 1
+          fi
+      - name: Verify out-of-range projection values fail before reconciliation writes
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run numeric guard fixture."
+            exit 1
+          fi
+          set +e
+          migration_output=$(
+            {
+              sed '/^-- LEGACY_PROJECTION_RECONCILE_INVALID_MIGRATION_BARRIER$/,$d' scripts/sql/legacy-projection-reconcile-invalid-ci.test.sql
+              cat supabase/migrations/20261002170000_reconcile_source_scoped_legacy_projections.sql
+            } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 2>&1
+          )
+          migration_status=$?
+          set -e
+          if [ "$migration_status" -eq 0 ] || ! grep -Fq "integer value is outside the supported range" <<< "$migration_output"; then
+            echo "Expected reconciliation to reject an out-of-range NPS integer before casting or writing."
+            exit 1
+          fi
+          if [ "$(docker exec "${db_containers[0]}" psql -U postgres -d postgres -Atqc "select not exists (select 1 from public.legacy_records where record_id = 'projection-reconcile-overflow') and not exists (select 1 from public.organization_legacy_records where legacy_record_id = 'projection-reconcile-overflow') and not exists (select 1 from public.organizations where id = '00000000-0000-0000-0000-00000000c121')")" != "t" ]; then
+            echo "The expected numeric guard rollback left fixture rows behind."
+            exit 1
+          fi
       - name: Verify fresh tenant bootstrap does not scope legacy rows without an owner
         shell: bash
         run: |
