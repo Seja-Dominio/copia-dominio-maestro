@@ -1,7 +1,6 @@
 -- Rollback-only contract for audited financial-entry deletes.
 -- Run only against the disposable local verification database or isolated preview.
 begin;
-set local role service_role;
 
 do $preflight$
 begin
@@ -90,5 +89,4 @@ begin
 end;
 $verify$;
 
-reset role;
 rollback;

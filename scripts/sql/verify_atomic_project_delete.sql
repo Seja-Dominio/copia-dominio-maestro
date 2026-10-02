@@ -1,7 +1,6 @@
 -- Rollback-only contract for scoped project deletion and audit persistence.
 -- Run only against Dev or an isolated verification database.
 begin;
-set local role service_role;
 
 do $preflight$
 begin
@@ -13,12 +12,11 @@ begin
 end;
 $preflight$;
 
-do $verify$
+do $setup$
 declare
   v_org uuid := gen_random_uuid();
   v_client text := 'atomic-project-delete-client-' || gen_random_uuid()::text;
   v_project text := 'atomic-project-delete-project-' || gen_random_uuid()::text;
-  v_result jsonb;
 begin
   insert into public.organizations(id, name, slug, status, created_at)
   values (v_org, 'Atomic project delete test tenant', 'atomic-project-delete-' || left(v_org::text, 8), 'active', now());
@@ -33,18 +31,41 @@ begin
     where organization_id = v_org and legacy_record_id = v_project
   ) then raise exception 'TEST_FAIL project fixture was not projected'; end if;
 
+  perform set_config('maestro_test.project_delete_org', v_org::text, true);
+  perform set_config('maestro_test.project_delete_id', v_project, true);
+end;
+$setup$;
+
+set local role service_role;
+
+do $invoke$
+declare
+  v_org uuid := current_setting('maestro_test.project_delete_org')::uuid;
+  v_project text := current_setting('maestro_test.project_delete_id');
+  v_result jsonb;
+begin
   select public.maestro_apply_legacy_mutation_scoped(
     v_org, 'delete', 'Project', v_project, '{}'::jsonb, 'test-actor', 'Test Actor'
   ) into v_result;
 
-  if coalesce(v_result->>'deleted', 'false') <> 'true'
-    or exists (select 1 from public.legacy_records where organization_id=v_org and entity='Project' and record_id=v_project)
+  if coalesce(v_result->>'deleted', 'false') <> 'true' then
+    raise exception 'TEST_FAIL scoped project delete RPC did not report deletion';
+  end if;
+end;
+$invoke$;
+
+reset role;
+
+do $assert$
+declare
+  v_org uuid := current_setting('maestro_test.project_delete_org')::uuid;
+  v_project text := current_setting('maestro_test.project_delete_id');
+begin
+  if exists (select 1 from public.legacy_records where organization_id=v_org and entity='Project' and record_id=v_project)
     or exists (select 1 from public.maestro_projects where organization_id=v_org and legacy_record_id=v_project)
     or not exists (select 1 from public.legacy_records where organization_id=v_org and entity='DeleteLog' and payload->>'entity_id'=v_project and payload->>'entity_type'='project')
     or not exists (select 1 from public.legacy_records where organization_id=v_org and entity='SystemAuditLog' and payload->>'entity'='Project' and payload->>'record_id'=v_project and payload->>'action'='delete')
   then raise exception 'TEST_FAIL project delete, relational projection, or audit was not atomic'; end if;
 end;
-$verify$;
-
-reset role;
+$assert$;
 rollback;
