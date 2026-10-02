@@ -1,5 +1,12 @@
 # Roadmap para finalizar o banco do Maestro e estruturar o CRM integrado e independente
 
+## Regressão de tenant encontrada e isolada para Dev — 02/10/2026
+
+- A inspeção `READ ONLY` de Dev encontrou a RPC scoped ativa, mas o trigger de `legacy_records` instalado não lê o GUC tenant que a RPC define. A tabela de registry de integrações CXM não está instalada; a correção candidata não a cria e mantém o roteamento de webhook opcional apenas em ambientes que já tenham essa relação.
+- Em clone local Dev-shaped, a fixture multi-tenant reproduziu create sem `organization_id`, seguido de update rejeitado. A migration candidata `20261002090000_restore_scoped_tenant_context_for_legacy_mutations.sql` e uma nova fixture transacional foram criadas; após aplicar a candidata no clone, create, patch parcial e negação cross-tenant passaram. `ROLLBACK` confirmou que as fixtures não persistem.
+- Ainda falta executar replay limpo/CI, revisar o diff e fazer checkpoint Git. A migração **não foi aplicada ao Supabase Dev**: o ledger atual tem divergências e não existe ainda um mecanismo seguro de aplicar só esta migration e confirmar sua entrada sem repair ou `db push` integral. O gate de deploy Dev permanece fechado; Produção não deve ser tocada.
+- Marco 4 avança, mas permanece parcial: falta criar um caminho de rollout Dev com ledger rastreável, validar o upgrade no baseline apropriado e continuar classificando os demais desvios.
+
 ## Checkpoint read-only dos ledgers — 01/10/2026
 
 - Reconsulta autenticada via Supabase CLI confirmou 83 entradas no ledger Dev e 111 em Produção, contra 180 migrations locais. Fingerprints calculados em memória a partir das `statements` confirmaram Dev: 22 pares identidade+conteúdo exatos, nove divergências sob mesma identidade e 16 conteúdos remotos sem arquivo equivalente; Produção: 15 pares exatos, duas divergências sob mesma identidade, 70 conteúdos com alias local em outra identidade e 26 sem fingerprint local.
