@@ -1,5 +1,13 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Gate da FK de responsável da projeção MiniTask — Dev-only — 02/10/2026
+
+- Leitura `READ ONLY` explicitamente direcionada ao projeto Dev (`tqmfuskvllpqmvayjuqu`) encontrou 131 `MiniTask` e 64 `DeleteLog`, todos com mapeamento de organização confirmado e sem chaves de mapeamento duplicadas. Os campos convertidos pela projeção não apresentaram valores inválidos nos testes de cast usados pela migration.
+- A migration `20260927060831_enforce_mini_task_assignee_tenant_scope.sql` adiciona e valida uma FK composta de `maestro_mini_tasks(organization_id, collaborator_legacy_record_id)` para `organization_members(organization_id, collaborator_id)`. No conjunto atual de Dev, 118 dos 131 responsáveis resolvem para membership do mesmo tenant e 13 não resolvem; portanto, a validação falharia se aplicada sem disposição explícita para os vínculos históricos.
+- O payload legado completo é copiado para `task_payload`, mas o dual-write também grava o responsável na coluna da projeção. O endpoint continua lendo e escrevendo `MiniTask` via `legacy_records`, e `MiniTask` está `not_started` para cutover. Assim, não se deve inferir que as 13 referências podem ser apagadas ou convertidas para `NULL`: isso poderia alterar atribuições preservadas e o FK pode rejeitar novos writes dual-write.
+- **Gate aberto:** manter esta migration fora do Dev hospedado até classificar os 13 vínculos sem expor dados pessoais, decidir como preservar referência histórica sem membership atual e testar em clone Dev-shaped o trigger de dual-write com responsável válido, removido e não resolvido. A FK poderá ser validada após reconciliação, ou substituída por contrato compatível com snapshots históricos, mediante evidência e revisão. Nenhuma linha foi alterada e nenhuma migration foi aplicada ao projeto hospedado.
+- Estas contagens são evidência exclusivamente de Dev; não houve consulta nem escrita em Produção.
+
 ## Compatibilidade das fixtures com o schema Dev instalado — 02/10/2026
 
 - A auditoria atual ficou restrita ao Supabase Dev `tqmfuskvllpqmvayjuqu`; não houve consulta nem escrita em Produção. O checkout de trabalho é o branch `codex/maestro-db-canonical-candidate`, limpo antes desta alteração.
