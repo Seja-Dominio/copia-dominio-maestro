@@ -755,6 +755,12 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - A divergência local/remota `allow_authenticated_membership_self_read` foi comparada por efeito no catálogo Dev: policy `SELECT` self-only, sem SELECT de `anon` e sem grants cliente de escrita; a suíte clean-room confirma visibilidade da própria membership e isolamento entre dois tenants.
 - Classificação: divergência de identidade/versionamento sem efeito funcional pendente. Não reaplicar a migration nem corrigir o ledger isoladamente. Sem consulta ou escrita em Produção.
 
+#### Proteção do dual-write NPS — candidato local — 02/10/2026
+
+- A revisão do fluxo de tenant detectou fallback para o primeiro tenant ativo no dual-write de NPS. Reproduzido em clone local vazio: com dois tenants, registro legado sem escopo era projetado em A sem vínculo tenant. Clone revertido; nenhum banco hospedado foi alterado.
+- Candidata forward `20261002160000_fail_closed_nps_tenant_dual_write.sql` e regressões para NPS Entry/History cobrem escopo explícito, update same-tenant, rejeição de tenant ausente/ambíguo/cruzado, prevenção de movimento da projeção existente e ausência de resíduos. Ensaio rollback-only passou em clone Dev-shaped sob `service_role`; o CI do commit atual ainda precisa confirmar o replay total e a suíte.
+- Dev hospedado não instala as tabelas, a função ou o trigger NPS, então esta proteção está somente em código/CI; não é correção aplicada ao runtime Dev. Não executar repair/push isolado por conta do ledger/catalog drift. Marco 4 segue parcial; upgrade representativo das 57 linhas legadas continua pendente.
+
 ### Separação de conflitos por ownership — 01/10/2026
 
 - A extração read-only dos objetos `public.*` dos nove conflitos Dev distinguiu trilhas CXM (`cxm_webhook_*` e `cxm_silence_due_jobs`), Maestro core, integrações cross-cutting e objetos de privilégio misto (`team_chat_*`/colaboradores + tabelas Maestro). Evidência e limites em `docs/migration-drift-reconciliation.md`.

@@ -16,6 +16,14 @@
 - `scripts/sql/tenant-isolation-ci.test.sql` já executa a leitura sob `authenticated` com dois tenants: cada identidade vê sua única membership e não vê o tenant alheio. O CI `37069336129` aprovou replay limpo e a fixture.
 - **Classificação:** efeito de policy/grants compatível com a migration local; diferença apenas de identidade do ledger, sem necessidade de DDL corretiva no Dev. Não fazer `migration repair` para trocar a versão. Nenhum acesso a Produção nesta classificação.
 
+## Dual-write NPS com tenant inferido — candidato local — 02/10/2026
+
+- O Dev hospedado não tem `maestro_nps_entries`, `maestro_nps_history`, `maestro_sync_nps()` nem o trigger `legacy_records_nps_sync`; portanto, o risco abaixo **não é evidência de execução atual no Dev**. Foi encontrado no caminho de instalação local pelas migrations `20260926380000`/`20260926390000`.
+- A função anterior, sem `organization_id` e sem mapeamento, escolhia o primeiro tenant ativo. Reproduzido em clone local Dev-shaped limpo com dois tenants: a linha-fonte ficou sem tenant, mas foi criada projeção em A e nenhum vínculo `organization_legacy_records`. Transação revertida.
+- Adicionada candidata forward `20261002160000_fail_closed_nps_tenant_dual_write.sql`: exige tenant explícito ou mapeamento único; rejeita mapeamento ambíguo, status não confirmado, tenant inativo ou divergente; conserva compatibilidade de fallback apenas para novos inserts quando há exatamente um tenant ativo; nunca move uma projeção existente entre tenants. O dual-write registra o vínculo confirmado antes de persistir projeção.
+- Ensaio em clone local Dev-shaped: migrations NPS anteriores + grants server-role existentes + candidata; sob `service_role`, inserts e update same-tenant (`NpsEntry`/`NpsHistory`) projetaram e criaram mappings; sem tenant com dois ativos, mapeamento cruzado/ambíguo e tentativa de mover projeção foram rejeitados; registros recusados ficaram com contagem zero e a projeção preexistente permaneceu no tenant B; todos os dados fixture foram revertidos. O baseline clone tem schema vazio de negócio; não prova upgrade de dados reais.
+- A migration falha fechada se as tabelas relacionais NPS não existirem, pois o catálogo hospedado Dev ainda diverge. Não aplicar isoladamente nem executar `db push`/repair no Dev. A validação integral da migration e da fixture de isolamento aguarda o CI deste commit. Nenhuma escrita em banco hospedado; Produção não consultada.
+
 ## Gate de reconciliação MiniTask antes da projeção relacional — Dev-only — 02/10/2026
 
 - Correção de escopo da evidência: consulta `READ ONLY` ao projeto Dev (`tqmfuskvllpqmvayjuqu`) confirmou que `maestro_mini_tasks` e `maestro_delete_logs` **não existem** no schema hospedado. Portanto, as contagens seguintes são do ledger legado `legacy_records` unido ao mapeamento `organization_legacy_records`, não de linhas da projeção relacional. Nenhuma consulta foi executada em Produção.

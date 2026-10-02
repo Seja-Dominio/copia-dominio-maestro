@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Dual-write não deve inferir tenant pelo primeiro registro ativo — 02/10/2026
+
+- **Evidência:** em clone local Dev-shaped vazio, a migration NPS anterior recebeu dois tenants ativos e um `NpsHistory` sem organization/map; gravou a projeção no tenant A enquanto a linha-fonte e o mapa permaneceram sem tenant. A fixture terminou com `ROLLBACK`. Na candidata forward, sob `service_role`, same-tenant (`NpsEntry`/`NpsHistory`) persistiu mapa e projeção; escopo ausente em multi-tenant, mapa ambíguo/divergente e tentativa de mover projeção foram rejeitados sem resíduos, também com rollback.
+- **Aplicação:** dual-writes e triggers que associam registros legados a projeções tenant-aware. Resolver por contexto explícito ou mapa unívoco; não usar `ORDER BY ... LIMIT 1` como fallback multi-tenant.
+- **Skill atualizada:** `dominio-database-migrations/SKILL.md`, com exigência de identidade tenant explícita/unívoca e fixture com dois tenants ativos.
+- O Dev hospedado não contém as tabelas/triggers NPS; a candidata está em código e ainda aguarda replay/fixture integral no CI. Upgrade com dados reais representativos continua não comprovado. Esforço ativo: não medido.
+
 ## Fixtures com DDL em dump schema-only precisam do owner restaurado — 01/10/2026
 
 - **Evidência:** a fixture de reconciliação core falhou no clone Prod-shaped ao executar `ALTER TABLE` como `postgres`; a consulta read-only confirmou `supabase_admin` como owner das tabelas. O fechamento da sessão reverteu a fixture (0 organizações, Jobs, tasks/exceções sintéticas). Reexecução idêntica como `supabase_admin` passou migrations idempotentes, asserts de reconciliação/recovery e RLS, finalizando com `ROLLBACK` e zero resíduos. O CI clean-room continuou passando como `postgres`, cujo ownership é diferente.

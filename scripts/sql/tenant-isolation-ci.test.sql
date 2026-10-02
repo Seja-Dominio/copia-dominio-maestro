@@ -46,7 +46,10 @@ begin
       'tenant-ci-cross-project-write', 'tenant-ci-relational-project',
       'tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
       'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
-      'tenant-ci-legacy-projection-history')
+      'tenant-ci-legacy-projection-history', 'tenant-ci-nps-entry-a',
+      'tenant-ci-nps-history-a', 'tenant-ci-nps-history-unresolved',
+      'tenant-ci-nps-cross-scope', 'tenant-ci-nps-ambiguous-map',
+      'tenant-ci-nps-projection-move')
   ) or exists (
     select 1 from public.organization_legacy_records
     where legacy_entity = 'Project'
@@ -55,7 +58,10 @@ begin
     select 1 from public.organization_legacy_records
       where legacy_record_id in ('tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
         'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
-        'tenant-ci-legacy-projection-history')
+        'tenant-ci-legacy-projection-history', 'tenant-ci-nps-entry-a',
+        'tenant-ci-nps-history-a', 'tenant-ci-nps-history-unresolved',
+        'tenant-ci-nps-cross-scope', 'tenant-ci-nps-ambiguous-map',
+        'tenant-ci-nps-projection-move')
   ) or exists (
     select 1 from public.maestro_bank_accounts
     where legacy_record_id in ('tenant-ci-account-a', 'tenant-ci-account-b')
@@ -70,6 +76,14 @@ begin
   ) or exists (
     select 1 from public.maestro_job_history
       where legacy_record_id = 'tenant-ci-legacy-projection-history'
+  ) or exists (
+    select 1 from public.maestro_nps_entries
+      where legacy_record_id = 'tenant-ci-nps-entry-a'
+  ) or exists (
+    select 1 from public.maestro_nps_history
+    where legacy_record_id in ('tenant-ci-nps-history-a', 'tenant-ci-nps-history-unresolved',
+        'tenant-ci-nps-cross-scope', 'tenant-ci-nps-ambiguous-map',
+        'tenant-ci-nps-projection-move')
   ) or exists (
     select 1 from public.job_task_reconciliation
     where id = '00000000-0000-0000-0000-00000000a501'::uuid
@@ -521,6 +535,137 @@ begin
     end if;
     if v_error = 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job' then raise; end if;
   end;
+
+  -- NPS has its own dual-write path (Insights ownership). It must use an
+  -- explicit or uniquely mapped tenant, never choose the first active org.
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'NpsEntry', 'tenant-ci-nps-entry-a',
+    '{"client_id":"tenant-ci-client-a","month":"2026-10-01","monthly_score":9,"notes":"tenant A"}'::jsonb);
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'NpsHistory', 'tenant-ci-nps-history-a',
+    '{"client_id":"tenant-ci-client-a","event_type":"score_changed","delta":1,"score_before":8,"score_after":9}'::jsonb);
+  update public.legacy_records
+  set payload = payload || '{"monthly_score":10}'::jsonb
+  where entity='NpsEntry' and record_id='tenant-ci-nps-entry-a';
+  if not exists (
+    select 1 from public.organization_legacy_records m
+    where m.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and m.legacy_entity='NpsEntry' and m.legacy_record_id='tenant-ci-nps-entry-a'
+      and m.scope_status='confirmed' and m.source='scoped-nps-dual-write'
+  ) or not exists (
+    select 1 from public.maestro_nps_entries e
+    where e.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and e.legacy_record_id='tenant-ci-nps-entry-a' and e.month='2026-10-01'::date
+      and e.monthly_score=10
+  ) or not exists (
+    select 1 from public.maestro_nps_history h
+    where h.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and h.legacy_record_id='tenant-ci-nps-history-a' and h.score_after=9
+  ) then
+    raise exception 'TEST_FAIL scoped NPS entry/history did not map and project for its explicit tenant';
+  end if;
+
+  begin
+    insert into public.legacy_records (entity, record_id, payload)
+    values ('NpsHistory', 'tenant-ci-nps-history-unresolved', '{"event_type":"unscoped"}'::jsonb);
+    raise exception 'TEST_FAIL unscoped NPS history was assigned to an arbitrary tenant';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'NPS record requires an explicit organization in a multi-tenant system'
+      and v_error <> 'TEST_FAIL unscoped NPS history was assigned to an arbitrary tenant' then
+      raise exception 'TEST_FAIL unexpected unresolved NPS tenant result: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL unscoped NPS history was assigned to an arbitrary tenant' then raise; end if;
+  end;
+
+  insert into public.organization_legacy_records (
+    organization_id, legacy_entity, legacy_record_id, scope_status, source
+  ) values (
+    '00000000-0000-0000-0000-00000000b001'::uuid,
+    'NpsHistory', 'tenant-ci-nps-cross-scope', 'confirmed', 'tenant-ci-fixture'
+  );
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'NpsHistory', 'tenant-ci-nps-cross-scope',
+      '{"event_type":"must reject mapping mismatch"}'::jsonb);
+    raise exception 'TEST_FAIL NPS dual-write accepted a mapping from another tenant';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'NPS record organization scope mismatch'
+      and v_error <> 'TEST_FAIL NPS dual-write accepted a mapping from another tenant' then
+      raise exception 'TEST_FAIL unexpected cross-tenant NPS rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL NPS dual-write accepted a mapping from another tenant' then raise; end if;
+  end;
+  if exists (
+    select 1 from public.legacy_records where record_id='tenant-ci-nps-history-unresolved'
+  ) or exists (
+    select 1 from public.maestro_nps_history
+    where legacy_record_id in ('tenant-ci-nps-history-unresolved', 'tenant-ci-nps-cross-scope')
+  ) then
+    raise exception 'TEST_FAIL rejected NPS write left a source row or projection';
+  end if;
+
+  insert into public.organization_legacy_records (
+    organization_id, legacy_entity, legacy_record_id, scope_status, source
+  ) values
+    ('00000000-0000-0000-0000-00000000a001'::uuid, 'NpsHistory', 'tenant-ci-nps-ambiguous-map', 'confirmed', 'tenant-ci-fixture'),
+    ('00000000-0000-0000-0000-00000000b001'::uuid, 'NpsHistory', 'tenant-ci-nps-ambiguous-map', 'confirmed', 'tenant-ci-fixture');
+  begin
+    insert into public.legacy_records (entity, record_id, payload)
+    values ('NpsHistory', 'tenant-ci-nps-ambiguous-map', '{"event_type":"ambiguous"}'::jsonb);
+    raise exception 'TEST_FAIL NPS dual-write accepted ambiguous tenant mappings';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'NPS record organization mapping is ambiguous'
+      and v_error <> 'TEST_FAIL NPS dual-write accepted ambiguous tenant mappings' then
+      raise exception 'TEST_FAIL unexpected ambiguous NPS mapping rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL NPS dual-write accepted ambiguous tenant mappings' then raise; end if;
+  end;
+  if exists (
+    select 1 from public.legacy_records where record_id='tenant-ci-nps-ambiguous-map'
+  ) or exists (
+    select 1 from public.maestro_nps_history where legacy_record_id='tenant-ci-nps-ambiguous-map'
+  ) then
+    raise exception 'TEST_FAIL ambiguous NPS rejection left a source row or projection';
+  end if;
+
+  insert into public.organization_legacy_records (
+    organization_id, legacy_entity, legacy_record_id, scope_status, source
+  ) values (
+    '00000000-0000-0000-0000-00000000a001'::uuid,
+    'NpsHistory', 'tenant-ci-nps-projection-move', 'confirmed', 'tenant-ci-fixture'
+  );
+  insert into public.maestro_nps_history (
+    legacy_record_id, organization_id, event_type, payload
+  ) values (
+    'tenant-ci-nps-projection-move', '00000000-0000-0000-0000-00000000b001'::uuid,
+    'existing-tenant-b', '{"event_type":"existing-tenant-b"}'::jsonb
+  );
+  begin
+    insert into public.legacy_records (organization_id, entity, record_id, payload)
+    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'NpsHistory', 'tenant-ci-nps-projection-move',
+      '{"event_type":"must not move projection"}'::jsonb);
+    raise exception 'TEST_FAIL NPS dual-write moved a projection between tenants';
+  exception when others then
+    get stacked diagnostics v_error = message_text;
+    if v_error <> 'NPS history cannot move between organizations'
+      and v_error <> 'TEST_FAIL NPS dual-write moved a projection between tenants' then
+      raise exception 'TEST_FAIL unexpected NPS projection-move rejection: %', v_error;
+    end if;
+    if v_error = 'TEST_FAIL NPS dual-write moved a projection between tenants' then raise; end if;
+  end;
+  if exists (
+    select 1 from public.legacy_records where record_id='tenant-ci-nps-projection-move'
+  ) or not exists (
+    select 1 from public.maestro_nps_history
+    where legacy_record_id='tenant-ci-nps-projection-move'
+      and organization_id='00000000-0000-0000-0000-00000000b001'::uuid
+      and event_type='existing-tenant-b'
+  ) then
+    raise exception 'TEST_FAIL rejected NPS projection move changed source or existing projection';
+  end if;
 
   begin
     perform public.resolve_job_task_reconciliation(
