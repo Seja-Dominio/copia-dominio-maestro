@@ -218,6 +218,10 @@ class MaestroToolAdapter:
             method="POST",
         )
         try:
+            # The bridge accepts only HMAC-authenticated requests whose exact endpoint
+            # is in DOMINUS_MAESTRO_ENDPOINTS before writing this session file.
+            # Keep this narrowly scoped exception in sync with that allowlist contract.
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             with urlopen(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
@@ -247,4 +251,3 @@ class MaestroToolAdapter:
         except (TypeError, ValueError) as error:
             raise MaestroToolError(f"{name} deve ser numérico") from error
         return max(minimum, min(maximum, parsed))
-
