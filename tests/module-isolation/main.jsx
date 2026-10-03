@@ -4,6 +4,8 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import ModuleErrorBoundary from '../../src/components/ModuleErrorBoundary.jsx';
 import lazyWithRetry from '../../src/lib/lazyWithRetry.js';
 
+window.__moduleIsolationDocumentId = `${Date.now()}-${Math.random()}`;
+
 const Jobs = lazyWithRetry(() => import('./modules/Jobs.jsx'));
 const AdsBrain = lazyWithRetry(() => import('./modules/AdsBrain.jsx'));
 
