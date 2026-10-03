@@ -914,3 +914,8 @@ Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são crit
 - Commit `1426faf64ca59006fbb56aafec74963687f5dc47`, push não-forçado e SHA remoto confirmados; CI `37141406252` passou 6/6 (testes/autorização, clean replay e integridade/tenancy, scanners). Supabase de Produção, dados de Produção e VPS não foram acessados.
 - Corrigida a síntese dos percentuais: último recálculo explícito é Marco 3 55%, geral ponderado 44% após upgrade cronológico de sufixo em clone schema-only; a tabela de abertura que dizia 60%/46% estava desatualizada. Marco 2 e demais percentuais não avançaram por esta correção textual. Resumo de continuidade atualizado para SHA/CI correntes.
 - Ciclo de aprendizado: o procedimento de comparar fonte ativa, testar/CI antes do deploy, baixar novamente e provar autorização negativa já está descrito na skill de integração; este caso confirmou o procedimento, mas não fornece uma regra nova generalizável, então nenhuma skill foi alterada. Esforço ativo não medido.
+
+### Snapshot Dev de `maestro-core-data` — 03/10/2026
+
+- A listagem read-only com ref explícito confirmou `maestro-core-data` ACTIVE v10. O download foi isolado em `/tmp`; `index.ts` e os sete helpers importados (`attachment-access`, `mutation-access`, `session-authorization`, `relational-job-history`, `project-schedule`, `session-renewal`, `safe-edge-error-context`) coincidiram byte a byte com o checkout.
+- A paridade de fonte não comprova a jornada autenticada, ausência de erros 5xx, uso efetivo por todos os fluxos ou elegibilidade de release. A função permanece como pendência no manifesto; nenhum deploy/chamada mutável foi realizado nesta inspeção. Produção, VPS e CXM não foram tocados, e percentuais permanecem 55% no Marco 3 e 44% geral.
