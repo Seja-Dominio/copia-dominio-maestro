@@ -171,6 +171,16 @@ jobs:
           } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
       - name: Lint the resulting public schema
         run: supabase db lint --local --schema public --level error
+      - name: Verify supabase_admin defaults do not grant client access
+        shell: bash
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run default-privilege fixtures."
+            exit 1
+          fi
+          docker exec -i "${db_containers[0]}" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < scripts/sql/restrict_supabase_admin_public_defaults.sql
+          docker exec -i "${db_containers[0]}" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < scripts/sql/default-privileges-supabase-admin-ci.test.sql
       - name: Verify RLS isolation, tenant-aware foreign keys, and core integrity audit
         shell: bash
         run: |
