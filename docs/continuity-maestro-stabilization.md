@@ -19,8 +19,8 @@ Concluir o isolamento funcional entre módulos, validar integridade e migrations
 
 - Checkout de trabalho: `/Users/grimm/.codex/worktrees/maestro-db-reconcile/dominio-maestro`.
 - Branch: `codex/maestro-db-canonical-candidate`.
-- Último checkpoint sincronizado: `c2fd4ae73d7252fee5e837ed49ed24115466042c` (também confirmado no remoto).
-- CI `37140514578`: concluído com sucesso, 6/6 jobs.
+- Último checkpoint sincronizado antes desta retomada: `cbf792bde608281fb85fca417646638fb88b936b` (branch limpa e alinhada ao remoto na inspeção inicial).
+- CI `37140814083`: concluído com sucesso, 6/6 jobs para o handoff anterior. O diff novo descrito abaixo ainda precisa passar CI.
 - Últimas verificações focadas: roteamento/leitor JobHistory 5/5; `npm run verify:frontend-module-boundaries` aprovado; `git diff --check` aprovado.
 - A documentação mais recente corrigiu uma afirmação anterior: no checkout candidato, list/filter/create de JobHistory vão para `maestro-core-data`; leitura usa relação e fallback legado quando ausente. A verificação foi documental/estática, não smoke autenticado do frontend implantado.
 
@@ -39,6 +39,8 @@ Concluir o isolamento funcional entre módulos, validar integridade e migrations
 Percentuais são os últimos registrados no roadmap em 03/10/2026; atualizá-los apenas quando critérios de saída verificáveis mudarem.
 
 ## Evidências e riscos importantes
+
+0. **Revisão do estado vivo das Edge Functions Dev (03/10):** inventário somente leitura encontrou versões mais novas que os registros anteriores, incluindo `maestro-data` v53, `maestro-core-data` v10, `system-reports` v19 e demais handlers. Foi baixado somente o código de `system-reports` para `/tmp` no projeto Dev confirmado. O diff mostrou uma divergência textual: Dev ainda afirmava que Base44 permanecia como fallback no blueprint; o checkout não tinha essa afirmação. O handler importa de `maestro-tenant.mjs` somente `accessLevelForOrganizationRole` e `selectOrganizationMembership`, presentes no helper remoto; a ausência remota de `profileForOrganizationRole` não afeta este handler, mas requer reconciliação separada antes de atualizar consumidores que usam essa exportação. Foi adicionado teste estático para proibir menção a Base44 no handler, e a suíte tenant focada passou 21/21; bundle esbuild passou. `system-reports` foi publicado somente em Supabase Dev e confirmado ativo na v20. Smoke sem sessão/token válido retornou HTTP 403. Isso prova proteção negativa e atualização do texto, não geração autenticada positiva do blueprint/relatório. Supabase Produção, banco e VPS não foram acessados. O commit/push/CI desta correção ainda é pendente neste registro.
 
 1. **Isolamento frontend:** testes Playwright cobrem falha de chunk e falha de render nos dois sentidos Jobs↔Ads Brain e Dashboard↔Financeiro (8/8). Rotas vizinhas renderizam na mesma SPA. Há também verificador estático de boundaries e build no CI.
 2. **Migration histórica `0004/publish_imported_records`:** auditoria agregada READ ONLY em Dev achou 71.185 payloads divergentes entre `migration.base44_records` e `legacy_records`; 63.264 são JobHistory. Timestamps de origem iguais não desempataram os conflitos; há diferenças em `duration_minutes`, `old_value`, `new_value` e `field`. A migration sobrescreve o payload inteiro em conflito. Não reaplicar/reparar/corrigir precedência sem proveniência e teste numa cópia representativa.
@@ -72,4 +74,3 @@ Percentuais são os últimos registrados no roadmap em 03/10/2026; atualizá-los
 - [Reconciliação de migrations e drift](migration-drift-reconciliation.md)
 - [Mapa funcional do sistema](system-functional-map.md)
 - [Lições de engenharia](engineering/lessons-learned.md)
-

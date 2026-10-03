@@ -206,6 +206,7 @@ test("system reports derives admin access from the selected membership and expor
   assert.match(source, /async function load\(entity: string, organizationId: string\)[\s\S]*?\.eq\("organization_id", organizationId\)/);
   assert.match(source, /\.eq\("organization_id", sessionPayload\.organization_id\)/);
   assert.doesNotMatch(source, /data\.profile\?\.access_level/);
+  assert.doesNotMatch(source, /Base44/);
 });
 
 test("traffic copilot authorizes and reads ads accounts only for the active organization", async () => {
