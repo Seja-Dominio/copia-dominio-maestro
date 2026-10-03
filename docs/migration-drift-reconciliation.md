@@ -1,5 +1,14 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Upgrade cronológico do sufixo Dev em clone local — 03/10/2026
+
+- Inventário somente leitura de `supabase migration list --project-ref tqmfuskvllpqmvayjuqu` identificou o máximo remoto `20261002140000` e quatro migrations locais posteriores: `20261002150000`, `20261002160000`, `20261002170000` e `20261003090000`.
+- Clone usado: `maestro_dev_suffix_upgrade_20261003b`, derivado do baseline schema-only `maestro_dev_schema_baseline_20261003b` no container Colima `supabase_db_maestro-clean-room.xjrrql`. Foram aplicadas em ordem cronológica as 14 migrations necessárias, incluindo as predecessoras que criam o dual-write NPS e os objetos relacionais. Não havia dados empresariais no baseline; foram adicionadas apenas duas organizações e seis fontes sintéticas em dois tenants antes da instalação do trigger de dual-write NPS.
+- O sufixo concluiu sem erro. A reconciliação criou seis mappings confirmados e duas linhas em cada uma das três projeções; nenhum vínculo ficou com tenant divergente. Reexecutar `20261002170000` duas vezes manteve as contagens idênticas. A definição final de `maestro_sync_task_audit_log()` é `SECURITY DEFINER` com `search_path` vazio.
+- A operação do trigger NPS foi executada com `SET LOCAL ROLE service_role`: inserção same-tenant foi projetada; fonte sem tenant com dois tenants ativos foi negada; mapping que apontava a outro tenant foi negado. `ROLLBACK` removeu as três tentativas e consulta posterior confirmou zero linhas correspondentes em `legacy_records`, `organization_legacy_records` e `maestro_nps_entries`.
+- Uma tentativa inicial num clone separado falhou na guarda de `20261002160000` pois o próprio ensaio havia omitido a migration predecessora `20260926390000_dual_write_nps.sql`. Não se alterou a migration; o resultado orientou a reconstrução de um clone novo e a aplicação da cadeia cronológica completa.
+- O escopo é prova de upgrade focado sobre schema Dev-shaped sem dados de negócio, com fixtures sintéticas; não é replay de todos os migrations sobre cópia representativa e não resolve conflitos anteriores do ledger, sobretudo a precedência de dados da migration `0004`. O CLI apenas leu o ledger Dev; não houve escrita no Dev, acesso a Supabase Produção, nem acesso ao VPS.
+
 > **Mapeamento confirmado (02/10/2026):** o usuário confirmou `tqmfuskvllpqmvayjuqu` como projeto Supabase Dev, `fwpisypiiezjhtqxlmqv` como Supabase Produção e o VPS `srv1611248.hstgr.cloud` como produção do frontend. O Dashboard mostra `main PRODUCTION` como branch primária nos dois projetos; isso não muda o papel que o usuário atribuiu a cada projeto. A fotografia histórica de ledger abaixo continua precisando de revalidação READ ONLY antes de orientar migrations. Não escrever em Produção.
 
 ## Revalidação focada de conflitos Maestro no Dev — 03/10/2026
