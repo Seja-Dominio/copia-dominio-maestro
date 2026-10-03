@@ -50,6 +50,17 @@ jobs:
             exit 1
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/financial-entry-scoped-write-ci.test.sql
+      - name: Verify financial write RPC upgrade preserves tenant-scoped data
+        run: |
+          supabase db reset --local --no-seed --version 20260929165050
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to seed financial upgrade assertions."
+            exit 1
+          fi
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/financial-entry-scoped-upgrade-seed.sql
+          supabase migration up --local
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/financial-entry-scoped-upgrade-assertions.sql
       - name: Verify source-scoped legacy projection reconciliation
         shell: bash
         run: |
