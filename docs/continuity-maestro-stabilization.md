@@ -19,8 +19,8 @@ Concluir o isolamento funcional entre módulos, validar integridade e migrations
 
 - Checkout de trabalho: `/Users/grimm/.codex/worktrees/maestro-db-reconcile/dominio-maestro`.
 - Branch: `codex/maestro-db-canonical-candidate`.
-- Último checkpoint sincronizado: `1426faf64ca59006fbb56aafec74963687f5dc47` (commit e SHA remoto confirmados).
-- CI `37141406252`: concluído com sucesso, 6/6 jobs para esse SHA.
+- Último commit sincronizado: `64a645c2cb261fa04724225f2d32b83ae791b890` (push e SHA remoto confirmados; alterações somente de documentação em relação ao checkpoint anterior).
+- Último CI completo verde: `37142192730`, SHA `253e2a9586140a2d72dc3a3dd7828bb684b5c83e`, 6/6 jobs. O SHA atual `64a645c2` mantém o mesmo código; execução `37142335650` e despacho manual `37142447863` não iniciaram steps/runners, por bloqueio de billing/spending limit do GitHub Actions. Validações locais após o commit: testes Node 151/151, verificadores de fronteira Edge (inventário intencionalmente `release_ready=false`), migrations (187), fronteiras frontend e build Vite passaram.
 - Últimas verificações focadas: roteamento/leitor JobHistory 5/5; `npm run verify:frontend-module-boundaries` aprovado; `git diff --check` aprovado.
 - A documentação mais recente corrigiu uma afirmação anterior: no checkout candidato, list/filter/create de JobHistory vão para `maestro-core-data`; leitura usa relação e fallback legado quando ausente. A verificação foi documental/estática, não smoke autenticado do frontend implantado.
 
@@ -48,7 +48,7 @@ Percentuais refletem a última reavaliação explícita do roadmap em 03/10/2026
 4. **JobHistory:** o checkout candidato despacha list/filter/create para `maestro-core-data`, usa `maestro_job_history` e faz fallback para `legacy_records` quando a relação não está disponível. Testes de tenant, filtros, sort, paginação, mapeamento e erros passaram. Falta smoke positivo com sessão de teste e comprovação de paridade operacional em Dev. A divergência de conteúdo de `0004` não está resolvida.
 5. **Testes de banco:** há clean replay no CI e fixtures de upgrade focadas (inclusive financeiro) com tenants sintéticos e rollback. Isso não equivale a upgrade integral sobre cópia representativa do Dev com catálogo/hooks completos.
 6. **Clone local:** o clone Dev-shaped anteriormente inspecionado era schema-only, sem dados; não serve como baseline representativa. A tentativa `docker` no contexto default falhou por socket ausente, mas Colima estava ativo e o contexto `colima` funcionou. No último check não havia container `maestro-upgrade-test` rodando. Não tocar em containers CXM.
-7. **Deploy/rollback:** nada foi publicado no VPS e Produção Supabase não foi alterada. Não há preflight de acesso/versão do VPS nem artefato de rollback comprovado neste checkpoint.
+7. **Deploy/rollback:** Produção Supabase não foi alterada. Read-only HTTP confirmou `dominiomaestro.com.br` resolve para `187.127.27.151` e serve o título Domínio Maestro com HTTP 200 via Nginx; GET no IP sem Host/SNI válido retorna a página default do Nginx, então usar o domínio canônico. Porta SSH 22 está aberta e a chave do host já consta no known_hosts, mas autenticação do usuário SSH default `grimm` foi recusada; nenhum comando remoto foi executado. Acesso ao host, inventário de serviços e rollback ainda não verificados.
 
 ## Próxima sequência recomendada
 
@@ -58,6 +58,7 @@ Percentuais refletem a última reavaliação explícita do roadmap em 03/10/2026
 4. Fechar inventário dos 19 blockers de release e provar os fluxos prioritários autenticados no Dev com credenciais/conta de teste autorizadas; não disparar sincronizações de anúncios ou outras ações externas sem fixture/controle.
 5. Ensaiar backup/restauração e rollback em ambiente não produtivo; fazer preflight de VPS estritamente read-only para identificar versão e procedimento de recuperação.
 6. Somente após todos os gates: rever diff, commit/push sem force-push, confirmar SHA e CI, publicar frontend no VPS autorizado e executar smoke test/monitoramento com rollback disponível. Nenhuma migration deve ser promovida sem aprovação e teste explícito separado.
+7. Retomar o CI hospedado após o titular resolver o aviso GitHub “recent account payments have failed or your spending limit needs to be increased”; não elevar o limite nem alterar cobrança sem autorização explícita. Para o preflight do host, obter o usuário SSH correto ou chave autorizada carregada no agente; nunca adivinhar outro usuário nem solicitar a chave privada no chat.
 
 ## Regras de retomada
 
