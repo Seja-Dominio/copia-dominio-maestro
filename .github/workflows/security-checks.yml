@@ -34,6 +34,14 @@ jobs:
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Replay every migration from a clean database
         run: supabase db reset --local --no-seed
+      - name: Verify organization server-managed privileges and trigger
+        run: |
+          mapfile -t db_containers < <(docker ps --filter label=com.supabase.cli.project --filter name=supabase_db --format '{{.Names}}')
+          if [ "${#db_containers[@]}" -ne 1 ]; then
+            echo "Expected exactly one Supabase database container; refusing to run organization privilege assertions."
+            exit 1
+          fi
+          docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/organization-server-managed-privileges-ci.test.sql
       - name: Verify source-scoped legacy projection reconciliation
         shell: bash
         run: |
