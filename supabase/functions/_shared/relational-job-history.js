@@ -57,6 +57,7 @@ export async function listRelationalJobHistoryRows(client, options = {}, organiz
   if (!organizationId) throw new Error("Sessão sem organização para leitura do histórico de jobs");
   const offset = normalizePageValue(options.offset, 0, 1_000_000);
   const limit = normalizePageValue(options.limit, 100, 10_000);
+  if (limit === 0) return [];
   const filters = options.filters || {};
   const sort = typeof options.sort === "string" ? options.sort : "";
   const descending = sort ? sort.startsWith("-") : true;
