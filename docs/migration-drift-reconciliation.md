@@ -1043,3 +1043,10 @@ O script `scripts/reconcile-migration-ledgers.mjs --details` foi reexecutado. As
 - Também foram criados dois bancos locais vazios com nomes únicos para diagnosticar requisitos do CLI; não são parte da evidência de replay. Uma tentativa demonstrou que migrations com `pg_cron` exigem o banco padrão `postgres`; foi abandonada sem alterar bancos existentes. A validação final foi feita na instância temporária correta, com `postgres` como banco, e não nesses alvos.
 - Escopo estritamente local: nenhuma escrita em Supabase Dev/Produção, VPS ou CRM/CXM externo. Esse checkpoint comprova replay limpo e fixtures automatizadas deste workflow no SHA local `c4619241ac1ef6d61a8bf2714c76e9016c49b7f2`; não substitui CI hospedado verde nem o upgrade de cópia representativa com payloads/proveniência confiáveis.
 - Próxima ação: repetir o CI hospedado quando o bloqueio de cobrança/limite do GitHub for removido; seguir em paralelo com a trilha do release frontend autenticado no Dev. Não promover migrations nem escrever em Produção.
+
+### Reexecução da policy tenant-aware no clean-room atual — 03/10/2026
+
+- Confirmei o container descartável `maestro-supabase-clean-20261003` pelo label Compose e li seu ledger em `BEGIN READ ONLY`: última migration aplicada `20261003090000`, compatível com o cutoff do replay local registrado acima. Nenhum container Deskcomm/CXM foi alterado.
+- Reexecutei `scripts/sql/test_core_tenant_policies_clone.sql` nesse Postgres local. A fixture verificou isolamento de leitura entre dois tenants ativos, negação de insert cross-tenant e zero linhas visíveis para membership suspensa; concluiu com `ROLLBACK`.
+- Verificação subsequente em transação read-only confirmou zero organizações/colaboradores sintéticos residuais e ausência dos grants temporários `SELECT`/`INSERT` para `authenticated` em `maestro_clients`.
+- Evidência reforça o contrato tenant-aware da migration local aplicada no clean-room; não valida payloads/proveniência nem o upgrade representativo integral, não reconcilia a migration `0004` e não substitui CI hospedado. Nenhuma escrita foi feita em Supabase Dev/Produção, VPS ou CXM.
