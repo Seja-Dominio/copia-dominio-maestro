@@ -15,6 +15,7 @@ import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
 import { logoutCollaborator } from '@/api/maestroClient';
 import ModuleErrorBoundary from '@/components/ModuleErrorBoundary';
+import IsolatedModuleContent from '@/components/IsolatedModuleContent';
 import lazyWithRetry from '@/lib/lazyWithRetry';
 
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard.jsx'));
@@ -54,11 +55,9 @@ const LayoutWrapper = ({ children, currentPageName }) => (
 const P = ({ name, children }) => (
   <LayoutWrapper currentPageName={name}>
     <ProtectedRoute pageName={name}>
-      <ModuleErrorBoundary moduleName={name}>
-        <Suspense fallback={<LoadingFallback />}>
-          {children}
-        </Suspense>
-      </ModuleErrorBoundary>
+      <IsolatedModuleContent moduleName={name} fallback={<LoadingFallback />}>
+        {children}
+      </IsolatedModuleContent>
     </ProtectedRoute>
   </LayoutWrapper>
 );

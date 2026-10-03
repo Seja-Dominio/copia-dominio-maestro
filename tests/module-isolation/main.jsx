@@ -1,7 +1,7 @@
-import React, { Suspense } from 'react';
+import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
-import ModuleErrorBoundary from '../../src/components/ModuleErrorBoundary.jsx';
+import IsolatedModuleContent from '../../src/components/IsolatedModuleContent.jsx';
 import lazyWithRetry from '../../src/lib/lazyWithRetry.js';
 
 window.__moduleIsolationDocumentId = `${Date.now()}-${Math.random()}`;
@@ -24,24 +24,16 @@ function TestRoutes() {
       </nav>
       <Routes>
         <Route path="/Jobs" element={(
-          <ModuleErrorBoundary moduleName="Jobs">
-            <Suspense fallback={<p role="status">Carregando Jobs</p>}><Jobs /></Suspense>
-          </ModuleErrorBoundary>
+          <IsolatedModuleContent moduleName="Jobs" fallback={<p role="status">Carregando Jobs</p>}><Jobs /></IsolatedModuleContent>
         )} />
         <Route path="/AdsBrain" element={(
-          <ModuleErrorBoundary moduleName="AdsBrain">
-            <Suspense fallback={<p role="status">Carregando Ads Brain</p>}><AdsBrain /></Suspense>
-          </ModuleErrorBoundary>
+          <IsolatedModuleContent moduleName="AdsBrain" fallback={<p role="status">Carregando Ads Brain</p>}><AdsBrain /></IsolatedModuleContent>
         )} />
         <Route path="/Dashboard" element={(
-          <ModuleErrorBoundary moduleName="Dashboard">
-            <Suspense fallback={<p role="status">Carregando Dashboard</p>}><Dashboard /></Suspense>
-          </ModuleErrorBoundary>
+          <IsolatedModuleContent moduleName="Dashboard" fallback={<p role="status">Carregando Dashboard</p>}><Dashboard /></IsolatedModuleContent>
         )} />
         <Route path="/Financial" element={(
-          <ModuleErrorBoundary moduleName="Financial">
-            <Suspense fallback={<p role="status">Carregando Financeiro</p>}><Financial /></Suspense>
-          </ModuleErrorBoundary>
+          <IsolatedModuleContent moduleName="Financial" fallback={<p role="status">Carregando Financeiro</p>}><Financial /></IsolatedModuleContent>
         )} />
       </Routes>
     </MemoryRouter>
