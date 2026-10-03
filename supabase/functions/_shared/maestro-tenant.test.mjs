@@ -232,6 +232,18 @@ test("Meta Ads OAuth and synchronization keep accounts, credentials, client insi
   assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.in\("product_key", \["maestro", "ads_brain"\]\)/);
 });
 
+test("scheduled Meta sync derives managers from active tenant roles and ignores expired product access", async () => {
+  const source = await fs.readFile(new URL("../meta-ads-sync-cron/index.ts", import.meta.url), "utf8");
+  assert.match(source, /\.select\("collaborator_id,role,status,organizations!inner\(status\)"\)/);
+  assert.match(source, /selectOrganizationMembership\(\[membership\], organizationId\)/);
+  assert.match(source, /profileForOrganizationRole\([\s\S]{0,100}membershipChoice\.membership\.organization_role/);
+  assert.match(source, /isAdsBrainManager\(authorizedProfile\)/);
+  assert.doesNotMatch(source, /isAdsBrainManager\(collaborator\.profile/);
+  assert.match(source, /\.select\("organization_id,product_key,status,expires_at"\)/);
+  assert.match(source, /hasActiveOrganizationProduct\(rows, "maestro"\)\s*\|\|\s*hasActiveOrganizationProduct\(rows, "ads_brain"\)/);
+  assert.match(source, /activeOrganizationIds\.has\(id\) && enabledProductOrganizations\.has\(id\)/);
+});
+
 test("public job approval links resolve the tenant from the signed job and keep all effects there", async () => {
   const source = await fs.readFile(new URL("../handle-job-approval/index.ts", import.meta.url), "utf8");
   assert.match(source, /\.select\("payload,organization_id"\)/);

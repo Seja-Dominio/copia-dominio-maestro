@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { canManageAdsBrain } from "../_shared/ads-brain-access.js";
+import { profileForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { hasActiveOrganizationProduct } from "../_shared/organization-products.mjs";
 
 const projectUrl = Deno.env.get("SUPABASE_URL") || "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -34,7 +37,6 @@ async function signSession(collaboratorId: string, organizationId: string) {
 }
 
 function isAdsBrainManager(profile: Record<string, unknown> | null) {
-  const level = String(profile?.access_level || "collaborator").toLowerCase();
   const permissions = profile?.permissions;
   const tabs = permissions && typeof permissions === "object" && !Array.isArray(permissions)
     ? (permissions as Record<string, unknown>).tabs
@@ -42,15 +44,16 @@ function isAdsBrainManager(profile: Record<string, unknown> | null) {
   if (tabs && typeof tabs === "object" && !Array.isArray(tabs)
     && Object.prototype.hasOwnProperty.call(tabs, "AdsBrain")
     && (tabs as Record<string, unknown>).AdsBrain !== true) return false;
-  return ["master", "admin", "gestor"].includes(level);
+  return canManageAdsBrain(profile);
 }
 
 async function findAdsBrainManager(organizationId: string) {
   const { data: memberships, error: membershipsError } = await supabase
     .from("organization_members")
-    .select("collaborator_id")
+    .select("collaborator_id,role,status,organizations!inner(status)")
     .eq("organization_id", organizationId)
-    .eq("status", "active");
+    .eq("status", "active")
+    .eq("organizations.status", "active");
   if (membershipsError) throw membershipsError;
 
   for (const membership of memberships || []) {
@@ -60,7 +63,13 @@ async function findAdsBrainManager(organizationId: string) {
       .eq("id", membership.collaborator_id)
       .maybeSingle();
     if (error) throw error;
-    if (collaborator?.is_active && isAdsBrainManager(collaborator.profile)) return String(collaborator.id);
+    const membershipChoice = selectOrganizationMembership([membership], organizationId);
+    if (!membershipChoice.ok || !collaborator?.is_active) continue;
+    const authorizedProfile = profileForOrganizationRole(
+      collaborator.profile || {},
+      membershipChoice.membership.organization_role,
+    );
+    if (isAdsBrainManager(authorizedProfile)) return String(collaborator.id);
   }
   return null;
 }
@@ -82,7 +91,7 @@ Deno.serve(async (request) => {
 
     const [{ data: accounts, error: accountsError }, { data: products, error: productsError }, { data: organizations, error: organizationsError }] = await Promise.all([
       supabase.from("maestro_ads_accounts").select("organization_id").eq("network", "Meta Ads"),
-      supabase.from("organization_products").select("organization_id,product_key").in("product_key", ["maestro", "ads_brain"]).in("status", ["trial", "enabled"]),
+      supabase.from("organization_products").select("organization_id,product_key,status,expires_at").in("product_key", ["maestro", "ads_brain"]),
       supabase.from("organizations").select("id").eq("status", "active"),
     ]);
     if (accountsError || productsError || organizationsError) {
@@ -90,7 +99,17 @@ Deno.serve(async (request) => {
     }
 
     const activeOrganizationIds = new Set((organizations || []).map((item) => String(item.id)));
-    const enabledProductOrganizations = new Set((products || []).map((item) => String(item.organization_id)));
+    const productsByOrganization = new Map<string, Record<string, unknown>[]>();
+    for (const product of products || []) {
+      const organizationId = String(product.organization_id || "");
+      if (!organizationId) continue;
+      const rows = productsByOrganization.get(organizationId) || [];
+      rows.push(product);
+      productsByOrganization.set(organizationId, rows);
+    }
+    const enabledProductOrganizations = new Set([...productsByOrganization]
+      .filter(([, rows]) => hasActiveOrganizationProduct(rows, "maestro") || hasActiveOrganizationProduct(rows, "ads_brain"))
+      .map(([organizationId]) => organizationId));
     const organizationIds = [...new Set((accounts || [])
       .map((item) => String(item.organization_id || ""))
       .filter((id) => id && activeOrganizationIds.has(id) && enabledProductOrganizations.has(id)))];
