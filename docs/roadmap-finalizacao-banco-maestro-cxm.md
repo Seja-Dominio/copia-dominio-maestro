@@ -2,6 +2,22 @@
 
 ## Escopo operacional vigente — somente Dev — 02/10/2026
 
+### Progresso do goal acelerado — atualizado em 02/10/2026
+
+Percentuais calculados por critérios de saída demonstrados, não por quantidade de tarefas iniciadas. O geral é ponderado pelo risco/esforço de cada marco; a publicação permanece em 0% até passar todos os gates.
+
+| Marco | Peso no geral | Conclusão | Evidência / pendência principal |
+|---|---:|---:|---|
+| 1. Preparar release e confirmar ambientes | 10% | **50%** | VPS único confirmado (`187.127.27.151`) e branch/CI definidos; refs Supabase informados ainda aparecem no Dashboard como `main PRODUCTION`, impedindo uso remoto seguro. |
+| 2. Isolar falhas e fronteiras entre módulos | 20% | **45%** | Teste Playwright bidirecional Jobs ↔ Ads Brain passou no CI; revisão dos handlers compartilhados e contratos para o pacote de release ainda aberta. |
+| 3. Fechar integridade do banco em ambiente isolado | 30% | **35%** | Replay limpo, RLS/tenant e várias fixtures de upgrade passam em CI/clones; reconciliação de ledger, casos de drift e upgrade com dados representativos seguem incompletos. Nenhuma escrita em Produção. |
+| 4. Validar fluxos integrados prioritários | 15% | **20%** | Fronteira de rota Jobs/Ads Brain validada; falta validar fluxos de produto e contratos backend no candidato conjunto. |
+| 5. Homologar e ensaiar recuperação/rollback | 10% | **0%** | Ainda não há ensaio completo no ambiente Dev oficialmente confirmado; testes locais/CI não substituem backup e restore operacional. |
+| 6. Publicar no VPS autorizado e passar smoke tests | 15% | **0%** | Bloqueado pelos marcos anteriores; nenhum deploy foi feito nesta etapa. |
+| **Geral ponderado** | **100%** | **28%** | Resultado arredondado de `10%×50% + 20%×45% + 30%×35% + 15%×20%`; marcos 5 e 6 ainda em zero. |
+
+**Estimativa restante:** 4–7 dias úteis ativos no caminho-base, mais esperas de CI/acesso; aproximadamente 1–2 semanas corridas. A faixa pressupõe que a reconciliação dos conflitos de migrations seja resolvida com mudanças forward e testes isolados. Se o drift exigir reconstruir baseline ou recuperar dados/configuração faltantes, acrescentar 2–5 dias úteis. Não antecipar publicação para compensar atraso de ambiente.
+
 - **Goal ativo — Plano acelerado: estabilizar o Maestro e publicar com segurança.** CXM/CRM está fora. O primeiro marco deste ciclo, isolamento de falha lazy entre Jobs e Ads Brain, foi concluído no SHA `c8dace1aabfa6b3a6351f11dd6055f1728a6663b`; CI `37093107180` terminou `success` em todos os jobs, incluindo Playwright bidirecional, build, regressões, replay clean-room, RLS/tenant, scanners e verificação de fronteiras. Push e SHA remoto confirmados. Isso fecha apenas a prova de isolamento de rota/chunk; não prova isolamento de deploy nem libera promoção.
 - **Estado do próximo gate:** a análise de handlers confirma `release_ready=false`: seis handlers compartilhados (`dominus-audit`, `dominus-memory`, `dominus-webhook`, `maestro-ai`, `maestro-data`, `whatsapp-send`) seguem bloqueados por ownership/acoplamento ou escopo tenant que precisa de contrato explícito; nove funções não-CXM aparecem pendentes de reconciliação no manifesto. O roadmap contém provas anteriores de segurança para diversos handlers, mas ainda falta validar o pacote/consumidores no SHA de release antes de promover. Não reclassificar funções apenas para limpar o gate.
 - **Próxima execução segura:** reconciliar o inventário do release com o código e os contratos atuais, então fechar um conjunto mínimo de handlers necessário aos fluxos prioritários. Em paralelo, continuar reconciliação do ledger e upgrade representativo exclusivamente em clones/CI; não fazer `migration repair`, `db push` ou escrita hospedada enquanto o Dashboard classificar os refs Supabase declarados como `main PRODUCTION`.
