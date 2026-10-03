@@ -55,6 +55,14 @@ export function accessLevelForOrganizationRole(role) {
   }
 }
 
+export function profileForOrganizationRole(profile, role) {
+  const source = profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+  return {
+    ...source,
+    access_level: accessLevelForOrganizationRole(role),
+  };
+}
+
 export function organizationRoleForAccessLevel(accessLevel) {
   switch (String(accessLevel || "").toLowerCase()) {
     case "master":

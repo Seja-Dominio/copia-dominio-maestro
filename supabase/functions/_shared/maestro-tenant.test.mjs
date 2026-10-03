@@ -4,9 +4,11 @@ import fs from "node:fs/promises";
 import {
   accessLevelForOrganizationRole,
   organizationRoleForAccessLevel,
+  profileForOrganizationRole,
   selectOrganizationMembership,
   selectUniqueGroupOrganization,
 } from "./maestro-tenant.mjs";
+import { canManageAdsBrain } from "./ads-brain-access.js";
 import { collaboratorCanReadJob, jobContainsAttachmentPath, normalizeAttachmentPath } from "./attachment-access.mjs";
 
 const organizationA = {
@@ -61,6 +63,23 @@ test("maps organization membership roles to existing Maestro authorization level
   assert.equal(organizationRoleForAccessLevel("gestor"), "manager");
   assert.equal(organizationRoleForAccessLevel("viewer"), "viewer");
   assert.equal(organizationRoleForAccessLevel("collaborator"), "member");
+});
+
+test("uses the active organization role instead of global profile access", () => {
+  const elevatedGlobalProfile = { access_level: "master", name: "Test" };
+  const memberProfile = profileForOrganizationRole(elevatedGlobalProfile, "member");
+  assert.equal(memberProfile.access_level, "collaborator");
+  assert.equal(memberProfile.name, "Test");
+  assert.equal(elevatedGlobalProfile.access_level, "master");
+
+  const limitedGlobalProfile = { access_level: "collaborator" };
+  const ownerProfile = profileForOrganizationRole(limitedGlobalProfile, "owner");
+  assert.equal(ownerProfile.access_level, "master");
+  assert.equal(canManageAdsBrain(ownerProfile), true);
+
+  const memberWithGlobalAdmin = profileForOrganizationRole({ access_level: "master" }, "member");
+  assert.equal(memberWithGlobalAdmin.access_level, "collaborator");
+  assert.equal(canManageAdsBrain(memberWithGlobalAdmin), false);
 });
 
 test("resolves group scope only when every matching directory row belongs to one organization", () => {
@@ -194,18 +213,23 @@ test("traffic copilot authorizes and reads ads accounts only for the active orga
 test("Meta Ads OAuth and synchronization keep accounts, credentials, client insights and OAuth state tenant-bound", async () => {
   const source = await fs.readFile(new URL("../meta-ads-oauth/index.ts", import.meta.url), "utf8");
   assert.match(source, /selectOrganizationMembership\(memberships, session\.organization_id\)/);
-  assert.match(source, /accessLevelForOrganizationRole\(membershipChoice\.membership\.organization_role\)/);
+  assert.match(source, /profileForOrganizationRole\([\s\S]{0,100}membership\.organization_role/);
+  assert.match(source, /hasAdsBrainAccess\(authorizedProfile\)/);
+  assert.match(source, /canManageAdsBrain\(authorizedProfile\)/);
+  assert.doesNotMatch(source, /canManageAdsBrain\(\(collaborator\.profile/);
   assert.match(source, /\.insert\(\{ organization_id: organizationId, collaborator_id: collaborator\.id/);
   assert.match(source, /\.eq\("id", accountId\)\.eq\("organization_id", organizationId\)/);
   assert.match(source, /\.eq\("organization_id", organizationId\)[\s\S]*?\.order\("updated_at"/);
   assert.match(source, /async function loadCompetitiveContext\(clientId: string, organizationId: string[\s\S]*?\.eq\("organization_id", organizationId\)/);
   assert.match(source, /organization_id: organizationId,[\s\S]{0,120}collaborator_id: collaborator\.id/);
-  assert.match(source, /oauthState\?\.sub !== collaborator\.id \|\| oauthState\?\.organization_id !== organizationId/);
+  assert.match(source, /isMetaOAuthStateBound\(oauthState, collaborator\.id, organizationId\)/);
+  assert.match(source, /nonce_hash: await hashMetaOAuthNonce\(nonce\)/);
+  assert.match(source, /campaign_create[\s\S]*campaign_update[\s\S]*campaign_set_status/);
   const handler = source.indexOf("Deno.serve");
-  const productGate = source.indexOf('if (!hasActiveOrganizationProduct(products, "ads_brain"))', handler);
+  const productGate = source.indexOf('if (!hasActiveOrganizationProduct(adsProducts, "maestro")', handler);
   const accountRead = source.indexOf('from("maestro_ads_accounts")', handler);
   assert.ok(productGate >= 0 && productGate < accountRead);
-  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.eq\("product_key", "ads_brain"\)/);
+  assert.match(source, /\.select\("product_key,status,expires_at"\)[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?\.in\("product_key", \["maestro", "ads_brain"\]\)/);
 });
 
 test("public job approval links resolve the tenant from the signed job and keep all effects there", async () => {
