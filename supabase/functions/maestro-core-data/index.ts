@@ -7,11 +7,11 @@ import { mergeProjectSchedulePatch } from "../_shared/project-schedule.js";
 import { buildRenewedSessionClaims } from "../_shared/session-renewal.mjs";
 import { buildSafeEdgeErrorContext } from "../_shared/safe-edge-error-context.mjs";
 import { normalizeEntries } from "./financial-entry-bulk-write.mjs";
+import { resolveCoreDataCorsOrigin } from "./cors-policy.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
 const entities = new Set(["Project", "Job", "Subtask", "FinancialEntry", "JobHistory"]);
-const allowedOrigins = new Set(["https://dominiomaestro.com.br", "http://localhost:4173", "http://127.0.0.1:4173", "http://localhost:4174", "http://127.0.0.1:4174"]);
 const encoder = new TextEncoder();
 
 type Session = {
@@ -26,7 +26,7 @@ type Row = { entity: string; record_id: string; payload: Record<string, unknown>
 
 function response(body: Record<string, unknown>, status = 200, origin = "") {
   return new Response(JSON.stringify(body), { status, headers: {
-    "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://dominiomaestro.com.br",
+    "Access-Control-Allow-Origin": resolveCoreDataCorsOrigin(origin),
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Expose-Headers": "X-Maestro-Session",
@@ -443,7 +443,7 @@ Deno.serve(async (request) => {
   let stage = "authenticate";
   let operation: unknown;
   let entity: unknown;
-  if (request.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://dominiomaestro.com.br", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" } });
+  if (request.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": resolveCoreDataCorsOrigin(origin), "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" } });
   if (request.method !== "POST") return response({ error: "Método não permitido" }, 405, origin);
   try {
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
