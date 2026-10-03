@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Error boundary de rota precisa ser remontada ao trocar de módulo — 02/10/2026
+
+- **Evidência:** o teste browser abortou o módulo lazy `Jobs` e o `AdsBrain` (e vice-versa). Com a mesma instância de boundary entre rotas, ambos os testes falharam porque a navegação SPA continuou no fallback de erro; keyed/remount pela identidade do módulo, ambos passaram. O escopo foi limitado a código de rota, sem backend.
+- **Aplicação:** em apps React Router, associe o estado da boundary à rota/módulo e teste o carregamento lazy falho seguido de navegação SPA para a rota vizinha. Uma asserção estática de que a boundary existe não comprova que o estado de erro será descartado.
+- **Skill:** `dominio-integration-testing` já contém essa regra operacional, portanto nenhuma skill precisou ser modificada.
+- **Validação:** Playwright local 2/2, suíte Node 119/119, build e gate de fronteiras passaram; CI `37092788945` verde no commit `d3666969`. Esforço ativo não medido.
+
 ## Reconciliar projeções usando escopo materializado exige preflight completo — 02/10/2026
 
 - **Evidência:** consulta agregada `READ ONLY` somente ao Dev encontrou 57 linhas sem `organization_legacy_records` (5 `DominusAuditSummary`, 30 `Notification`, 22 `NpsHistory`); todas tinham `legacy_records.organization_id` e organização existente/ativa, enquanto as três tabelas relacionais-alvo e entradas correspondentes no registry não existem no catálogo hospedado. Nenhum ID/payload de negócio foi lido.
