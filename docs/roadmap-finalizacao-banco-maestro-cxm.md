@@ -2,6 +2,7 @@
 
 ## Escopo operacional vigente — somente Dev — 02/10/2026
 
+- **Escopo deste goal atualizado por decisão do usuário:** finalizar e estabilizar somente o sistema Maestro. CXM integrado, CRM externo/Deskcomm e qualquer entrega, migração ou validação específica desses produtos ficam fora deste goal e serão tratados em outro goal. Não remover nem alterar dados, código, migrations ou infraestrutura CXM como parte desta execução; apenas evitar que trabalho não-CXM dependa deles.
 - Por orientação do usuário, todo o trabalho hospedado deste goal fica restrito ao Dev; Produção não deve ser consultada, alterada, receber migration nem deploy nesta execução.
 - **Correção de destino antes de novas consultas:** a sessão do Dashboard aberta no ref `tqmfuskvllpqmvayjuqu` mostrou visualmente o nome da branch `main PRODUCTION`, em conflito com documentos que a identificam como Dev. Nenhum SQL foi executado nessa sessão. Até confirmar o mapeamento oficial dos refs, não usar essa conexão nem executar auditorias hospedadas; trabalhos atuais permanecem em branch Git, CI e clones locais.
 - **Impacto potencial da discrepância:** qualquer leitura, migration ou escrita histórica atribuída ao ref `tqmfuskvllpqmvayjuqu` pode não ter sido em Dev; logo, as declarações nos itens seguintes de “somente Dev” e “Produção não consultada/alterada” estão sob revisão e não são uma garantia atual. Nesta execução não consultei nem alterei nenhum banco hospedado. Prioridade imediata: reconciliar os refs antes de retomar validação hospedada.
@@ -125,19 +126,19 @@
 - Commit `55ff6489081e352828a85533b788f9ee88d611d7` enviado; SHA remoto conferido. CI `36884949611` passou integralmente, incluindo replay clean-room, testes/autorização, build, gate de módulos, verificadores de inventário, scanners de segurança e dependências.
 - Limite: isso impede acoplamento por imports conhecidos e garante boundary na estrutura das rotas; ainda não simula erro de render em browser, quebra de dependência compartilhada em runtime nem preservação funcional do módulo vizinho. Um teste de browser/React isolado segue pendente antes de declarar o Marco 3 completo.
 
-Atualizado em 2026-09-30. Este plano define o caminho até um banco relacional operacional para o Maestro com CXM integrado e um CRM funcionalmente equivalente hospedado e vendido separadamente. Não autoriza aplicar migrations em produção por lote.
+Nota histórica de 2026-09-30: o plano original incluía CXM integrado e CRM externo. O escopo Maestro-only acima, atualizado em 2026-10-02 por decisão do usuário, substitui essa abrangência para este goal; o texto antigo fica como referência para o goal futuro de CXM. Este documento não autoriza aplicar migrations em Produção por lote.
 
-## Resultado que este plano chama de “banco finalizado”
+## Resultado que este goal considera “Maestro finalizado”
 
-O banco só será considerado finalizado quando todos estes resultados estiverem demonstrados:
+O goal atual só será considerado concluído quando os resultados abaixo estiverem demonstrados para o Maestro, sem incluir entregas CXM/CRM:
 
-1. O Maestro usa tabelas relacionais como fonte de verdade para os domínios incluídos no produto, sem depender de `legacy_records` para operações de negócio desses domínios.
-2. O Maestro inclui o módulo CXM integrado ao produto, com acesso governado por entitlement e isolamento multi-tenant na mesma instalação do Maestro.
-3. O CRM externo, com a mesma experiência e funcionalidades do CXM integrado, é um produto separado com repositório Git, servidores/infraestrutura, banco de dados e hospedagem próprios; não é um deploy do Maestro nem compartilha seu banco.
-4. A integração opcional Maestro↔CRM usa contratos versionados e autenticados, com IDs externos estáveis, idempotência, retries e comportamento definido quando um dos produtos está indisponível. Não há FKs entre bancos.
-5. O isolamento entre organizações e entre Maestro e CRM externo é exercitado por testes positivos e negativos; não depende somente de filtros de interface.
-6. Migrations reproduzem o estado a partir de uma base limpa e também atualizam uma cópia representativa do estado atual; nenhum histórico remoto é reescrito para esconder drift.
-7. Paridade, fluxos críticos, segurança, restauração e rollback passam gates registrados antes do corte gradual de produção.
+1. Os módulos do Maestro mantêm fronteiras claras de código, dados e contratos; uma falha ou upgrade em um módulo não derruba módulos não relacionados.
+2. O escopo relacional declarado do Maestro tem ownership, relações e isolamento por organização documentados; qualquer dado legado remanescente tem disposição explícita e não é removido por suposição.
+3. Migrations reproduzem o estado a partir de uma base limpa e atualizam uma cópia isolada representativa; divergências de histórico são reconciliadas por efeito, sem `migration repair` ou replay cego.
+4. Constraints, RLS, grants e operações críticas passam testes positivos e negativos entre tenants e papéis.
+5. Fluxos prioritários do Maestro passam validações de integração/regressão, incluindo independência de Jobs frente a Ads Brain.
+6. Backup/restauração e rollback são exercitados em ambiente não produtivo, com evidência de integridade após a recuperação.
+7. Commits e CI aprovados registram cada marco; nenhuma publicação em Produção faz parte deste goal.
 
 ## Decisão de arquitetura de produto — 30/09/2026
 
@@ -369,7 +370,9 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 
 **Aceite por fatia**: paridade bidirecional sem divergência não explicada; integração, autorização e regressão da UI passam; rollback documentado e testado; demais domínios inalterados.
 
-### Fase 6 — entregar CXM integrado e CRM externo funcionalmente equivalente
+### Fase 6 — [FORA DO ESCOPO DESTE GOAL] entregar CXM integrado e CRM externo funcionalmente equivalente
+
+Esta fase fica registrada apenas como trabalho futuro. Não executar nem contabilizar CXM integrado ou CRM externo no goal Maestro-only atual.
 
 **Atividades**
 
@@ -497,14 +500,18 @@ O banco só será considerado finalizado quando todos estes resultados estiverem
 - Em cada fatia: backfill → comparação → dual-write se necessário → leitura relacional controlada em homologação → observação → congelar legado apenas daquela fatia → ensaiar rollback. Não remover `legacy_records` até todas as entidades e consumidores estarem aposentados com evidência.
 - Aceite por fatia: paridade sem divergência inexplicada, autorização e regressão aprovadas, rollback recupera a imagem anterior e os outros domínios não mudam.
 
-### P5 — separar o release do Maestro do aplicativo CRM externo
+### P5 — [FORA DO ESCOPO DESTE GOAL] separar o release do Maestro do aplicativo CRM externo
+
+Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são critérios nem tarefas deste goal.
 
 - Auditar as seis Edge Functions compartilhadas e oito pendentes do manifesto atual; classificá-las entre backend do Maestro (incluindo CXM integrado), recursos exclusivos do CRM externo e adaptadores de integração. Mapear acessos dinâmicos a `legacy_records`, credenciais WhatsApp globais, cron e dependências implícitas.
 - Definir manifestos e CI independentes: o release Maestro inclui o módulo CXM integrado e seus recursos necessários; o CRM externo publica somente pelo seu repositório/pipeline/ambiente. Nenhum recurso exclusivo do CRM externo ou segredo/banco é acoplado ao deploy Maestro.
 - Estado atual continua `release_ready=false`; o inventário precisa ser reclassificado de acordo com esta arquitetura antes de mudar exclusões no código ou habilitar qualquer release.
 - **Aceite:** releases reproduzíveis e independentes; o deploy Maestro contém as funções necessárias ao CXM integrado, enquanto o aplicativo CRM externo e seus workers/banco não são publicados nem exigidos pelo Maestro.
 
-### P6 — construir e comprovar o CRM externo em trilha isolada
+### P6 — [FORA DO ESCOPO DESTE GOAL] construir e comprovar o CRM externo em trilha isolada
+
+Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são critérios nem tarefas deste goal.
 
 - O spike Deskcomm comprova serviços/banco e infraestrutura local, não a aplicação CRM. Localizar/consolidar o código executável do CRM/CXM no repositório externo próprio; definir identidade/tenancy, APIs, secrets, Storage, filas, cron, auditoria e operação.
 - Formalizar integração opcional com o Maestro por contrato versionado, IDs externos, autenticação, idempotência, retries/DLQ e desconexão; sem FK entre bancos. Provar instalação limpa, upgrade, fluxos essenciais e isolamento com duas organizações sem Maestro conectado.
