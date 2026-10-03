@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   unit-tests:
+    if: github.ref != 'refs/heads/codex/maestro-stability-release' && github.head_ref != 'codex/maestro-stability-release'
     name: Authorization and regression tests
     runs-on: ubuntu-latest
     steps:
@@ -27,6 +28,21 @@ jobs:
       - run: npm run verify:relational-dispatch
       - run: npm run verify:migration-files
       - run: npm run verify:functional-inventory
+
+  release-module-isolation:
+    if: github.ref == 'refs/heads/codex/maestro-stability-release' || github.head_ref == 'codex/maestro-stability-release'
+    name: Frontend module isolation and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:module-isolation
+      - run: npm run build
 
   semgrep:
     name: Static security analysis

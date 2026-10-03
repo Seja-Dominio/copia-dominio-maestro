@@ -14,6 +14,7 @@ import { AppConfigProvider } from '@/lib/AppConfigContext';
 import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
 import { logoutCollaborator } from '@/api/maestroClient';
+import IsolatedModuleContent from '@/components/IsolatedModuleContent';
 
 // Lazy imports with a cache-busting recovery for stale Vite chunks.
 function isChunkLoadError(error) {
@@ -120,11 +121,9 @@ const LayoutWrapper = ({ children, currentPageName }) => (
 const P = ({ name, children }) => (
   <LayoutWrapper currentPageName={name}>
     <ProtectedRoute pageName={name}>
-      <SafeBoundary>
-        <Suspense fallback={<LoadingFallback />}>
-          {children}
-        </Suspense>
-      </SafeBoundary>
+      <IsolatedModuleContent moduleName={name} fallback={<LoadingFallback />}>
+        {children}
+      </IsolatedModuleContent>
     </ProtectedRoute>
   </LayoutWrapper>
 );
