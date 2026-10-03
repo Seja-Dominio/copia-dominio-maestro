@@ -896,6 +896,12 @@ O script `scripts/reconcile-migration-ledgers.mjs --details` foi reexecutado. As
 - No clone schema-only Prod-shaped `maestro_prod_upgrade_candidate_20261001a`, o preflight confirmou helper, trigger e tabela de prova ausentes. `scripts/sql/test_dev_ensure_rls_event_trigger_clone.sql`, executado como `supabase_admin`, reproduziu a função/event trigger observados em Dev e confirmou: tabela pública recém-criada passa a ter RLS, nenhuma policy é criada e SELECT autenticado é default-deny mesmo com grant temporário de SELECT.
 - A fixture terminou em `ROLLBACK`. Consulta posterior `READ ONLY` confirmou que função, event trigger e tabela de prova não permaneceram e o grant temporário não existe. Isso reproduz o efeito do hook, não prova que o hook seja o padrão desejado para Produção; aplicá-lo ali sem coordenar policies pode mudar o acesso esperado de qualquer tabela nova. Não copiar nem remover automaticamente.
 
+### Revalidação Dev do conflito `restrict_rls_event_trigger_rpc` — 03/10/2026
+
+- Leitura explicitamente limitada ao Dev, em `BEGIN READ ONLY` confirmado por `transaction_read_only=on` e encerrada com `ROLLBACK`, confirmou `public.rls_auto_enable()` como `SECURITY DEFINER`, sem EXECUTE efetivo para `PUBLIC`/`anon`/`authenticated`/`service_role`; o event trigger `ensure_rls` continua ativo e vinculado à função.
+- Fingerprint SQL tokenizado do statement do ledger remoto e do arquivo local `20260923155416_restrict_rls_event_trigger_rpc.sql` permanece diferente. A diferença não autoriza replay: o efeito de revogação de EXECUTE já está satisfeito, e a presença do event trigger é um comportamento separado de DDL/RLS, não criado nem removido pelo arquivo local.
+- Classificação por efeito: **revogação de acesso está satisfeita no Dev; drift histórico permanece sem repair; hook global permanece como divergência estrutural que deve ser reproduzida/testada em clones, não harmonizada automaticamente**. Nenhum DDL, migration repair, alteração no ledger ou consulta a Produção foi feito nesta revalidação.
+
 ### Projeção tenant-aware de FinancialEntry — Dev — 02/10/2026
 
 - Uma fixture sintética adicional, encerrada com falha antes do `ROLLBACK`, não deixou resíduos: consulta `READ ONLY` ao projeto Dev `tqmfuskvllpqmvayjuqu` encontrou zero organizações e registros com os prefixos de teste.
