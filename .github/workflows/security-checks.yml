@@ -190,6 +190,12 @@ jobs:
             exit 1
           fi
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/tenant-isolation-ci.test.sql
+          {
+            sed '/^-- MIGRATION_BARRIER:/,$d' scripts/sql/job-history-tenant-upgrade.test.sql
+            cat supabase/migrations/20261002150000_restore_tenant_scoped_job_history_projection.sql
+            cat supabase/migrations/20261002150000_restore_tenant_scoped_job_history_projection.sql
+            sed -n '/^-- MIGRATION_BARRIER:/,$p' scripts/sql/job-history-tenant-upgrade.test.sql | sed '1d'
+          } | docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/legacy-mutation-tenant-context-ci.test.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/verify_atomic_project_delete.sql
           docker exec -i "${db_containers[0]}" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/sql/verify_task_audit_tenant_scope.sql
