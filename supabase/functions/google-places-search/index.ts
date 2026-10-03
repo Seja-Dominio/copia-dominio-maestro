@@ -1,3 +1,7 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadActiveProspectingManagerSession } from "../_shared/prospecting-authorization.mjs";
+
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const decode = (value: string) => atob(value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "="));
@@ -11,8 +15,9 @@ async function verifySession(token: string) {
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const session = await verifySession(request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "");
-    if (!session || !["master", "gestor"].includes(String(session.access_level || "").toLowerCase())) return json({ error: "A prospecção está disponível apenas para Gestor ou Master." }, 403);
+    const claims = await verifySession(request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "");
+    const session = claims ? await loadActiveProspectingManagerSession(supabase, claims) : null;
+    if (!session) return json({ error: "A prospecção está disponível apenas para Gestor ou Master com vínculo ativo." }, 403);
     const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY") || ""; if (!apiKey) return json({ error: "A integração com Google Places ainda não foi configurada." }, 503);
     const body = await request.json(); const query = String(body.query || "").trim();
     if (query.length < 3 || query.length > 180) return json({ error: "Informe uma busca entre 3 e 180 caracteres." }, 400);
