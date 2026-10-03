@@ -19,8 +19,8 @@ Concluir o isolamento funcional entre módulos, validar integridade e migrations
 
 - Checkout de trabalho: `/Users/grimm/.codex/worktrees/maestro-db-reconcile/dominio-maestro`.
 - Branch: `codex/maestro-db-canonical-candidate`.
-- Último checkpoint sincronizado antes desta retomada: `cbf792bde608281fb85fca417646638fb88b936b` (branch limpa e alinhada ao remoto na inspeção inicial).
-- CI `37140814083`: concluído com sucesso, 6/6 jobs para o handoff anterior. O diff novo descrito abaixo ainda precisa passar CI.
+- Último checkpoint sincronizado: `1426faf64ca59006fbb56aafec74963687f5dc47` (commit e SHA remoto confirmados).
+- CI `37141406252`: concluído com sucesso, 6/6 jobs para esse SHA.
 - Últimas verificações focadas: roteamento/leitor JobHistory 5/5; `npm run verify:frontend-module-boundaries` aprovado; `git diff --check` aprovado.
 - A documentação mais recente corrigiu uma afirmação anterior: no checkout candidato, list/filter/create de JobHistory vão para `maestro-core-data`; leitura usa relação e fallback legado quando ausente. A verificação foi documental/estática, não smoke autenticado do frontend implantado.
 
@@ -30,17 +30,17 @@ Concluir o isolamento funcional entre módulos, validar integridade e migrations
 |---|---:|---|
 | 1. Preparar release e confirmar ambientes | 80% | Preflight por destino e artefato/procedimento de rollback. |
 | 2. Isolar falhas e fronteiras entre módulos | 79% | Completar revisão de consumidores/handlers; 19 itens no inventário ainda bloqueiam `release_ready`. Fluxos autenticados positivos pendentes para handlers indicados no roadmap. |
-| 3. Integridade do banco em ambiente isolado | 60% | Resolver divergências do ledger/catálogo, validar upgrade com baseline Dev representativo e concluir auditoria objeto-a-objeto/hooks. A migration `0004` continua risco P0. |
+| 3. Integridade do banco em ambiente isolado | 55% | Resolver divergências do ledger/catálogo, validar upgrade com baseline Dev representativo e concluir auditoria objeto-a-objeto/hooks. A migration `0004` continua risco P0. |
 | 4. Fluxos integrados prioritários | 20% | Expandir de testes de contenção de rotas para contratos e fluxos reais prioritários autenticados no Dev. |
 | 5. Recuperação/rollback | 10% | Snapshot representativo, restauração operacional e rollback do frontend no VPS ainda não ensaiados. |
 | 6. Publicação no VPS e smoke tests | 0% | Não começar até passarem os gates anteriores. |
-| **Geral ponderado** | **46%** | Ainda não pronto para produção. |
+| **Geral ponderado** | **44%** | Ainda não pronto para produção. |
 
-Percentuais são os últimos registrados no roadmap em 03/10/2026; atualizá-los apenas quando critérios de saída verificáveis mudarem.
+Percentuais refletem a última reavaliação explícita do roadmap em 03/10/2026; Marco 3 55% e geral 44% após o upgrade cronológico do sufixo Dev em clone schema-only. Não contam como resolvidos o drift de ledger, os conflitos da migration `0004`, upgrades com dados representativos, recovery/rollback integral ou deploy. Atualizar apenas quando critérios de saída verificáveis mudarem.
 
 ## Evidências e riscos importantes
 
-0. **Revisão do estado vivo das Edge Functions Dev (03/10):** inventário somente leitura encontrou versões mais novas que os registros anteriores, incluindo `maestro-data` v53, `maestro-core-data` v10, `system-reports` v19 e demais handlers. Foi baixado somente o código de `system-reports` para `/tmp` no projeto Dev confirmado. O diff mostrou uma divergência textual: Dev ainda afirmava que Base44 permanecia como fallback no blueprint; o checkout não tinha essa afirmação. O handler importa de `maestro-tenant.mjs` somente `accessLevelForOrganizationRole` e `selectOrganizationMembership`, presentes no helper remoto; a ausência remota de `profileForOrganizationRole` não afeta este handler, mas requer reconciliação separada antes de atualizar consumidores que usam essa exportação. Foi adicionado teste estático para proibir menção a Base44 no handler, e a suíte tenant focada passou 21/21; bundle esbuild passou. `system-reports` foi publicado somente em Supabase Dev e confirmado ativo na v20. Smoke sem sessão/token válido retornou HTTP 403. Isso prova proteção negativa e atualização do texto, não geração autenticada positiva do blueprint/relatório. Supabase Produção, banco e VPS não foram acessados. O commit/push/CI desta correção ainda é pendente neste registro.
+0. **`system-reports` reconciliada no Dev (03/10):** inventário somente leitura encontrou versão ativa v19 e fonte diferente do checkout por uma frase obsoleta dizendo que Base44 seguia como fallback no blueprint. O handler importa de `maestro-tenant.mjs` apenas `accessLevelForOrganizationRole` e `selectOrganizationMembership`, presentes na versão remota; `profileForOrganizationRole` não é dependência desta função, embora a diferença do helper exija cuidado ao atualizar consumidores que usam essa exportação. Foi adicionado teste estático que proíbe a referência obsoleta; suíte tenant focada passou 21/21 e bundle esbuild passou. Após publicar apenas `system-reports` no Dev, a função ficou ativa na v20; download posterior confirmou igualdade byte a byte com o checkout (SHA-256 `6e7379e1e84daa5fe4e476ba8e42f8c60941edf14dd41a24d5fb540cad0da2cd`). Smoke sem sessão/token válido retornou HTTP 403. Isso prova paridade e negação, não geração autenticada positiva. Commit `1426faf64ca59006fbb56aafec74963687f5dc47`, push confirmado e CI `37141406252` 6/6 verde. Supabase Produção, banco de Produção e VPS não foram acessados; os percentuais dos marcos não mudam.
 
 1. **Isolamento frontend:** testes Playwright cobrem falha de chunk e falha de render nos dois sentidos Jobs↔Ads Brain e Dashboard↔Financeiro (8/8). Rotas vizinhas renderizam na mesma SPA. Há também verificador estático de boundaries e build no CI.
 2. **Migration histórica `0004/publish_imported_records`:** auditoria agregada READ ONLY em Dev achou 71.185 payloads divergentes entre `migration.base44_records` e `legacy_records`; 63.264 são JobHistory. Timestamps de origem iguais não desempataram os conflitos; há diferenças em `duration_minutes`, `old_value`, `new_value` e `field`. A migration sobrescreve o payload inteiro em conflito. Não reaplicar/reparar/corrigir precedência sem proveniência e teste numa cópia representativa.
