@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { accessLevelForOrganizationRole, selectOrganizationMembership } from "../_shared/maestro-tenant.mjs";
+import { authorizeDominusAuditSession } from "../_shared/dominus-audit-scope.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -55,32 +55,33 @@ async function verifySession(token: string): Promise<Session | null> {
   if (!valid) return null;
   let payload: Record<string, any>;
   try { payload = JSON.parse(decode(body)); } catch { return null; }
-  if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000) || payload.scope !== "user") return null;
+  if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000) || !payload.organization_id) return null;
 
-  const { data } = await db
+  const { data, error: collaboratorError } = await db
     .from("maestro_collaborators")
     .select("id,is_active,profile")
     .eq("id", payload.sub)
     .maybeSingle();
-  if (!data?.is_active) return null;
-  const profile = (data.profile || {}) as Record<string, unknown>;
-  let membershipsQuery = db.from("organization_members")
+  if (collaboratorError || !data?.is_active) return null;
+  const { data: memberships, error: membershipError } = await db.from("organization_members")
     .select("organization_id,role,status,organizations!inner(status)")
     .eq("collaborator_id", payload.sub)
     .eq("status", "active")
     .eq("organizations.status", "active")
+    .eq("organization_id", String(payload.organization_id))
     .limit(2);
-  if (payload.organization_id) membershipsQuery = membershipsQuery.eq("organization_id", payload.organization_id);
-  const { data: memberships, error: membershipError } = await membershipsQuery;
   if (membershipError) return null;
-  const choice = selectOrganizationMembership(memberships, payload.organization_id);
-  if (!choice.ok) return null;
+  const { data: products, error: productsError } = await db.from("organization_products")
+    .select("product_key,status,expires_at")
+    .eq("organization_id", String(payload.organization_id))
+    .eq("product_key", "maestro");
+  if (productsError) return null;
+  const authorized = authorizeDominusAuditSession({ payload, collaborator: data, memberships, products });
+  if (!authorized) return null;
+  const profile = (data.profile || {}) as Record<string, unknown>;
   return {
-    sub: String(data.id),
-    exp: Number(payload.exp),
-    access_level: accessLevelForOrganizationRole(choice.membership.organization_role),
+    ...authorized,
     permissions: (profile.permissions || {}) as Record<string, unknown>,
-    organization_id: choice.membership.organization_id,
     scope: "user",
     authenticated: true,
   };

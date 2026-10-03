@@ -73,10 +73,14 @@ test("scheduled Dominus audit fails closed when no unique active Maestro organiz
 
 test("Dominus audit validates current membership and scopes every tenant-owned read and write", async () => {
   const source = await fs.readFile(new URL("../dominus-audit/index.ts", import.meta.url), "utf8");
+  const memorySource = await fs.readFile(new URL("../dominus-memory/index.ts", import.meta.url), "utf8");
   const loginSource = await fs.readFile(new URL("../collaborator-login/index.ts", import.meta.url), "utf8");
   const refreshSource = await fs.readFile(new URL("../collaborator-session-refresh/index.ts", import.meta.url), "utf8");
   assert.match(loginSource, /organization_id: membership\.organization_id,[\s\S]*?exp: Math\.floor/);
   assert.match(refreshSource, /organization_id: session\.organization_id,[\s\S]*?organization_role: session\.organization_role/);
+  assert.doesNotMatch(memorySource, /payload\.scope !== "user"/);
+  assert.match(memorySource, /authorizeDominusAuditSession\(\{ payload, collaborator: data, memberships, products \}\)/);
+  assert.match(memorySource, /\.eq\("product_key", "maestro"\)/);
   assert.match(source, /from\("organization_members"\)/);
   assert.match(source, /authorizeDominusAuditSession\(\{ payload, collaborator: data, memberships, products \}\)/);
   assert.match(source, /\.eq\("organization_id", String\(payload\.organization_id\)\)/);

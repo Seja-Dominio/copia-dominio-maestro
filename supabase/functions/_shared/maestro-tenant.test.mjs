@@ -157,7 +157,9 @@ test("credential administration requires an active org admin and cannot overwrit
 
 test("Dominus memory reviews, rules, events and comments stay inside the active organization", async () => {
   const source = await fs.readFile(new URL("../dominus-memory/index.ts", import.meta.url), "utf8");
-  assert.match(source, /selectOrganizationMembership\(memberships, payload\.organization_id\)/);
+  assert.match(source, /authorizeDominusAuditSession\(\{ payload, collaborator: data, memberships, products \}\)/);
+  assert.match(source, /\.eq\("organization_id", String\(payload\.organization_id\)\)/);
+  assert.match(source, /\.eq\("product_key", "maestro"\)/);
   assert.match(source, /async function listMemory\(organizationId: string\)[\s\S]*?dominus_learning_reviews[\s\S]*?\.eq\("organization_id", organizationId\)[\s\S]*?dominus_memory[\s\S]*?\.eq\("organization_id", organizationId\)/);
   assert.match(source, /function recordEvent[\s\S]*?organization_id: session\.organization_id/);
   assert.match(source, /\.insert\(\{ organization_id: session\.organization_id, review_id: reviewId, author_id: session\.sub/);
