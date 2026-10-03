@@ -12,12 +12,16 @@ test('development and test require a confirmed ref that matches the URL', () => 
   assert.equal(resolveMaestroSupabaseTarget({ environment: 'development', url, expectedDevProjectRef: 'abcdefghijklmnopqrst' }).safe, false);
 });
 
-test('development and test refuse both refs currently protected as Production', () => {
-  for (const ref of ['tqmfuskvllpqmvayjuqu', 'fwpisypiiezjhtqxlmqv']) {
-    const url = `https://${ref}.supabase.co`;
-    assert.equal(resolveMaestroSupabaseTarget({ environment: 'development', url, expectedDevProjectRef: ref }).safe, false);
-    assert.equal(resolveMaestroSupabaseTarget({ environment: 'test', url, expectedDevProjectRef: ref }).safe, false);
-  }
+test('development and test accept the explicitly confirmed Dev ref but refuse Production', () => {
+  const devRef = 'tqmfuskvllpqmvayjuqu';
+  const devUrl = `https://${devRef}.supabase.co`;
+  assert.equal(resolveMaestroSupabaseTarget({ environment: 'development', url: devUrl, expectedDevProjectRef: devRef }).safe, true);
+  assert.equal(resolveMaestroSupabaseTarget({ environment: 'test', url: devUrl, expectedDevProjectRef: devRef }).safe, true);
+
+  const productionRef = 'fwpisypiiezjhtqxlmqv';
+  const productionUrl = `https://${productionRef}.supabase.co`;
+  assert.equal(resolveMaestroSupabaseTarget({ environment: 'development', url: productionUrl, expectedDevProjectRef: productionRef }).safe, false);
+  assert.equal(resolveMaestroSupabaseTarget({ environment: 'test', url: productionUrl, expectedDevProjectRef: productionRef }).safe, false);
 });
 
 test('production continues to accept only its existing exact endpoint', () => {

@@ -1,6 +1,5 @@
 const PRODUCTION_URL = 'https://fwpisypiiezjhtqxlmqv.supabase.co';
 const PROTECTED_PRODUCTION_REFS = new Set([
-  'tqmfuskvllpqmvayjuqu',
   'fwpisypiiezjhtqxlmqv',
 ]);
 

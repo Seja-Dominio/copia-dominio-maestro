@@ -1,5 +1,4 @@
 const protectedProductionRefs = new Set([
-  'tqmfuskvllpqmvayjuqu',
   'fwpisypiiezjhtqxlmqv',
 ]);
 

@@ -9,11 +9,14 @@ test('remote Dev audit fails closed until an independently confirmed ref is supp
   assert.throws(() => assertConfirmedDevDatabaseTarget(url, undefined), /disabled until/);
 });
 
-test('remote Dev audit rejects refs currently identified as Production', () => {
-  for (const ref of ['tqmfuskvllpqmvayjuqu', 'fwpisypiiezjhtqxlmqv']) {
-    const url = `postgresql://postgres.${ref}:placeholder@aws-0-sa-east-1.pooler.supabase.com:5432/postgres`;
-    assert.throws(() => assertConfirmedDevDatabaseTarget(url, ref), /protected as Production/);
-  }
+test('remote Dev audit accepts the explicitly confirmed Dev project and rejects Production', () => {
+  const devRef = 'tqmfuskvllpqmvayjuqu';
+  const devUrl = `postgresql://postgres.${devRef}:placeholder@aws-0-sa-east-1.pooler.supabase.com:5432/postgres`;
+  assert.equal(assertConfirmedDevDatabaseTarget(devUrl, devRef), devRef);
+
+  const productionRef = 'fwpisypiiezjhtqxlmqv';
+  const productionUrl = `postgresql://postgres.${productionRef}:placeholder@aws-0-sa-east-1.pooler.supabase.com:5432/postgres`;
+  assert.throws(() => assertConfirmedDevDatabaseTarget(productionUrl, productionRef), /protected as Production/);
 });
 
 test('remote Dev audit accepts only a connection matching the confirmed isolated ref', () => {

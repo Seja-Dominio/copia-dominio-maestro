@@ -4,35 +4,34 @@
 
 Separar o ciclo de desenvolvimento do ambiente real. O trabalho diário acontece no projeto Dev e a produção permanece protegida. O Base44 continua disponível como fallback enquanto a migração não for encerrada.
 
-## Estado configurado — revisão necessária
+## Estado configurado — mapeamento confirmado em 02/10/2026
 
-- O mapeamento antigo de Dev para `tqmfuskvllpqmvayjuqu` está suspenso: o Dashboard do Supabase identifica a branch `main` desse ref como `PRODUCTION`.
-- `fwpisypiiezjhtqxlmqv` também está classificado como Produção na configuração existente. Não use nenhum desses dois refs em desenvolvimento ou teste.
-- O ref oficial do Dev ainda não foi confirmado. Até isso ocorrer, use apenas clones locais e CI; não execute auditoria, migration, alteração de segredo ou deploy em banco hospedado.
-- O vínculo local da CLI Supabase foi removido neste checkout para evitar que comandos `--linked` atinjam o ref ambíguo. O unlink não alterou nenhum projeto remoto.
-- A inspeção somente leitura do checkout principal encontrou `VITE_MAESTRO_ENV=development`/`.env.local` apontando para `tqmfuskvllpqmvayjuqu` e o vínculo CLI também nesse ref. Esse checkout tem mudanças locais extensas; foi deixado intacto. Portanto, a contenção desta branch ainda não protege o app do checkout principal; não o execute nem rode comandos `--linked` até reconciliar o ref e incorporar a correção com segurança.
+- O usuário confirmou `tqmfuskvllpqmvayjuqu` como projeto Supabase Dev e `fwpisypiiezjhtqxlmqv` como Supabase Produção. O projeto Dev aparece no Dashboard como “Dominio Maestro Development”; a branch primária exibe `main PRODUCTION`. A Produção do frontend é o VPS `srv1611248.hstgr.cloud` (`187.127.27.151`), não um destino de frontend no Supabase.
+- O código local deve aceitar `tqmf…` somente quando `VITE_MAESTRO_DEV_PROJECT_REF`/`SUPABASE_CONFIRMED_DEV_PROJECT_REF` declarar exatamente esse ref; `fwpisy…` permanece bloqueado em development/test e permitido somente no endpoint de Produção já definido. Esta confirmação do ambiente não libera operações de escrita: migration/deploy em Dev ainda requerem revisão do diff, preflight, escopo e gate próprio.
+- O vínculo local da CLI Supabase foi removido neste checkout. Antes de qualquer comando vinculado, conferir `project ref` no mesmo comando/sessão e não confiar em estado implícito de `--linked`.
+- O checkout principal tem mudanças locais extensas e permanece intacto; esta alteração de guardas afeta apenas este worktree/branch até ser integrada.
 - Os scripts de auditoria/transferência também verificam os refs explicitamente; o sincronizador Prod→Dev exige `--allow-production-read` porque mesmo o modo `--dry-run` consulta a origem Produção.
 - Os snapshots com nomes `development` e `production` abaixo estão sob revisão quanto à origem; não inferir ambiente apenas pelo nome do diretório.
 
 ## Configuração dos dois projetos Supabase
 
-1. Confirme no Dashboard o nome do projeto, branch e ref oficial do Dev.
-2. Confirme separadamente qual ref atende Produção, sem consultar o conteúdo do banco.
+1. O mapeamento confirmado é `tqmfuskvllpqmvayjuqu` (Dev) e `fwpisypiiezjhtqxlmqv` (Supabase Produção); confira o ref visível no Dashboard antes de cada operação.
+2. Trate o VPS `srv1611248.hstgr.cloud` (`187.127.27.151`) como o único destino autorizado para o frontend em Produção.
 3. Só então configure templates/env locais e vínculo CLI; mantenha secrets separados.
 4. Não rode migrations/Edge Function deploy até o destino Dev estar verificado.
 5. Dados de teste não devem ser gravados em nenhum ref identificado como Production.
 
 ## Configurar a máquina local
 
-Após confirmar o ref oficial do Dev, `.env.local` deve conter a mesma ref na URL e na variável dedicada:
+`.env.local` deve conter a mesma ref Dev confirmada pelo usuário na URL e na variável dedicada:
 
 ```text
 VITE_MAESTRO_ENV=development
-VITE_MAESTRO_DEV_PROJECT_REF=REF_DEV_CONFIRMADO
-VITE_SUPABASE_URL=https://REF_DEV_CONFIRMADO.supabase.co
+VITE_MAESTRO_DEV_PROJECT_REF=tqmfuskvllpqmvayjuqu
+VITE_SUPABASE_URL=https://tqmfuskvllpqmvayjuqu.supabase.co
 ```
 
-O frontend agora recusa chamadas em development/test sem ref explícito correspondente, e bloqueia os refs protegidos acima. Os arquivos `.env*` preenchidos são ignorados pelo Git.
+O frontend recusa chamadas em development/test sem ref explícito correspondente e bloqueia o ref de Produção. Os arquivos `.env*` preenchidos são ignorados pelo Git.
 
 ## Rodar e testar
 

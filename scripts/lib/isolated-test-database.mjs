@@ -1,6 +1,6 @@
 const forbiddenProjectRefs = new Set([
   "fwpisypiiezjhtqxlmqv", // Ref configurado como Produção
-  "tqmfuskvllpqmvayjuqu", // Dashboard identifica a branch main como PRODUCTION
+  "tqmfuskvllpqmvayjuqu", // Projeto Dev real; não é uma branch descartável de teste
 ]);
 
 export function getIsolatedTestDatabaseUrl(env = process.env) {
@@ -10,7 +10,7 @@ export function getIsolatedTestDatabaseUrl(env = process.env) {
     throw new Error("Defina SUPABASE_TEST_DB_URL e SUPABASE_TEST_PROJECT_REF para uma branch isolada.");
   }
   if (forbiddenProjectRefs.has(expectedProjectRef)) {
-    throw new Error("O verificador bloqueia refs protegidos/ambíguos; use um projeto ou branch de teste isolado e confirmado.");
+    throw new Error("Refs de aplicação Dev/Produção não são bancos descartáveis de teste isolado.");
   }
 
   let parsed;
