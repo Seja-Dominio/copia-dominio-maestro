@@ -79,7 +79,7 @@ function report(data: Record<string, Record<string, unknown>[]>, today: string) 
 }
 function blueprint(data: Record<string, Record<string, unknown>[]>, today: string) {
   let md = `# 🏗️ DOMÍNIO MAESTRO — Blueprint de Migração\n> Gerado em: ${new Date().toLocaleString("pt-BR", { timeZone: "America/Manaus" })}\n\n`;
-  md += `## Plataforma atual\n\n- Frontend: React + Vite\n- Dados: Supabase, tabela de compatibilidade legacy_records\n- Autenticação: sessão HMAC de colaboradores\n- Fuso horário: America/Manaus\n- Base44: mantido como fallback durante a transição\n\n## Entidades migradas\n\n| Entidade | Registros | Campos de amostra |\n|---|---:|---|\n`;
+  md += `## Plataforma atual\n\n- Frontend: React + Vite\n- Dados: Supabase, tabela de compatibilidade legacy_records\n- Autenticação: sessão HMAC de colaboradores emitida por Edge Function Supabase\n- Fuso horário: America/Manaus\n\n## Entidades migradas\n\n| Entidade | Registros | Campos de amostra |\n|---|---:|---|---\n`;
   Object.entries(data).forEach(([entity, rows]) => {
     const sample = rows.find((row) => entity !== "Collaborator") || rows[0] || {};
     const fields = Object.keys(sample).filter((field) => field !== "password_hash").slice(0, 30);

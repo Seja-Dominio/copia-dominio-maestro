@@ -6,7 +6,7 @@ import jsPDF from "jspdf";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-const LOGO_HORIZONTAL_URL = "https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/e61b9b073_a4.png";
+const LOGO_HORIZONTAL_URL = "/assets/maestro-icon.svg";
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/maestro-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
 
 const FORMAT_OPTIONS = [

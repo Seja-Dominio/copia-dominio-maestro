@@ -1,5 +1,5 @@
 {
-  "name": "base44-app",
+  "name": "dominio-maestro",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -34,7 +34,6 @@
     "verify:edge-function-product-boundaries": "node scripts/verify-edge-function-product-boundaries.mjs"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.43",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
     "@radix-ui/react-accordion": "^1.2.3",

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, Download, ChevronLeft, ChevronRight, Briefcase, Loader2, Ban, GripVertical, StickyNote, CheckCircle2, Link2 } from "lucide-react";
+import { X, Plus, Download, ChevronLeft, ChevronRight, Briefcase, Ban, GripVertical, StickyNote, CheckCircle2, Link2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import BulkJobConfirmModal from "@/components/jobs/BulkJobConfirmModal";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ import html2canvas from "html2canvas";
 // Logo vertical (símbolo D) — usada como marca d'água e nas células vazias
 const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/maestro-prod/public/69b0ac7e08d578f9756170a0/78bf96942_VERTICALSEMFUNDO.png";
 // Logo horizontal completa — usada no header do PDF
-const LOGO_HORIZONTAL_URL = "https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/e61b9b073_a4.png";
+const LOGO_HORIZONTAL_URL = "/assets/maestro-icon.svg";
 
 const FORMAT_OPTIONS = [
   { value: "card",           label: "Card",             bg: "#4ade80", text: "#166534" },

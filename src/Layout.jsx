@@ -127,8 +127,8 @@ export default function Layout({ children, currentPageName }) {
           <Link to="/Dashboard"
             className="hidden md:flex items-center mr-4 flex-shrink-0 no-underline">
             <img
-              src="https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/bcb38b8d5_VERTICALSEMFUNDO.png"
-              alt="Domínio Performance"
+              src="/assets/maestro-icon.svg"
+              alt="Domínio Maestro"
               className="h-9 w-auto object-contain"
             />
           </Link>

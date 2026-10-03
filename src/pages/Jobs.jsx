@@ -106,7 +106,7 @@ export default function Jobs() {
         maestro.entities.Project.list("-created_date", 500),
       ]);
       // Keep completed jobs visible so the external app preserves the historical
-      // pauta from Base44. Only cancelled jobs stay out of the main job views.
+      // legacy pauta data. Only cancelled jobs stay out of the main job views.
       const visibleJobs = j.filter(job => job.status !== "cancelled");
       const visibleJobIds = new Set(visibleJobs.map(job => job.id));
       setJobs(visibleJobs);

@@ -47,7 +47,7 @@ export function getSubtasksToAutoComplete(newStatus, subtasks, statusOrder) {
  * complete_at_status > newStatus (if they were auto-completed).
  * Returns updated subtask list.
  */
-export async function autoCompleteSubtasks(newStatus, subtasks, base44Client, statusOrder) {
+export async function autoCompleteSubtasks(newStatus, subtasks, entityClient, statusOrder) {
   const order = statusOrder || FALLBACK_STATUS_ORDER;
   const newIdx = getStatusIndex(newStatus, order);
   if (newIdx < 0) return subtasks;
@@ -79,12 +79,12 @@ export async function autoCompleteSubtasks(newStatus, subtasks, base44Client, st
 
   await Promise.all([
     ...toComplete.map(s =>
-      base44Client.entities.Subtask.update(s.id, {
+      entityClient.entities.Subtask.update(s.id, {
         is_completed: true, status: "completed", completed_at: now,
       })
     ),
     ...toReopen.map(s =>
-      base44Client.entities.Subtask.update(s.id, {
+      entityClient.entities.Subtask.update(s.id, {
         is_completed: false, status: "pending", completed_at: null,
       })
     ),

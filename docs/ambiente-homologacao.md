@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Separar o ciclo de desenvolvimento do ambiente real. O trabalho diário acontece no projeto Dev e a produção permanece protegida. O Base44 continua disponível como fallback enquanto a migração não for encerrada.
+Separar o ciclo de desenvolvimento do ambiente real. O trabalho diário acontece no projeto Dev e a produção permanece protegida. O app Maestro usa Supabase como único provider de runtime; snapshots/importadores legados são preservados apenas para reconciliar os dados históricos.
 
 ## Estado configurado — mapeamento confirmado em 02/10/2026
 
-- O usuário confirmou `tqmfuskvllpqmvayjuqu` como projeto Supabase Dev e `fwpisypiiezjhtqxlmqv` como Supabase Produção. O projeto Dev aparece no Dashboard como “Dominio Maestro Development”; a branch primária exibe `main PRODUCTION`. A Produção do frontend é o VPS `srv1611248.hstgr.cloud` (`187.127.27.151`), não um destino de frontend no Supabase.
+- O usuário confirmou `tqmfuskvllpqmvayjuqu` como projeto Supabase Dev e `fwpisypiiezjhtqxlmqv` como banco de Produção (“Maestro BD production”). “Production” no plano do app refere-se ao frontend no VPS `srv1611248.hstgr.cloud` (`187.127.27.151`); não confundir os dois destinos. O badge `main PRODUCTION` no Dashboard Supabase é do projeto de banco, não hospedagem do frontend.
 - O código local deve aceitar `tqmf…` somente quando `VITE_MAESTRO_DEV_PROJECT_REF`/`SUPABASE_CONFIRMED_DEV_PROJECT_REF` declarar exatamente esse ref; `fwpisy…` permanece bloqueado em development/test e permitido somente no endpoint de Produção já definido. Esta confirmação do ambiente não libera operações de escrita: migration/deploy em Dev ainda requerem revisão do diff, preflight, escopo e gate próprio.
 - O vínculo local da CLI Supabase foi removido neste checkout. Antes de qualquer comando vinculado, conferir `project ref` no mesmo comando/sessão e não confiar em estado implícito de `--linked`.
 - O checkout principal tem mudanças locais extensas e permanece intacto; esta alteração de guardas afeta apenas este worktree/branch até ser integrada.
@@ -80,7 +80,7 @@ Esperado: container `maestro-web` ativo e resposta HTTP 200.
 - Nunca testar exclusão, arquivamento ou alteração de senha contra produção.
 - Nunca colocar senha, service-role key, token ou chave SSH no código, PDF ou GitHub.
 - Não usar `.env.local` de produção para iniciar homologação.
-- Não desligar o Base44 enquanto a equipe depender dele.
+- Não remover snapshots/importadores legados até comprovar que a reconciliação e a restauração dos dados estão concluídas.
 - Não fazer `git reset --hard`, `git checkout --` ou exclusão de dados para resolver conflito.
 
 ## Rollback

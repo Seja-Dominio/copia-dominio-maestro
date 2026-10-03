@@ -139,7 +139,7 @@ export default function CollaboratorLoginPanel({ onLoginSuccess }) {
             <div className="mb-3 flex items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-md">
               <img
-                src="https://media.base44.com/images/public/69b0ac7e08d578f9756170a0/735dfef5a_VERTICALCOMFUNDO.png"
+                src="/assets/maestro-icon.svg"
                 alt="Domínio Performance"
                 className="h-7 w-auto object-contain"
               />
