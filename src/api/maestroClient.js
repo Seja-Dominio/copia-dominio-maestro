@@ -7,7 +7,7 @@
  */
 import { base44, getPublicSettings } from '@/api/base44Client';
 import { callMaestroData, createSupabaseEntities, getStoredCollaborator, invokeAdminTimesheetFunction, invokePublicSupabaseFunction, invokeSupabaseFunction, invokeSystemReportFunction, invokeWhatsapp, loginCollaboratorWithSupabase, refreshFileUrlFromSupabase, transferSubtasks as transferSubtasksSupabase, uploadFileToSupabase, clearStoredCollaboratorSession } from '@/api/supabaseClient';
-import { resolveMaestroProvider } from '@/api/maestro-provider.mjs';
+import { resolveMaestroFunctionFallback, resolveMaestroProvider } from '@/api/maestro-provider.mjs';
 
 const dataProvider = resolveMaestroProvider(import.meta.env.VITE_MAESTRO_DATA_PROVIDER);
 
@@ -127,8 +127,11 @@ export function invokeMaestroFunction(name, payload) {
     if (name === 'generateSystemReport') return invokeSystemReportFunction('report').then((data) => ({ data }));
     if (name === 'exportSystemBlueprint') return invokeSystemReportFunction('blueprint').then((data) => ({ data }));
   }
-  return maestro.functions.invoke(name, payload);
+  if (resolveMaestroFunctionFallback(dataProvider) === 'base44') return maestro.functions.invoke(name, payload);
+  return Promise.reject(new Error(`A função "${name}" ainda não foi migrada para Supabase e não foi chamada no Base44.`));
 }
+
+export const isMaestroSupabaseProvider = dataProvider === 'supabase';
 
 export function invokeCompetitiveReport(payload = {}) {
   if (dataProvider === 'supabase') {

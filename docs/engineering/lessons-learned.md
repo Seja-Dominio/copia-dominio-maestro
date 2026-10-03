@@ -1,5 +1,11 @@
 # Lições de engenharia
 
+## Provider ativo não deve herdar fallback genérico de outro backend — 03/10/2026
+
+- **Evidência:** busca de consumidores mostrou que `Settings.deleteAccount`, `fetchInstagramInsights` e `generateAIInsights` não tinham rota Supabase; `invokeMaestroFunction` ainda encaminhava qualquer nome desconhecido a Base44 mesmo com provider Supabase. Isso podia executar exclusão no sistema antigo enquanto os dados ativos estavam no Supabase. O provider Supabase agora falha fechado para chamadas não mapeadas, a exclusão é desabilitada nesse modo e Insights apresenta o erro e encerra loading. Testes focados 6/6, ESLint e build Vite passaram; CI do diff ainda pendente. Secrets do Dev foram consultados apenas por nome; nenhum valor foi lido. Esforço ativo não medido.
+- **Aplicação:** inventariar dispatchers dinâmicos por provider; em modo Supabase, não deixar chamadas sem mapeamento atravessarem silenciosamente para Base44. Provar que o modo legado explícito continua funcional e bloquear ações destrutivas até haver implementação tenant-aware equivalente.
+- **Skill:** `dominio-integration-testing/SKILL.md` atualizada com a regra de fallback entre providers, indisponibilidade visível e ações destrutivas; evidência de falha de alto impacto e correção validada localmente.
+
 ## Separar dependências de build do runtime e validar a imagem final — 03/10/2026
 
 - **Evidência:** `tailwindcss-animate` era dependência de produção apesar de ser importado apenas por `tailwind.config.js`; isso fazia `npm audit --omit=dev` reportar cinco High de ferramentas Tailwind. Ao movê-lo para `devDependencies` e atualizar React Router 6.30.6→7.18.4, a auditoria runtime passou com zero findings. O `npm ci` completo ainda mostra seis High no ambiente de build, enquanto a imagem multi-stage Nginx contém apenas `dist` e não tem Node. Build Vite, 133 testes Node, isolamento Playwright 8/8 e smoke HTTP de rotas profundas no container passaram. O CI `37108649952` passou no SHA `df23111a627f49ae20b651beb2a3367c355ccad5`, incluindo replay clean-room, scanners e regressões de isolamento. Esforço ativo não medido.

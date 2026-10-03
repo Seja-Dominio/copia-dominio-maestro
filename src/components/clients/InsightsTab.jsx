@@ -65,6 +65,7 @@ export default function InsightsTab({ client }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [actionError, setActionError] = useState("");
   const [period, setPeriod] = useState("30");
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -97,25 +98,37 @@ export default function InsightsTab({ client }) {
 
   async function handleSync() {
     if (!client.instagram_account_id) return;
+    setActionError("");
     setSyncing(true);
-    await invokeMaestroFunction("fetchInstagramInsights", {
-      client_id: client.id,
-      instagram_account_id: client.instagram_account_id,
-    });
-    await loadData();
-    setSyncing(false);
+    try {
+      await invokeMaestroFunction("fetchInstagramInsights", {
+        client_id: client.id,
+        instagram_account_id: client.instagram_account_id,
+      });
+      await loadData();
+    } catch (error) {
+      setActionError(error.message || "Não foi possível atualizar os dados do Instagram.");
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function handleGenerateAI() {
+    setActionError("");
     setAiLoading(true);
-    const res = await invokeMaestroFunction("generateAIInsights", {
-      client_id: client.id,
-      client_name: client.name,
-      date_from: dateFrom,
-      date_to: dateTo,
-    });
-    setAiAnalysis(res.data);
-    setAiLoading(false);
+    try {
+      const res = await invokeMaestroFunction("generateAIInsights", {
+        client_id: client.id,
+        client_name: client.name,
+        date_from: dateFrom,
+        date_to: dateTo,
+      });
+      setAiAnalysis(res.data);
+    } catch (error) {
+      setActionError(error.message || "Não foi possível gerar a análise de Insights.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   async function handleExcludePost(postId) {
@@ -284,6 +297,7 @@ export default function InsightsTab({ client }) {
           {syncing ? "Sincronizando..." : "Atualizar dados"}
         </Button>
       </div>
+      {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-2">

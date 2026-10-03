@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getCurrentCollaborator, invokeMaestroFunction, logoutCollaborator } from "@/api/maestroClient";
+import { getCurrentCollaborator, invokeMaestroFunction, isMaestroSupabaseProvider, logoutCollaborator } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, Trash2, AlertTriangle, Loader2 } from "lucide-react";
@@ -72,7 +72,11 @@ export default function Settings() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {deleteResult === "success" ? (
+          {isMaestroSupabaseProvider ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              A exclusão de conta ainda não está disponível no ambiente Supabase. Fale com um administrador para solicitar essa ação.
+            </p>
+          ) : deleteResult === "success" ? (
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
               <p className="text-sm font-semibold text-green-700 dark:text-green-400">
                 Conta excluída com sucesso. Você será desconectado em instantes...

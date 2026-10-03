@@ -7,3 +7,7 @@ export function resolveMaestroProvider(value) {
   }
   return provider;
 }
+
+export function resolveMaestroFunctionFallback(value) {
+  return resolveMaestroProvider(value) === "base44" ? "base44" : "unsupported";
+}
