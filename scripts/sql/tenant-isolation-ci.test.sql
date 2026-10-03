@@ -832,6 +832,7 @@ values
   ('00000000-0000-0000-0000-00000000a001', 'tenant-ci-timesheet-running-a', '{"id":"tenant-ci-timesheet-running-a"}', true, now() - interval '20 minutes'),
   ('00000000-0000-0000-0000-00000000b001', 'tenant-ci-timesheet-running-b', '{"id":"tenant-ci-timesheet-running-b"}', true, now() - interval '20 minutes');
 
+set local role service_role;
 do $timesheet_admin_scope$
 declare
   deleted_count bigint;
@@ -845,6 +846,17 @@ begin
   if deleted_count <> 1 then
     raise exception 'Scoped timesheet delete expected 1 row, got %.', deleted_count;
   end if;
+
+  stopped_count := public.maestro_reset_running_timesheets('00000000-0000-0000-0000-00000000a001'::uuid);
+  if stopped_count <> 1 then
+    raise exception 'Scoped timesheet reset expected 1 row, got %.', stopped_count;
+  end if;
+end;
+$timesheet_admin_scope$;
+reset role;
+
+do $timesheet_admin_persisted_scope$
+begin
   if exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-delete-a')
     or not exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-delete-b') then
     raise exception 'Timesheet delete crossed organization scope or failed to delete target.';
@@ -856,17 +868,12 @@ begin
   ) then
     raise exception 'Timesheet delete did not create an organization-scoped audit snapshot.';
   end if;
-
-  stopped_count := public.maestro_reset_running_timesheets('00000000-0000-0000-0000-00000000a001'::uuid);
-  if stopped_count <> 1 then
-    raise exception 'Scoped timesheet reset expected 1 row, got %.', stopped_count;
-  end if;
   if exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-running-a' and is_running is true)
     or not exists (select 1 from public.maestro_timesheets where legacy_record_id = 'tenant-ci-timesheet-running-b' and is_running is true) then
     raise exception 'Timesheet reset crossed organization scope or failed to stop target.';
   end if;
 end;
-$timesheet_admin_scope$;
+$timesheet_admin_persisted_scope$;
 
 do $cross_tenant_constraints$
 begin

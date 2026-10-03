@@ -9,6 +9,10 @@ const migration = await fs.readFile(
   path.join(root, "supabase/migrations/20260929220702_task_audit_log_scope_from_row_org_id.sql"),
   "utf8",
 );
+const triggerPrivilegeMigration = await fs.readFile(
+  path.join(root, "supabase/migrations/20261003090000_harden_task_audit_projection_trigger.sql"),
+  "utf8",
+);
 const projectionMigration = await fs.readFile(
   path.join(root, "supabase/migrations/20260926460000_create_relational_task_audit_logs.sql"),
   "utf8",
@@ -38,6 +42,15 @@ test("task and delete-log projection trusts row tenant before legacy mapping", (
   assert.match(migration, /collaborator_legacy_record_id, collaborator_id/i);
   assert.match(migration, /collaborator_id=excluded\.collaborator_id/i);
   assert.match(migration, /m\.organization_id=v_org and m\.collaborator_id=nullif\(new\.payload->>'collaborator_id',''\)/i);
+});
+
+test("audit projection trigger has narrowly scoped definer rights and runtime-role coverage", async () => {
+  assert.match(triggerPrivilegeMigration, /alter function public\.maestro_sync_task_audit_log\(\) security definer/i);
+  assert.match(triggerPrivilegeMigration, /alter function public\.maestro_sync_task_audit_log\(\) set search_path = ''/i);
+  assert.match(triggerPrivilegeMigration, /revoke all on function public\.maestro_sync_task_audit_log\(\)[\s\S]*?from public, anon, authenticated, service_role/i);
+
+  const ciFixture = await fs.readFile(path.join(root, "scripts/sql/tenant-isolation-ci.test.sql"), "utf8");
+  assert.match(ciFixture, /set local role service_role;\s*do \$timesheet_admin_scope\$[\s\S]*?maestro_delete_timesheets_with_audit[\s\S]*?maestro_reset_running_timesheets[\s\S]*?\$timesheet_admin_scope\$;\s*reset role;\s*do \$timesheet_admin_persisted_scope\$/i);
 });
 
 test("inactive legacy assignees remain snapshots while typed relations require same-tenant membership", () => {

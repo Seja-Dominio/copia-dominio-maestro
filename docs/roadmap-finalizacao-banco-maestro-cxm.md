@@ -5,8 +5,8 @@
 ### Topologia confirmada pelo usuário
 
 - Supabase Dev do Maestro: `tqmfuskvllpqmvayjuqu` (Dashboard: “Dominio Maestro Development”).
-- Supabase DB de Produção: `fwpisypiiezjhtqxlmqv` (Dashboard: “Maestro BD production”). Não consultar nem escrever durante o gate Dev.
-- Frontend de Produção: VPS `srv1611248.hstgr.cloud` (`187.127.27.151`). Confirmação visual do usuário em 03/10/2026: o projeto Supabase `Maestro BD production` (`fwpisypiiezjhtqxlmqv`) é o banco de Produção; frontend de Produção roda no VPS. O rótulo `PRODUCTION` no branch `main` do Dashboard não designa o frontend.
+- Supabase DB de Produção: `fwpisypiiezjhtqxlmqv` (Dashboard renomeado para “Maestro BD producao”). Não consultar nem escrever durante o gate Dev.
+- Frontend de Produção: VPS `srv1611248.hstgr.cloud` (`187.127.27.151`). Confirmação visual do usuário em 03/10/2026: o projeto Supabase `Maestro BD producao` (`fwpisypiiezjhtqxlmqv`) é o banco de Produção; frontend de Produção roda no VPS. O rótulo `PRODUCTION` em `main` identifica o branch do projeto Supabase, não o destino do frontend.
 - Todo trabalho corrente permanece no Dev/ambiente isolado; deploy no VPS só após os gates definidos. CXM/CRM está fora deste goal.
 
 ### Progresso do goal acelerado — atualizado em 03/10/2026
@@ -854,6 +854,14 @@ Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são crit
 - A revisão do fluxo de tenant detectou fallback para o primeiro tenant ativo no dual-write de NPS. Reproduzido em clone local vazio: com dois tenants, registro legado sem escopo era projetado em A sem vínculo tenant. Clone revertido; nenhum banco hospedado foi alterado.
 - Candidata forward `20261002160000_fail_closed_nps_tenant_dual_write.sql` e regressões para NPS Entry/History cobrem escopo explícito, update same-tenant, rejeição de tenant ausente/ambíguo/cruzado, prevenção de movimento da projeção existente e ausência de resíduos. Ensaio rollback-only passou em clone Dev-shaped sob `service_role`; o CI do commit atual ainda precisa confirmar o replay total e a suíte.
 - Dev hospedado não instala as tabelas, a função ou o trigger NPS, então esta proteção está somente em código/CI; não é correção aplicada ao runtime Dev. Não executar repair/push isolado por conta do ledger/catalog drift. Marco 4 segue parcial; upgrade representativo das 57 linhas legadas continua pendente.
+
+### Timesheet admin RPC: trigger de auditoria sob papel de runtime — 03/10/2026
+
+- A fixture SQL agora executa `maestro_delete_timesheets_with_audit` e `maestro_reset_running_timesheets` como `service_role`; antes, as chamadas estavam dentro de um bloco executado depois de `RESET ROLE`, portanto eram testadas como owner e não provavam os privilégios reais do runtime.
+- No clone local isolado, sob `service_role`, a exclusão falhou no trigger `maestro_sync_task_audit_log`: a RPC invoker cria um `DeleteLog` em `legacy_records`, e o trigger invoker também tenta gravar em `maestro_delete_logs`, tabela sem grants diretos ao `service_role`. Causa reproduzida; não é inferência sobre ambiente hospedado.
+- Migration forward `20261003090000_harden_task_audit_projection_trigger.sql` torna somente esse trigger `SECURITY DEFINER`, define `search_path=''` e revoga EXECUTE direto dos papéis de aplicação. Não amplia grants sobre a tabela de auditoria; o trigger mantém sua função interna com ownership controlado.
+- Prova local combinada: migration aplicada dentro da transação de ensaio, dados sintéticos em dois tenants, exclusão e reset executados como `service_role`, assertions administrativas após `RESET ROLE`, e `ROLLBACK` confirmado. Retornos foram 1 item excluído e 1 timer resetado; o item do outro tenant permaneceu ativo. Consulta posterior encontrou zero resíduos.
+- Marco 4 permanece parcial: falta o replay integral/upgrade pelo CI com a migration e fixture atualizadas e falta catálogo Dev representativo; nenhuma escrita em Supabase Dev/Produção ou deploy no VPS foi feita. Percentual geral mantido até o gate integrado passar.
 
 ### Separação de conflitos por ownership — 01/10/2026
 
