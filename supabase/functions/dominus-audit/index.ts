@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeDominusAuditSession, selectScheduledAuditOrganization } from "../_shared/dominus-audit-scope.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -11,7 +12,7 @@ const origins = new Set([
   "https://dominiomaestro.com.br",
 ]);
 
-type Session = { sub: string; exp: number; access_level: string; scope?: "user" | "group"; authenticated?: boolean };
+type Session = { sub: string; exp: number; access_level: string; organization_id: string };
 type Row = { entity: string; record_id: string; payload: Record<string, any>; source_updated_at?: string | null };
 type Finding = {
   category: string;
@@ -57,10 +58,6 @@ function json(body: Record<string, unknown>, status: number, origin: string) {
   });
 }
 
-function isMaster(session: Session | null): session is Session {
-  return Boolean(session?.scope === "user" && session.authenticated === true && String(session.access_level).toLowerCase() === "master");
-}
-
 async function verifySession(token: string): Promise<Session | null> {
   if (!sessionSecret) return null;
   try {
@@ -70,16 +67,23 @@ async function verifySession(token: string): Promise<Session | null> {
     const valid = await crypto.subtle.verify("HMAC", key, Uint8Array.from(decode(signature), character => character.charCodeAt(0)), new TextEncoder().encode(body));
     if (!valid) return null;
     const payload = JSON.parse(decode(body)) as Record<string, any>;
-    if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000) || payload.scope !== "user") return null;
-    const { data } = await db.from("maestro_collaborators").select("id,is_active,profile").eq("id", payload.sub).maybeSingle();
-    if (!data?.is_active) return null;
-    return {
-      sub: String(data.id),
-      exp: Number(payload.exp),
-      access_level: String(data.profile?.access_level || payload.access_level || "collaborator").toLowerCase() === "admin" ? "master" : String(data.profile?.access_level || payload.access_level || "collaborator").toLowerCase(),
-      scope: "user",
-      authenticated: true,
-    };
+    if (!payload.sub || !payload.exp || payload.exp < Math.floor(Date.now() / 1000) || !payload.organization_id) return null;
+    const { data, error: collaboratorError } = await db.from("maestro_collaborators").select("id,is_active").eq("id", payload.sub).maybeSingle();
+    if (collaboratorError || !data?.is_active) return null;
+    const { data: memberships, error: membershipError } = await db.from("organization_members")
+      .select("organization_id,role,status,organizations!inner(status)")
+      .eq("collaborator_id", data.id)
+      .eq("status", "active")
+      .eq("organizations.status", "active")
+      .eq("organization_id", String(payload.organization_id))
+      .limit(2);
+    if (membershipError) return null;
+    const { data: products, error: productsError } = await db.from("organization_products")
+      .select("product_key,status,expires_at")
+      .eq("organization_id", String(payload.organization_id))
+      .eq("product_key", "maestro");
+    if (productsError) return null;
+    return authorizeDominusAuditSession({ payload, collaborator: data, memberships, products });
   } catch {
     return null;
   }
@@ -96,13 +100,14 @@ async function cronAuthorized(request: Request) {
   return Boolean(expected && supplied.length === expected.length && supplied === expected);
 }
 
-async function loadEntity(entity: string) {
+async function loadEntity(entity: string, organizationId: string) {
   const rows: Row[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await db
       .from("legacy_records")
       .select("entity,record_id,payload,source_updated_at")
       .eq("entity", entity)
+      .eq("organization_id", organizationId)
       .order("record_id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
@@ -396,17 +401,18 @@ function candidateFor(category: string, count: number, today: string) {
   return candidates[category] || null;
 }
 
-async function createLearningCandidates(findings: Finding[], today: string) {
+async function createLearningCandidates(findings: Finding[], today: string, organizationId: string) {
   const counts = new Map<string, number>();
   findings.forEach(finding => counts.set(finding.category, (counts.get(finding.category) || 0) + 1));
   let created = 0;
   for (const [category, count] of counts) {
     const candidate = candidateFor(category, count, today);
     if (!candidate) continue;
-    const { data: existing, error: lookupError } = await db.from("dominus_learning_reviews").select("id,status").eq("memory_key", candidate.key).order("created_at", { ascending: false }).limit(1);
+    const { data: existing, error: lookupError } = await db.from("dominus_learning_reviews").select("id,status").eq("memory_key", candidate.key).eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(1);
     if (lookupError) throw lookupError;
     if (existing?.length) continue;
     const { data: review, error } = await db.from("dominus_learning_reviews").insert({
+      organization_id: organizationId,
       memory_key: candidate.key,
       status: "pending",
       proposed_rule: candidate.rule,
@@ -419,6 +425,7 @@ async function createLearningCandidates(findings: Finding[], today: string) {
     }).select("id").single();
     if (error) throw error;
     const { error: eventError } = await db.from("dominus_learning_review_events").insert({
+      organization_id: organizationId,
       review_id: review.id,
       event_type: "created",
       actor_id: "dominus-audit",
@@ -464,12 +471,13 @@ function buildSummary(findings: Finding[], today: string, candidatesCreated: num
   };
 }
 
-async function runAudit(triggeredBy: string) {
+async function runAudit(organizationId: string, triggeredBy: string) {
   const now = new Date();
   const today = localDate(now);
   const { data: existingRun, error: existingRunError } = await db
     .from("dominus_audit_runs")
     .select("id,status,findings_count,finished_at,created_at")
+    .eq("organization_id", organizationId)
     .eq("status", "completed")
     .gte("started_at", `${today}T00:00:00-04:00`)
     .order("started_at", { ascending: false })
@@ -488,6 +496,7 @@ async function runAudit(triggeredBy: string) {
     };
   }
   const { data: run, error: runError } = await db.from("dominus_audit_runs").insert({
+    organization_id: organizationId,
     status: "running",
     period_start: `${today}T00:00:00-04:00`,
     period_end: now.toISOString(),
@@ -496,41 +505,53 @@ async function runAudit(triggeredBy: string) {
   if (runError) throw runError;
   try {
     const [jobs, subtasks, projects, clients] = await Promise.all([
-      loadEntity("Job"), loadEntity("Subtask"), loadEntity("Project"), loadEntity("Client"),
+      loadEntity("Job", organizationId), loadEntity("Subtask", organizationId), loadEntity("Project", organizationId), loadEntity("Client", organizationId),
     ]);
     const findings = auditData(jobs, subtasks, projects, clients, today);
     for (let offset = 0; offset < findings.length; offset += 100) {
-      const chunk = findings.slice(offset, offset + 100).map(finding => ({ ...finding, run_id: run.id }));
+      const chunk = findings.slice(offset, offset + 100).map(finding => ({ ...finding, organization_id: organizationId, run_id: run.id }));
       const { error } = await db.from("dominus_audit_findings").insert(chunk);
       if (error) throw error;
     }
-    const candidatesCreated = await createLearningCandidates(findings, today);
+    const candidatesCreated = await createLearningCandidates(findings, today, organizationId);
     const summary = buildSummary(findings, today, candidatesCreated);
     const summaryTimestamp = new Date().toISOString();
+    const summaryRecordId = `daily:${organizationId}:${today}`;
+    const { error: mappingError } = await db.from("organization_legacy_records").upsert({
+      organization_id: organizationId,
+      legacy_entity: "DominusAuditSummary",
+      legacy_record_id: summaryRecordId,
+      scope_status: "confirmed",
+      source: "dominus-audit",
+    }, { onConflict: "organization_id,legacy_entity,legacy_record_id" });
+    if (mappingError) throw mappingError;
     const { error: summaryError } = await db.from("legacy_records").upsert({
       entity: "DominusAuditSummary",
-      record_id: `daily:${today}`,
+      record_id: summaryRecordId,
+      organization_id: organizationId,
       payload: { date: today, run_id: run.id, findings_count: findings.length, candidates_created: candidatesCreated, ...summary, generated_at: summaryTimestamp },
       source_created_at: summaryTimestamp,
       source_updated_at: summaryTimestamp,
     }, { onConflict: "entity,record_id" });
     if (summaryError) throw summaryError;
     const finishedAt = new Date().toISOString();
-    const { error: finishError } = await db.from("dominus_audit_runs").update({ status: "completed", findings_count: findings.length, finished_at: finishedAt }).eq("id", run.id);
+    const { error: finishError } = await db.from("dominus_audit_runs").update({ status: "completed", findings_count: findings.length, finished_at: finishedAt }).eq("id", run.id).eq("organization_id", organizationId);
     if (finishError) throw finishError;
     return { run_id: run.id, status: "completed", findings_count: findings.length, candidates_created: candidatesCreated, generated_at: finishedAt, summary_text: summary.text, summary: { ...summary, generated_at: finishedAt }, source: "Maestro", timezone: APP_TIME_ZONE };
   } catch (error) {
-    await db.from("dominus_audit_runs").update({ status: "failed", error_message: safeText(error instanceof Error ? error.message : error, 4000), finished_at: new Date().toISOString() }).eq("id", run.id);
+    await db.from("dominus_audit_runs").update({ status: "failed", error_message: safeText(error instanceof Error ? error.message : error, 4000), finished_at: new Date().toISOString() }).eq("id", run.id).eq("organization_id", organizationId);
     throw error;
   }
 }
 
-async function listAudits(runId = "") {
-  const { data: runs, error: runsError } = await db.from("dominus_audit_runs").select("id,status,period_start,period_end,findings_count,triggered_by,error_message,started_at,finished_at,created_at").order("started_at", { ascending: false }).limit(20);
+async function listAudits(organizationId: string, runId = "") {
+  const { data: runs, error: runsError } = await db.from("dominus_audit_runs").select("id,status,period_start,period_end,findings_count,triggered_by,error_message,started_at,finished_at,created_at").eq("organization_id", organizationId).order("started_at", { ascending: false }).limit(20);
   if (runsError) throw runsError;
-  const selectedRunId = runId || runs?.[0]?.id || "";
+  const selectedRunId = runs?.some((run: any) => String(run.id) === runId)
+    ? runId
+    : runs?.[0]?.id || "";
   const { data: findings, error: findingsError } = selectedRunId
-    ? await db.from("dominus_audit_findings").select("id,run_id,category,severity,status,title,description,entity,record_id,evidence,suggested_action,created_at,updated_at").eq("run_id", selectedRunId).order("created_at", { ascending: false }).limit(500)
+    ? await db.from("dominus_audit_findings").select("id,run_id,category,severity,status,title,description,entity,record_id,evidence,suggested_action,created_at,updated_at").eq("run_id", selectedRunId).eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(500)
     : { data: [], error: null };
   if (findingsError) throw findingsError;
   const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -548,8 +569,18 @@ Deno.serve(async (request) => {
     const cron = await cronAuthorized(request);
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
     const session = token ? await verifySession(token) : null;
-    if (action === "run" && (cron || isMaster(session))) return json(await runAudit(cron ? "cron" : session!.sub), 200, origin);
-    if (action === "list" && isMaster(session)) return json(await listAudits(String(body.run_id || "")), 200, origin);
+    if (action === "run" && cron) {
+      const [{ data: organizations, error: organizationsError }, { data: products, error: productsError }] = await Promise.all([
+        db.from("organizations").select("id,status").eq("status", "active"),
+        db.from("organization_products").select("organization_id,product_key,status,expires_at").eq("product_key", "maestro").in("status", ["trial", "enabled"]),
+      ]);
+      if (organizationsError || productsError) throw organizationsError || productsError;
+      const choice = selectScheduledAuditOrganization(organizations, products);
+      if (!choice.ok) return json({ error: "A auditoria agendada exige exatamente uma organização Maestro ativa; o worker precisa rotear por organização." }, 409, origin);
+      return json(await runAudit(choice.organization_id, "cron"), 200, origin);
+    }
+    if (action === "run" && session?.access_level === "master") return json(await runAudit(session.organization_id, session.sub), 200, origin);
+    if (action === "list" && session?.access_level === "master") return json(await listAudits(session.organization_id, String(body.run_id || "")), 200, origin);
     return json({ error: "Acesso exclusivo para Master autenticado ou execução interna autorizada." }, 403, origin);
   } catch (error) {
     console.error("Dominus audit error:", error);
