@@ -70,10 +70,19 @@ BEGIN
 
   SELECT organization_id INTO organization_a
   FROM public.team_chat_channels
+  WHERE slug = 'geral'
   ORDER BY created_at, id
   LIMIT 1;
   IF organization_a IS NULL THEN
     RAISE EXCEPTION 'Clean-room migration replay must seed a tenant-scoped team-chat channel.';
+  END IF;
+  IF (
+    SELECT count(DISTINCT slug)
+    FROM public.team_chat_channels
+    WHERE organization_id = organization_a
+      AND slug IN ('geral', 'operacao', 'comercial')
+  ) <> 3 THEN
+    RAISE EXCEPTION 'The standard team-chat channels must remain grouped in one tenant.';
   END IF;
 
   INSERT INTO public.organizations (name, slug)
