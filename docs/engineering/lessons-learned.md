@@ -1,5 +1,12 @@
 # Lições de engenharia
 
+## Backup lógico local deve usar o owner real do clone — 03/10/2026
+
+- **Evidência:** em Colima, a role `postgres` não conseguiu clonar o banco Prod-shaped porque não era owner nem membro de `supabase_admin`; a operação `CREATE DATABASE ... TEMPLATE` passou ao conectar localmente como `supabase_admin`. Em seguida, `pg_dump -Fc`/`pg_restore` para banco vazio preservou a linha de prova e o catálogo verificado.
+- **Aplicação:** antes de classificar erro de clone como problema do snapshot ou do dump, confira `pg_database.datdba` e use a role owner/admin do clone. Manter operação e dados sintéticos estritamente locais.
+- **Skill:** `dominio-database-migrations/SKILL.md` já exige conferir owner efetivo e executar DDL com owner/administrador; não foi alterada por este único caso.
+- **Validação:** source-only Prod-shaped, backup SHA-256 `5151e98d8a163ec7eff6e33b83b31019631537e82db8326c239738c1c5f4f2fe`, restore local verificado; ausência de dados de negócio limita o alcance. Esforço ativo não medido.
+
 ## Teste de falha de chunk deve compartilhar o retry de Produção — 03/10/2026
 
 - **Evidência:** o harness de isolamento usava `React.lazy` direto enquanto o `App` usava `lazyWithRetry`; assim, cobria o boundary, mas não a tentativa de cache-busting/retry executada em Produção. Após importar o helper real no harness, os cenários bidirecionais passaram verificando o parâmetro `_cb`, múltiplas tentativas, fallback isolado e navegação SPA para a rota vizinha.
