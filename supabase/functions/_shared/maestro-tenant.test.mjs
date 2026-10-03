@@ -233,14 +233,14 @@ test("Meta Ads OAuth and synchronization keep accounts, credentials, client insi
 });
 
 test("scheduled Meta sync derives managers from active tenant roles and ignores expired product access", async () => {
-  const source = await fs.readFile(new URL("../meta-ads-sync-cron/index.ts", import.meta.url), "utf8");
+  const source = await fs.readFile(new URL("./meta-ads-sync-cron.mjs", import.meta.url), "utf8");
   assert.match(source, /\.select\("collaborator_id,role,status,organizations!inner\(status\)"\)/);
   assert.match(source, /selectOrganizationMembership\(\[membership\], organizationId\)/);
   assert.match(source, /profileForOrganizationRole\([\s\S]{0,100}membershipChoice\.membership\.organization_role/);
   assert.match(source, /isAdsBrainManager\(authorizedProfile\)/);
   assert.doesNotMatch(source, /isAdsBrainManager\(collaborator\.profile/);
   assert.match(source, /\.select\("organization_id,product_key,status,expires_at"\)/);
-  assert.match(source, /hasActiveOrganizationProduct\(rows, "maestro"\)\s*\|\|\s*hasActiveOrganizationProduct\(rows, "ads_brain"\)/);
+  assert.match(source, /hasActiveOrganizationProduct\(rows, "maestro", nowMs\(\)\)\s*\|\|\s*hasActiveOrganizationProduct\(rows, "ads_brain", nowMs\(\)\)/);
   assert.match(source, /activeOrganizationIds\.has\(id\) && enabledProductOrganizations\.has\(id\)/);
 });
 
