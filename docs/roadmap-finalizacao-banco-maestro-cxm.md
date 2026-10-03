@@ -926,6 +926,12 @@ Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são crit
 - O utilitário local `scripts/import-base44-export.mjs` importa CSV por essa mesma chave com `resolution=merge-duplicates`; o modo `--verify` compara entidades/IDs e datas `source_updated_at`, não conteúdo de payload nem proveniência de campos. Busca de nomes de arquivo na cópia principal do projeto não encontrou ZIP/export/snapshot versionado. Essa evidência esclarece como o conflito pode ter sido produzido, não qual lado contém o valor correto.
 - Portanto, a migration/ledger históricos seguem intocados. O gate P0 ainda requer contrato de autoria/editabilidade e export representativo sanitizado com cadeia de origem; não se deve promover snapshot ou destino por suposição. Nenhum dado hospedado foi lido nesta verificação, nem Prod/VPS foram acessados.
 
+### Reprodução sintética local do conflito de `0004` — 03/10/2026
+
+- Em banco local descartável `maestro_0004_conflict_repro_20261003_a`, apliquei a migration atual a uma linha sintética, editei o destino com timestamp posterior e reapliquei o SQL. A execução repetiu sem erro, porém trocou a edição posterior pelo payload anterior do snapshot e redefiniu `imported_at`.
+- Isto confirma em isolamento o risco do upsert sem precedência, não a fonte correta para dados de negócio. A fixture está isolada, nenhum arquivo de migration foi modificado e nenhum dado hospedado foi lido ou alterado.
+- O gate de upgrade representativo continua aberto: ainda são necessários um export sanitizado com proveniência confiável e contrato de autoria/editabilidade por entidade.
+
 ### Preflight read-only do VPS e bloqueio do CI hospedado — 03/10/2026
 
 - DNS atual resolve `dominiomaestro.com.br` para o VPS confirmado `187.127.27.151`; a rota HTTPS pública responde HTTP 200 via Nginx e o HTML identifica o título Domínio Maestro. Acessar o IP sem Host/SNI devolve a página padrão do Nginx; portanto verificações e smoke futuros devem usar o domínio canônico. Isso confirma reachability e uma resposta HTML, não login, APIs ou saúde dos fluxos.
