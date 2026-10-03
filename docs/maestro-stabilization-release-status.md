@@ -23,6 +23,7 @@ Atualizado em 03/10/2026. Escopo: frontend Maestro e integridade do banco em tri
 ## Limitações e observações
 
 - Os oito testes atuais provam contenção de falhas de rota no frontend; não provam isolamento de processo/deploy, backend ou indisponibilidade de dependências compartilhadas.
+- Reforço de cobertura local: o harness Playwright agora compartilha `lazyWithRetry` com `src/App.jsx`, em vez de contornar a política de import da aplicação. Os testes de falha de chunk confirmam que o `documentId` permanece o mesmo (sem reload global), a falha aparece no boundary da rota e outra rota segue navegável; os casos de erro de renderização mantêm a mesma garantia. Resultado local: Playwright 8/8, build aprovado, ESLint focado aprovado e `git diff --check` aprovado. Não substitui os smoke tests autenticados no Dev nem CI verde.
 - O bundle atual contém a referência `maestro-core-data`; preservar esse contrato como parte do baseline de Produção não comprova que a versão da Edge Function em Produção é compatível. A função não foi implantada nem alterada neste goal.
 - O diretório `/var/www/html` do host é a página padrão do Nginx e **não** hospeda o Maestro. A aplicação roda no container Docker descrito acima.
 - O HTML atualmente servido ainda referencia uma imagem de favicon hospedada em `media.base44.com`. Esse item não foi modificado neste release de estabilização para manter a versão publicada como baseline; acompanhar como limpeza de fornecedor separada.

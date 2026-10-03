@@ -1,5 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
-import { Suspense, useState, useEffect, lazy } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
@@ -15,47 +15,7 @@ import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
 import { logoutCollaborator } from '@/api/maestroClient';
 import IsolatedModuleContent from '@/components/IsolatedModuleContent';
-
-// Lazy imports with a cache-busting recovery for stale Vite chunks.
-function isChunkLoadError(error) {
-  const message = String(error?.message || error || "");
-  return message.includes("dynamically imported module")
-    || message.includes("Failed to fetch")
-    || message.includes("Loading chunk")
-    || message.includes("Loading CSS chunk");
-}
-
-function reloadWithFreshAssets() {
-  const key = `lazy_reload_${window.location.pathname}`;
-  const now = Date.now();
-  const lastReload = Number(sessionStorage.getItem(key) || 0);
-
-  if (now - lastReload > 15000) {
-    sessionStorage.setItem(key, String(now));
-    const url = new URL(window.location.href);
-    url.searchParams.set("_cb", String(now));
-    window.location.replace(url.toString());
-    return new Promise(() => {});
-  }
-
-  return null;
-}
-
-function lazyWithRetry(factory) {
-  return lazy(async () => {
-    try {
-      return await factory();
-    } catch (error) {
-      if (isChunkLoadError(error)) {
-        const recovery = reloadWithFreshAssets();
-        if (recovery) return recovery;
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return factory();
-    }
-  });
-}
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard.jsx'));
 const Agenda = lazyWithRetry(() => import('./pages/Agenda.jsx'));

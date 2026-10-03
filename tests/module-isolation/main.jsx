@@ -1,14 +1,14 @@
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import IsolatedModuleContent from '../../src/components/IsolatedModuleContent.jsx';
+import { lazyWithRetry } from '../../src/lib/lazyWithRetry.js';
 
 window.__moduleIsolationDocumentId = `${Date.now()}-${Math.random()}`;
 
-const Jobs = React.lazy(() => import('./modules/Jobs.jsx'));
-const AdsBrain = React.lazy(() => import('./modules/AdsBrain.jsx'));
-const Dashboard = React.lazy(() => import('./modules/Dashboard.jsx'));
-const Financial = React.lazy(() => import('./modules/Financial.jsx'));
+const Jobs = lazyWithRetry(() => import('./modules/Jobs.jsx'));
+const AdsBrain = lazyWithRetry(() => import('./modules/AdsBrain.jsx'));
+const Dashboard = lazyWithRetry(() => import('./modules/Dashboard.jsx'));
+const Financial = lazyWithRetry(() => import('./modules/Financial.jsx'));
 
 function TestRoutes() {
   const initialRoute = new URLSearchParams(window.location.search).get('initial') || '/Jobs';

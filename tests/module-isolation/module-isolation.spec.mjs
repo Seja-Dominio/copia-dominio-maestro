@@ -16,8 +16,10 @@ for (const scenario of scenarios) {
     });
     const initialRoute = `/${scenario.failedModule}`;
     await page.goto(`/tests/module-isolation/index.html?initial=${initialRoute}`);
+    const documentId = await page.evaluate(() => window.__moduleIsolationDocumentId);
 
     await expect(page.getByRole('alert')).toContainText('Erro ao carregar');
+    expect(await page.evaluate(() => window.__moduleIsolationDocumentId)).toBe(documentId);
     expect(failedChunkRequests).toBeGreaterThanOrEqual(1);
     await page.getByRole('link', { name: scenario.availableModule }).click();
     await expect(page.getByTestId(scenario.readyTestId)).toBeVisible();
