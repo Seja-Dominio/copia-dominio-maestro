@@ -1,5 +1,12 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Recontagem do ledger Dev — 03/10/2026
+
+- `supabase migration list --project-ref tqmfuskvllpqmvayjuqu` confirmou 87 entradas remotas. A árvore contém 187 arquivos locais. O fetch subsequente foi somente leitura do histórico Dev para `/tmp/maestro-migration-audit.xDbafa`; não alterou migrations do checkout nem aplicou SQL no banco.
+- 53 timestamps remotos não têm arquivo local com a mesma identidade. Essa é uma diferença de identidade, não uma contagem de efeitos ausentes: migrations podem ter nomes/timestamps diferentes e a equivalência exige comparar statements e estado de catálogo, sem inferir pela descrição. As anotações anteriores de 25 pares e nove conflitos vêm de fingerprint por statement e continuam sendo a referência semântica; hashes crus de arquivos baixados não são comparáveis devido à normalização/formatação do fetch.
+- O histórico contém o novo ID remoto `20261003040000` com rótulo CXM; ele é registrado apenas como parte do ledger misto e fica fora da análise/alteração deste goal. A identidade Dev/Produção foi confirmada pelo usuário; nenhuma chamada ao projeto Supabase de Produção ou VPS foi feita.
+- O ledger completo continua sem liberação para `migration repair`, `db push` ou replay remoto. Para avançar, comparar os efeitos Maestro dos 45 timestamps sem identidade local correspondente contra migrations locais por objetos/semântica e catálogo Dev, em grupos pequenos e em clones; manter os itens CXM excluídos.
+
 ## Upgrade cronológico do sufixo Dev em clone local — 03/10/2026
 
 - Inventário somente leitura de `supabase migration list --project-ref tqmfuskvllpqmvayjuqu` identificou o máximo remoto `20261002140000` e quatro migrations locais posteriores: `20261002150000`, `20261002160000`, `20261002170000` e `20261003090000`.
