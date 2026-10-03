@@ -26,6 +26,7 @@
     "verify:relational-dispatch": "node scripts/verify-relational-dispatch.mjs",
     "verify:frontend-module-boundaries": "node scripts/verify-frontend-module-boundaries.mjs",
     "reconcile:migration-ledgers": "node scripts/reconcile-migration-ledgers.mjs",
+    "audit:migration-files": "node scripts/audit-migration-files.mjs",
     "verify:migration-files": "node scripts/verify-migration-files.mjs",
     "verify:policy-target-ownership": "node scripts/verify-policy-target-ownership.mjs",
     "verify:rls-policy-catalog": "node scripts/verify-rls-policy-catalog.mjs",
