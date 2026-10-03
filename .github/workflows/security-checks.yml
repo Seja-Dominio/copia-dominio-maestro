@@ -103,7 +103,7 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
         with:
-          version: v3.97.1
+          version: 3.97.1
           base: ""
           head: ${{ github.ref_name }}
           extra_args: --results=verified,unknown
