@@ -244,6 +244,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test supabase/functions/_shared/*.test.mjs scripts/lib/*.test.mjs
+      - name: Install Chromium for route isolation tests
+        run: npx playwright install --with-deps chromium
+      - name: Verify runtime isolation between Jobs and Ads Brain
+        run: npm run test:module-isolation
       - name: Build the Maestro frontend
         run: npm run build
       - name: Verify Jobs and Ads Brain module boundaries

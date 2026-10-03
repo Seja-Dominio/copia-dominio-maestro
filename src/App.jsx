@@ -14,6 +14,7 @@ import { AppConfigProvider } from '@/lib/AppConfigContext';
 import AppLayout from './Layout.jsx';
 import { ConfirmDeleteProvider } from '@/components/ConfirmDeleteContext';
 import { logoutCollaborator } from '@/api/maestroClient';
+import ModuleErrorBoundary from '@/components/ModuleErrorBoundary';
 
 // Lazy imports with a cache-busting recovery for stale Vite chunks.
 function isChunkLoadError(error) {
@@ -79,33 +80,6 @@ const AdsBrain = lazyWithRetry(() => import('./pages/AdsBrain.jsx'));
 
 
 
-// Error boundary with auto-reload
-import React from 'react';
-class SafeBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error) {
-    console.error('[SafeBoundary] caught:', error?.message);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 p-8">
-          <p role="alert" className="text-destructive font-semibold">Erro ao carregar</p>
-          <p className="text-sm text-muted-foreground text-center max-w-md">{this.state.error?.message}</p>
-          <button
-            onClick={() => { this.setState({ hasError: false, error: null }); window.location.replace(`${window.location.pathname}?_cb=${Date.now()}`); }}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium"
-          >
-            Recarregar
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 const LoadingFallback = () => (
   <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground" role="status" aria-label="Carregando página">
     <div className="w-8 h-8 border-4 border-border border-t-primary rounded-full animate-spin" />
@@ -120,11 +94,11 @@ const LayoutWrapper = ({ children, currentPageName }) => (
 const P = ({ name, children }) => (
   <LayoutWrapper currentPageName={name}>
     <ProtectedRoute pageName={name}>
-      <SafeBoundary>
+      <ModuleErrorBoundary moduleName={name}>
         <Suspense fallback={<LoadingFallback />}>
           {children}
         </Suspense>
-      </SafeBoundary>
+      </ModuleErrorBoundary>
     </ProtectedRoute>
   </LayoutWrapper>
 );
@@ -200,7 +174,7 @@ const AuthenticatedApp = () => {
 
 function App() {
   return (
-    <SafeBoundary>
+    <ModuleErrorBoundary moduleName="App">
       <AuthProvider>
         <AppConfigProvider>
           <QueryClientProvider client={queryClientInstance}>
@@ -209,9 +183,9 @@ function App() {
               <NavigationProvider>
                 <Routes>
                   <Route path="/JobApproval" element={
-                    <SafeBoundary>
+                    <ModuleErrorBoundary moduleName="JobApproval">
                       <Suspense fallback={<LoadingFallback />}><JobApproval /></Suspense>
-                    </SafeBoundary>
+                    </ModuleErrorBoundary>
                   } />
                   <Route path="*" element={<AuthenticatedApp />} />
                 </Routes>
@@ -222,7 +196,7 @@ function App() {
           </QueryClientProvider>
         </AppConfigProvider>
       </AuthProvider>
-    </SafeBoundary>
+    </ModuleErrorBoundary>
   );
 }
 

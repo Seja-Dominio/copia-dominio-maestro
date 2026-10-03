@@ -71,7 +71,7 @@ export function analyzeModuleBoundaries({ sources, modules }) {
 
 export function hasRouteScopedErrorBoundary(appSource) {
   const pageWrapper = appSource.match(/const P\s*=\s*\(\{[\s\S]*?\n\s*\);/)?.[0] || "";
-  return /<SafeBoundary>\s*<Suspense[\s\S]*?<\/Suspense>\s*<\/SafeBoundary>/.test(pageWrapper);
+  return /<ModuleErrorBoundary\s+moduleName=\{name\}>[\s\S]*?<Suspense[\s\S]*?<\/Suspense>[\s\S]*?<\/ModuleErrorBoundary>/.test(pageWrapper);
 }
 
 export function hasModuleRoutesWrapped(appSource, moduleNames) {

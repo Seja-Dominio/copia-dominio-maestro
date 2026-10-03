@@ -53,7 +53,7 @@ test("requires a route-local error boundary around each lazy page", () => {
     const P = ({ name, children }) => (
       <LayoutWrapper currentPageName={name}>
         <ProtectedRoute pageName={name}>
-          <SafeBoundary><Suspense fallback={<LoadingFallback />}>{children}</Suspense></SafeBoundary>
+          <ModuleErrorBoundary moduleName={name}><Suspense fallback={<LoadingFallback />}>{children}</Suspense></ModuleErrorBoundary>
         </ProtectedRoute>
       </LayoutWrapper>
     );

@@ -65,7 +65,7 @@ npm run preview:dev
 
 ## Publicação em produção
 
-O KVM2 recebe somente o conteúdo compilado de `dist/`. O código-fonte fica no GitHub e os dados/funções ficam no Supabase.
+O KVM2 recebe somente o conteúdo compilado de `dist/`. O código-fonte fica no GitHub e os dados/funções ficam no Supabase. Em 02/10/2026, o usuário confirmou `srv1611248.hstgr.cloud` (`187.127.27.151`) como **único VPS autorizado para o Maestro**; não publique no outro VPS Hostinger da conta.
 
 ```text
 npm run build
