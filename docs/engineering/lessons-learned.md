@@ -5,7 +5,7 @@
 - **Evidência:** o harness de isolamento usava `React.lazy` direto enquanto o `App` usava `lazyWithRetry`; assim, cobria o boundary, mas não a tentativa de cache-busting/retry executada em Produção. Após importar o helper real no harness, os cenários bidirecionais passaram verificando o parâmetro `_cb`, múltiplas tentativas, fallback isolado e navegação SPA para a rota vizinha.
 - **Aplicação:** ao testar fallback de módulos lazy, reutilizar o mesmo loader/retry de Produção para não omitir o comportamento de recuperação de chunks.
 - **Skill:** evidência de um único caso; não promove alteração em `dominio-integration-testing/SKILL.md` até existir repetição comparável.
-- **Validação:** Playwright local 2/2, ESLint dos arquivos alterados, build Vite e `verify:frontend-module-boundaries` passaram; CI do novo checkpoint pendente. Esforço ativo não medido.
+- **Validação:** Playwright local 2/2, ESLint dos arquivos alterados, build Vite e `verify:frontend-module-boundaries` passaram; CI `37097995849` passou nos seis jobs no SHA `b8f2a4c0`. Esforço ativo não medido.
 
 ## Error boundary de rota precisa ser remontada ao trocar de módulo — 02/10/2026
 
