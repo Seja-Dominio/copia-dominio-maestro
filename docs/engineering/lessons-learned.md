@@ -1,5 +1,11 @@
 # Lições de engenharia
 
+## Separar dependências de build do runtime e validar a imagem final — 03/10/2026
+
+- **Evidência:** `tailwindcss-animate` era dependência de produção apesar de ser importado apenas por `tailwind.config.js`; isso fazia `npm audit --omit=dev` reportar cinco High de ferramentas Tailwind. Ao movê-lo para `devDependencies` e atualizar React Router 6.30.6→7.18.4, a auditoria runtime passou com zero findings. O `npm ci` completo ainda mostra seis High no ambiente de build, enquanto a imagem multi-stage Nginx contém apenas `dist` e não tem Node. Build Vite, 133 testes Node, isolamento Playwright 8/8 e smoke HTTP de rotas profundas no container passaram; CI do SHA de integração é o próximo gate. Esforço ativo não medido.
+- **Aplicação:** classificar plugins/configuradores usados só na compilação como dependências de desenvolvimento; rodar auditoria de produção e, separadamente, auditar/inspecionar o estágio final do container. Não concluir que a imagem publicada leva todos os pacotes do estágio de build, nem que scanner que ignora findings sem patch comprova árvore de build limpa.
+- **Skill:** nenhuma alterada; o processo existente de migração/testes cobre a verificação. O gate restante é acompanhar CI do commit e manter registradas as findings do estágio de build.
+
 ## Role tenant-aware não pode vir do perfil global — 03/10/2026
 
 - **Evidência:** comparação read-only encontrou `system-reports` v17 e `refresh-file-url` v9 no Dev usando `profile.access_level` global em caminhos que leem dados/arquivos da organização; as versões candidatas derivam o nível de acesso da membership ativa. `refresh-file-url` v10 está ativa no Dev; teste focado 18/18 e CI `37101590683` verde. `system-reports` v18 também foi publicada e teve smoke anônimo 403.
