@@ -1,5 +1,11 @@
 # Lições de engenharia
 
+## Role tenant-aware não pode vir do perfil global — 03/10/2026
+
+- **Evidência:** comparação read-only encontrou `system-reports` v17 e `refresh-file-url` v9 no Dev usando `profile.access_level` global em caminhos que leem dados/arquivos da organização; as versões candidatas derivam o nível de acesso da membership ativa. `refresh-file-url` v10 está ativa no Dev; teste focado 18/18 e CI `37101590683` verde. `system-reports` v18 também foi publicada e teve smoke anônimo 403.
+- **Aplicação:** quando a autorização depende do tenant selecionado, usar somente a role da membership ativa; adicionar caso em que perfil global e membership discordam. Nunca inferir que HMAC válido conserva privilégios atuais.
+- **Skill:** `dominio-integration-testing/SKILL.md` atualizada com essa regra e evidência resumida. Caminho autenticado positivo ainda depende de usuário de teste legítimo no Dev; esforço ativo não medido.
+
 ## Backup lógico local deve usar o owner real do clone — 03/10/2026
 
 - **Evidência:** em Colima, a role `postgres` não conseguiu clonar o banco Prod-shaped porque não era owner nem membro de `supabase_admin`; a operação `CREATE DATABASE ... TEMPLATE` passou ao conectar localmente como `supabase_admin`. Em seguida, `pg_dump -Fc`/`pg_restore` para banco vazio preservou a linha de prova e o catálogo verificado.
