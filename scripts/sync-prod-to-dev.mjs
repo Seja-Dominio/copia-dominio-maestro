@@ -3,34 +3,39 @@
 import crypto from "node:crypto";
 import process from "node:process";
 import { Client } from "pg";
+import { assertConfirmedDevDatabaseTarget, assertConfirmedProductionDatabaseSource } from "./lib/verified-dev-database.mjs";
 
 const DEFAULT_ENTITIES = ["Client", "Project", "Job", "Subtask", "JobHistory", "AgendaEvent", "Collaborator"];
 const BATCH_SIZE = 500;
 
 function usage() {
   console.log(`Uso:
-  node scripts/sync-prod-to-dev.mjs --dry-run
-  node scripts/sync-prod-to-dev.mjs --apply
-  node scripts/sync-prod-to-dev.mjs --apply --reconcile
-  node scripts/sync-prod-to-dev.mjs --entities Job,Subtask,JobHistory --dry-run
+  node scripts/sync-prod-to-dev.mjs --allow-production-read --dry-run
+  node scripts/sync-prod-to-dev.mjs --allow-production-read --apply
+  node scripts/sync-prod-to-dev.mjs --allow-production-read --apply --reconcile
+  node scripts/sync-prod-to-dev.mjs --allow-production-read --entities Job,Subtask,JobHistory --dry-run
 
 Variáveis obrigatórias:
   SUPABASE_PROD_DB_URL  URL de conexão do banco Prod (origem)
+  SUPABASE_CONFIRMED_PROD_PROJECT_REF ref de Produção conferido no Dashboard
   SUPABASE_DEV_DB_URL   URL de conexão do banco Dev (destino)
+  SUPABASE_CONFIRMED_DEV_PROJECT_REF ref de Dev conferido no Dashboard
 
-O padrão é somente leitura. --apply atualiza ou insere os registros do Prod no Dev.
+--allow-production-read é obrigatório porque qualquer modo lê o banco de Produção.
+O padrão, após confirmação explícita das duas refs, é somente leitura. --apply atualiza ou insere registros no Dev.
 --reconcile também remove do Dev registros extras somente nas entidades selecionadas.
 Credenciais da tabela maestro_collaborators não são copiadas.
 `);
 }
 
 function parseArgs(argv) {
-  const args = { dryRun: false, apply: false, reconcile: false, entities: DEFAULT_ENTITIES };
+  const args = { dryRun: false, apply: false, reconcile: false, allowProductionRead: false, entities: DEFAULT_ENTITIES };
   for (let index = 2; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--dry-run") args.dryRun = true;
     else if (value === "--apply") args.apply = true;
     else if (value === "--reconcile") args.reconcile = true;
+    else if (value === "--allow-production-read") args.allowProductionRead = true;
     else if (value === "--entities") {
       args.entities = String(argv[++index] || "")
         .split(",")
@@ -130,10 +135,15 @@ if (args.help) {
   usage();
   process.exit(0);
 }
+if (!args.allowProductionRead) {
+  throw new Error("Este utilitário lê Produção mesmo em --dry-run. Informe --allow-production-read após autorização específica.");
+}
 
 const prodUrl = process.env.SUPABASE_PROD_DB_URL;
 const devUrl = process.env.SUPABASE_DEV_DB_URL;
 if (!prodUrl || !devUrl) throw new Error("Defina SUPABASE_PROD_DB_URL e SUPABASE_DEV_DB_URL. As URLs não devem ser colocadas no Git.");
+assertConfirmedProductionDatabaseSource(prodUrl, process.env.SUPABASE_CONFIRMED_PROD_PROJECT_REF);
+assertConfirmedDevDatabaseTarget(devUrl, process.env.SUPABASE_CONFIRMED_DEV_PROJECT_REF);
 
 const prod = new Client({ connectionString: prodUrl, ssl: { rejectUnauthorized: false } });
 const dev = new Client({ connectionString: devUrl, ssl: { rejectUnauthorized: false } });

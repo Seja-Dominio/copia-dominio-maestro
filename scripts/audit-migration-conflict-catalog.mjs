@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
 import pg from "pg";
+import { assertConfirmedDevDatabaseTarget } from "./lib/verified-dev-database.mjs";
 
-const targets = [
-  { envKey: "SUPABASE_DEV_DB_URL", projectRef: "tqmfuskvllpqmvayjuqu" },
-  { envKey: "SUPABASE_PROD_DB_URL", projectRef: "fwpisypiiezjhtqxlmqv" },
-];
+const targets = [{ envKey: "SUPABASE_DEV_DB_URL" }];
 
 const functionNames = [
   "publish_imported_records",
@@ -61,12 +59,6 @@ const relationNames = [
   "projects",
 ];
 
-function connectionRef(connectionString) {
-  const url = new URL(connectionString);
-  return url.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i)?.[1]
-    || decodeURIComponent(url.username).split(".").at(-1);
-}
-
 function digest(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -75,9 +67,7 @@ const reports = [];
 for (const target of targets) {
   const connectionString = process.env[target.envKey];
   if (!connectionString) throw new Error(`Missing ${target.envKey}`);
-  if (connectionRef(connectionString) !== target.projectRef) {
-    throw new Error(`${target.envKey} does not match its expected project ref`);
-  }
+  const projectRef = assertConfirmedDevDatabaseTarget(connectionString, process.env.SUPABASE_CONFIRMED_DEV_PROJECT_REF);
 
   const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 8000 });
   let transactionOpen = false;
@@ -174,7 +164,7 @@ for (const target of targets) {
 
     reports.push({
       environment: target.envKey,
-      project_ref: target.projectRef,
+      project_ref: projectRef,
       transaction_read_only: mode.rows[0].mode,
       functions: functions.rows,
       relations: relations.rows,

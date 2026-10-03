@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { parseCollaboratorSession } from '@/lib/collaborator-session.mjs';
+import { resolveMaestroSupabaseTarget } from '@/lib/maestro-environment.mjs';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -7,14 +8,13 @@ const appEnvironment = import.meta.env.VITE_MAESTRO_ENV || (
   import.meta.env.MODE === 'production' ? 'production' :
     import.meta.env.MODE === 'test' ? 'test' : 'development'
 );
-const environmentUrls = {
-  development: 'https://tqmfuskvllpqmvayjuqu.supabase.co',
-  test: 'https://tqmfuskvllpqmvayjuqu.supabase.co',
-  production: 'https://fwpisypiiezjhtqxlmqv.supabase.co',
-};
-const expectedUrl = environmentUrls[appEnvironment];
-const unsafeTarget = expectedUrl && url !== expectedUrl;
-export const isDevelopmentEnvironment = appEnvironment !== 'production' && url === environmentUrls.development;
+const targetValidation = resolveMaestroSupabaseTarget({
+  environment: appEnvironment,
+  url,
+  expectedDevProjectRef: import.meta.env.VITE_MAESTRO_DEV_PROJECT_REF,
+});
+const unsafeTarget = !targetValidation.safe;
+export const isDevelopmentEnvironment = appEnvironment === 'development' && targetValidation.safe;
 const relationalReadEntities = new Set(
   String(import.meta.env.VITE_MAESTRO_RELATIONAL_READS || '')
     .split(',')
@@ -108,11 +108,11 @@ async function readEntity(body, { cache = true } = {}) {
 
 function assertSafeTarget() {
   if (unsafeTarget) {
-    throw new Error(`Ambiente ${appEnvironment} apontado para o projeto Supabase incorreto. Dev usa tqmf... e produção usa fwpis... Configure a URL correspondente antes de continuar.`);
+    throw new Error(targetValidation.error || `O destino Supabase do ambiente ${appEnvironment} não foi confirmado; nenhuma chamada foi enviada.`);
   }
 }
 
-export const supabase = url && anonKey ? createClient(url, anonKey) : null;
+export const supabase = url && anonKey && targetValidation.safe ? createClient(url, anonKey) : null;
 
 function throwSupabaseError(data, response, fallback, { clearSessionOnUnauthorized = true } = {}) {
   if (response.status === 401 && clearSessionOnUnauthorized) {

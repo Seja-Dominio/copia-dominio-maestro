@@ -4,34 +4,35 @@
 
 Separar o ciclo de desenvolvimento do ambiente real. O trabalho diário acontece no projeto Dev e a produção permanece protegida. O Base44 continua disponível como fallback enquanto a migração não for encerrada.
 
-## Estado configurado
+## Estado configurado — revisão necessária
 
-- Branch local de trabalho: `codex/homologacao`.
-- Dev: `tqmfuskvllpqmvayjuqu` (projeto `Dominio Maestro`).
-- Produção: `fwpisypiiezjhtqxlmqv` (projeto `Maestro BD producao`, São Paulo).
-- Ambiente local padrão: usa o projeto Dev em `http://127.0.0.1:4173`.
-- O modo Vite `test`, quando usado, também aponta para o Dev; não é um terceiro banco.
-- Proteção: o frontend recusa URLs incompatíveis com o ambiente selecionado.
-- O repositório remoto atual aponta para `producao-dev/Dominio-Performance-Maestro-app`; nenhum push será feito para esse remoto sem confirmação.
+- O mapeamento antigo de Dev para `tqmfuskvllpqmvayjuqu` está suspenso: o Dashboard do Supabase identifica a branch `main` desse ref como `PRODUCTION`.
+- `fwpisypiiezjhtqxlmqv` também está classificado como Produção na configuração existente. Não use nenhum desses dois refs em desenvolvimento ou teste.
+- O ref oficial do Dev ainda não foi confirmado. Até isso ocorrer, use apenas clones locais e CI; não execute auditoria, migration, alteração de segredo ou deploy em banco hospedado.
+- O vínculo local da CLI Supabase foi removido neste checkout para evitar que comandos `--linked` atinjam o ref ambíguo. O unlink não alterou nenhum projeto remoto.
+- A inspeção somente leitura do checkout principal encontrou `VITE_MAESTRO_ENV=development`/`.env.local` apontando para `tqmfuskvllpqmvayjuqu` e o vínculo CLI também nesse ref. Esse checkout tem mudanças locais extensas; foi deixado intacto. Portanto, a contenção desta branch ainda não protege o app do checkout principal; não o execute nem rode comandos `--linked` até reconciliar o ref e incorporar a correção com segurança.
+- Os scripts de auditoria/transferência também verificam os refs explicitamente; o sincronizador Prod→Dev exige `--allow-production-read` porque mesmo o modo `--dry-run` consulta a origem Produção.
+- Os snapshots com nomes `development` e `production` abaixo estão sob revisão quanto à origem; não inferir ambiente apenas pelo nome do diretório.
 
 ## Configuração dos dois projetos Supabase
 
-1. O projeto `tqmf...` é usado exclusivamente para desenvolvimento e testes.
-2. O projeto `fwpis...` é usado exclusivamente pela aplicação publicada.
-3. Migrations e Edge Functions novas devem ser aplicadas primeiro no Dev.
-4. Segredos do Dev e da produção devem ser configurados separadamente no painel Supabase.
-5. Dados de teste não devem ser gravados no projeto de produção.
+1. Confirme no Dashboard o nome do projeto, branch e ref oficial do Dev.
+2. Confirme separadamente qual ref atende Produção, sem consultar o conteúdo do banco.
+3. Só então configure templates/env locais e vínculo CLI; mantenha secrets separados.
+4. Não rode migrations/Edge Function deploy até o destino Dev estar verificado.
+5. Dados de teste não devem ser gravados em nenhum ref identificado como Production.
 
 ## Configurar a máquina local
 
-O `.env.local` já deve conter a URL e a chave publicável do projeto Dev:
+Após confirmar o ref oficial do Dev, `.env.local` deve conter a mesma ref na URL e na variável dedicada:
 
 ```text
 VITE_MAESTRO_ENV=development
-VITE_SUPABASE_URL=https://tqmfuskvllpqmvayjuqu.supabase.co
+VITE_MAESTRO_DEV_PROJECT_REF=REF_DEV_CONFIRMADO
+VITE_SUPABASE_URL=https://REF_DEV_CONFIRMADO.supabase.co
 ```
 
-Antes de iniciar, confirme que `VITE_SUPABASE_URL` é a URL do Dev. Os arquivos `.env*` preenchidos são ignorados pelo Git.
+O frontend agora recusa chamadas em development/test sem ref explícito correspondente, e bloqueia os refs protegidos acima. Os arquivos `.env*` preenchidos são ignorados pelo Git.
 
 ## Rodar e testar
 

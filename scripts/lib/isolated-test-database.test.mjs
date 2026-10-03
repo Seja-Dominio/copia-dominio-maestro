@@ -24,12 +24,12 @@ test("rejects missing explicit test settings", () => {
   assert.throws(() => getIsolatedTestDatabaseUrl({}), /SUPABASE_TEST_DB_URL/);
 });
 
-test("rejects production and shared homologation refs", () => {
+test("rejects refs protected as Production or currently ambiguous", () => {
   for (const ref of ["fwpisypiiezjhtqxlmqv", "tqmfuskvllpqmvayjuqu"]) {
     assert.throws(() => getIsolatedTestDatabaseUrl({
       SUPABASE_TEST_DB_URL: `postgresql://postgres.${ref}:gitleaks-test-placeholder@aws-0-sa-east-1.pooler.supabase.com:5432/postgres`,
       SUPABASE_TEST_PROJECT_REF: ref,
-    }), /blocks|bloqueia/i);
+    }), /bloqueia/i);
   }
 });
 
