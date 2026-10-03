@@ -46,7 +46,8 @@ begin
       'tenant-ci-cross-project-write', 'tenant-ci-relational-project',
       'tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
       'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
-      'tenant-ci-legacy-projection-history', 'tenant-ci-nps-entry-a',
+      'tenant-ci-legacy-projection-history', 'tenant-ci-cross-tenant-projection-history',
+      'tenant-ci-missing-job-projection-history', 'tenant-ci-nps-entry-a',
       'tenant-ci-nps-history-a', 'tenant-ci-nps-history-unresolved',
       'tenant-ci-nps-cross-scope', 'tenant-ci-nps-ambiguous-map',
       'tenant-ci-nps-projection-move')
@@ -58,7 +59,8 @@ begin
     select 1 from public.organization_legacy_records
       where legacy_record_id in ('tenant-ci-legacy-projection-task', 'tenant-ci-cross-tenant-projection-task',
         'tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry',
-        'tenant-ci-legacy-projection-history', 'tenant-ci-nps-entry-a',
+        'tenant-ci-legacy-projection-history', 'tenant-ci-cross-tenant-projection-history',
+        'tenant-ci-missing-job-projection-history', 'tenant-ci-nps-entry-a',
         'tenant-ci-nps-history-a', 'tenant-ci-nps-history-unresolved',
         'tenant-ci-nps-cross-scope', 'tenant-ci-nps-ambiguous-map',
         'tenant-ci-nps-projection-move')
@@ -75,7 +77,8 @@ begin
       where legacy_record_id in ('tenant-ci-legacy-projection-entry', 'tenant-ci-cross-tenant-projection-entry')
   ) or exists (
     select 1 from public.maestro_job_history
-      where legacy_record_id = 'tenant-ci-legacy-projection-history'
+      where legacy_record_id in ('tenant-ci-legacy-projection-history',
+        'tenant-ci-cross-tenant-projection-history', 'tenant-ci-missing-job-projection-history')
   ) or exists (
     select 1 from public.maestro_nps_entries
       where legacy_record_id = 'tenant-ci-nps-entry-a'
@@ -522,19 +525,15 @@ begin
     if v_error = 'TEST_FAIL legacy JobHistory dual-write accepted another tenant Job' then raise; end if;
   end;
 
-  begin
-    insert into public.legacy_records (organization_id, entity, record_id, payload)
-    values ('00000000-0000-0000-0000-00000000a001'::uuid, 'JobHistory', 'tenant-ci-missing-job-projection-history',
-      '{"job_id":"tenant-ci-missing-job","type":"status_changed","field":"status","text":"Must reject missing parent"}'::jsonb);
-    raise exception 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job';
-  exception when others then
-    get stacked diagnostics v_error = message_text;
-    if v_error <> 'Job history job must belong to the same organization'
-      and v_error <> 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job' then
-      raise exception 'TEST_FAIL unexpected missing-parent JobHistory projection rejection: %', v_error;
-    end if;
-    if v_error = 'TEST_FAIL legacy JobHistory dual-write accepted a missing Job' then raise; end if;
-  end;
+  insert into public.legacy_records (organization_id, entity, record_id, payload)
+  values ('00000000-0000-0000-0000-00000000a001'::uuid, 'JobHistory', 'tenant-ci-missing-job-projection-history',
+    '{"job_id":"tenant-ci-missing-job","type":"status_changed","field":"status","text":"Preserve orphan history snapshot"}'::jsonb);
+  if not exists (
+    select 1 from public.maestro_job_history h
+    where h.organization_id='00000000-0000-0000-0000-00000000a001'::uuid
+      and h.legacy_record_id='tenant-ci-missing-job-projection-history'
+      and h.job_legacy_id='tenant-ci-missing-job' and h.job_id is null
+  ) then raise exception 'TEST_FAIL legacy JobHistory did not preserve an unresolved Job as a tenant-scoped snapshot'; end if;
 
   -- NPS has its own dual-write path (Insights ownership). It must use an
   -- explicit or uniquely mapped tenant, never choose the first active org.

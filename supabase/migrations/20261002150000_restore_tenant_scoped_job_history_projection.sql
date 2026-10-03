@@ -59,7 +59,12 @@ begin
   v_job_legacy_id := nullif(new.payload ->> 'job_id', '');
   select j.id into v_job_id from public.maestro_jobs j
   where j.organization_id = v_organization_id and j.legacy_record_id = v_job_legacy_id;
-  if v_job_legacy_id is not null and v_job_id is null then
+  -- Preserve audit history for deleted/unprojected Jobs as a legacy snapshot.
+  -- Reject only when the same legacy Job exists in another tenant; setting the
+  -- typed reference to NULL keeps the projection tenant-safe without dropping history.
+  if v_job_legacy_id is not null and v_job_id is null and exists (
+    select 1 from public.maestro_jobs j where j.legacy_record_id = v_job_legacy_id
+  ) then
     raise foreign_key_violation using message = 'Job history job must belong to the same organization';
   end if;
   insert into public.organization_legacy_records
