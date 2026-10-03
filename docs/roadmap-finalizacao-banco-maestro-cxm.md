@@ -919,3 +919,9 @@ Os itens abaixo ficam preservados para o goal futuro de CXM/CRM e não são crit
 
 - A listagem read-only com ref explícito confirmou `maestro-core-data` ACTIVE v10. O download foi isolado em `/tmp`; `index.ts` e os sete helpers importados (`attachment-access`, `mutation-access`, `session-authorization`, `relational-job-history`, `project-schedule`, `session-renewal`, `safe-edge-error-context`) coincidiram byte a byte com o checkout.
 - A paridade de fonte não comprova a jornada autenticada, ausência de erros 5xx, uso efetivo por todos os fluxos ou elegibilidade de release. A função permanece como pendência no manifesto; nenhum deploy/chamada mutável foi realizado nesta inspeção. Produção, VPS e CXM não foram tocados, e percentuais permanecem 55% no Marco 3 e 44% geral.
+
+### Investigação local de proveniência para a migration `0004` — 03/10/2026
+
+- Revisão somente leitura do histórico Git confirma que `0004_publish_imported_records.sql` foi introduzida no commit da separação Dev/Produção em 11/09/2026 e que, no corpo atual, o conflito de `(entity, record_id)` sempre substitui payload/timestamps do destino pelos valores do snapshot, sem predicado de precedência.
+- O utilitário local `scripts/import-base44-export.mjs` importa CSV por essa mesma chave com `resolution=merge-duplicates`; o modo `--verify` compara entidades/IDs e datas `source_updated_at`, não conteúdo de payload nem proveniência de campos. Busca de nomes de arquivo na cópia principal do projeto não encontrou ZIP/export/snapshot versionado. Essa evidência esclarece como o conflito pode ter sido produzido, não qual lado contém o valor correto.
+- Portanto, a migration/ledger históricos seguem intocados. O gate P0 ainda requer contrato de autoria/editabilidade e export representativo sanitizado com cadeia de origem; não se deve promover snapshot ou destino por suposição. Nenhum dado hospedado foi lido nesta verificação, nem Prod/VPS foram acessados.
