@@ -17,7 +17,14 @@ export async function safeDelete(entityType, entityName, entityData, opts = {}) 
     throw new Error("Apenas o Master pode excluir este registro.");
   }
 
-  // Log to DeleteLog for recovery
+  // These records are deleted server-side together with their recovery
+  // snapshot and audit event. A separate client-side log would be non-atomic.
+  if (["Job", "Project", "Subtask", "AgendaEvent", "FinancialEntry"].includes(entityName)) {
+    await maestro.entities[entityName].delete(entityData.id);
+    return;
+  }
+
+  // Log to DeleteLog for entities not yet covered by server-side recovery.
   await maestro.entities.DeleteLog.create({
     entity_type: entityType,
     entity_id: entityData.id,

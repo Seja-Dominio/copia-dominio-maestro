@@ -173,7 +173,7 @@ function Lightbox({ item, onClose, onDelete, onDeleteRequest, fullscreen, allIma
   return createPortal(content, document.body);
 }
 
-export default function JobAttachmentsTab({ attachments = [], commentImages = [], onAttachmentsChange, fullscreenLightbox = false, currentUser = "", isAdmin = false, uploadContext = {} }) {
+export default function JobAttachmentsTab({ jobId, attachments = [], commentImages = [], onAttachmentsChange, fullscreenLightbox = false, currentUser = "", isAdmin = false, uploadContext = {} }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [lightbox, setLightbox] = useState(null);
@@ -194,7 +194,7 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
     if (refreshingPaths[path]) return "";
     setRefreshingPaths((current) => ({ ...current, [path]: true }));
     try {
-      const url = await refreshMaestroFileUrl(path);
+      const url = await refreshMaestroFileUrl(jobId, path);
       if (url) setFreshUrls((current) => ({ ...current, [path]: url }));
       setLightbox((current) => current && getAttachmentPath(current.item) === path && url
         ? { ...current, item: { ...current.item, url } }
@@ -251,17 +251,29 @@ export default function JobAttachmentsTab({ attachments = [], commentImages = []
 
     setUploading(false);
     setUploadProgress("");
-    if (uploaded.length) onAttachmentsChange([...attachments, ...uploaded]);
+    if (uploaded.length) {
+      // Resolve against the latest parent state so a second upload cannot
+      // overwrite an attachment saved by the previous upload.
+      try {
+        await onAttachmentsChange(current => [...(current || []), ...uploaded]);
+      } catch {
+        alert("O arquivo chegou ao armazenamento, mas não foi vinculado ao job. Atualize a tela antes de tentar novamente.");
+      }
+    }
   }
 
-  function handleDelete(index) {
-    onAttachmentsChange(attachments.filter((_, i) => i !== index));
-    setDeleteConfirm(null);
+  async function handleDelete(index) {
+    try {
+      await onAttachmentsChange(current => (current || []).filter((_, i) => i !== index));
+      setDeleteConfirm(null);
+    } catch {
+      alert("Não foi possível salvar a remoção do anexo. Tente novamente.");
+    }
   }
 
-  function handleConfirmDelete() {
+  async function handleConfirmDelete() {
     if (deleteConfirm?.type === "attachment") {
-      handleDelete(deleteConfirm.index);
+      await handleDelete(deleteConfirm.index);
     } else if (deleteConfirm?.type === "lightbox") {
       deleteConfirm.callback?.();
       setLightbox(null);

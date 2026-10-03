@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { X, Plus, Trash2, Calendar } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { format, addMonths, parseISO } from "date-fns";
 
 export default function RecurringEntryModal({ isOpen, onClose, clients, onCreated }) {
@@ -69,8 +69,8 @@ export default function RecurringEntryModal({ isOpen, onClose, clients, onCreate
     }
 
     try {
-      await maestro.entities.FinancialEntry.bulkCreate(entries);
-      onCreated(entries);
+      const created = await maestro.entities.FinancialEntry.bulkCreate(entries);
+      onCreated(created);
       setFormData({
         title: "",
         client_id: "",
@@ -120,7 +120,7 @@ export default function RecurringEntryModal({ isOpen, onClose, clients, onCreate
           </div>
 
           {/* Tipo */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xs font-semibold text-foreground mb-1.5 block">Tipo *</label>
               <select
@@ -181,7 +181,7 @@ export default function RecurringEntryModal({ isOpen, onClose, clients, onCreate
           </div>
 
           {/* Datas */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xs font-semibold text-foreground mb-1.5 block flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> Data Inicial *

@@ -21,7 +21,18 @@ const channels = [
   { name: "TikTok Ads", icon: Activity, color: "text-slate-900", bg: "bg-slate-100", status: "Aguardando conexão", accounts: 0 },
 ];
 
-const SYNC_INTERVAL_HOURS = 3;
+const SYNC_INTERVAL_HOURS = 6;
+const SYNC_INTERVAL_MS = SYNC_INTERVAL_HOURS * 60 * 60 * 1000;
+function getNextAutomaticSyncAt(now = Date.now()) {
+  return new Date((Math.floor(now / SYNC_INTERVAL_MS) + 1) * SYNC_INTERVAL_MS);
+}
+
+function formatSyncDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return `${date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" })} GMT`;
+}
+
 const periodOptions = ["Hoje", "Ontem", "Hoje e ontem", "Últimos 7 dias", "Últimos 14 dias", "Últimos 28 dias", "Últimos 30 dias", "Esta semana", "Semana passada", "Este mês", "Mês passado", "Máximo", "Personalizado"];
 const scoreCardTones = {
   5: "border-amber-300 bg-gradient-to-br from-amber-50 via-yellow-50 to-card shadow-[0_8px_24px_rgba(217,119,6,0.16)]",
@@ -209,7 +220,7 @@ export default function AdsBrain() {
   const [adsBrainTab, setAdsBrainTab] = useState("overview");
   const [expandedClient, setExpandedClient] = useState(null);
   const [organizationOpen, setOrganizationOpen] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
+  const [nextAutomaticSyncAt, setNextAutomaticSyncAt] = useState(getNextAutomaticSyncAt);
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingNetwork, setEditingNetwork] = useState("Meta Ads");
   const [editingMetrics, setEditingMetrics] = useState({});
@@ -259,6 +270,8 @@ export default function AdsBrain() {
     metrics: account.metrics_data || {},
     campaigns: account.campaigns_data || [],
     lastSyncedAt: account.last_synced_at,
+    lastSyncCompletedAt: account.metrics_data?.sync_completed_at || account.last_synced_at,
+    lastSyncSource: account.metrics_data?.sync_source || null,
     metricsConfig: account.metrics_config || [],
     paymentMethod,
     fundingSourceDisplay: billing.funding_source_display || "",
@@ -373,6 +386,15 @@ export default function AdsBrain() {
   const lowBalanceAccounts = useMemo(() => visibleClientAccounts.filter((account) =>
     Number.isFinite(account.balanceValue) && Number.isFinite(account.minimumBalance) && account.balanceValue < account.minimumBalance
   ), [visibleClientAccounts]);
+  const latestSyncAccount = useMemo(() => clientAccounts
+    .filter((account) => Number.isFinite(Date.parse(account.lastSyncCompletedAt || "")))
+    .sort((a, b) => Date.parse(b.lastSyncCompletedAt) - Date.parse(a.lastSyncCompletedAt))[0] || null,
+  [clientAccounts]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNextAutomaticSyncAt(getNextAutomaticSyncAt()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const sync = async (selectedPeriod = period, since = customSince, until = customUntil) => {
     setSyncing(true);
@@ -380,20 +402,12 @@ export default function AdsBrain() {
       await invokeSupabaseFunction("meta-ads-oauth", { action: "sync", period: selectedPeriod, since, until });
       const response = await invokeSupabaseFunction("meta-ads-oauth", { action: "list" });
       setClientAccounts((response.accounts || []).map(normalizeStoredAccount));
-      setLastSync(new Date());
     } catch (error) {
       setConnectionNotice(error.message || "Não foi possível sincronizar as contas.");
     } finally {
       setSyncing(false);
     }
   };
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      sync(period);
-    }, SYNC_INTERVAL_HOURS * 60 * 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, [period]);
 
   const openConnection = (network = "Meta Ads") => {
     notifyAdsBrainDrawer(true);
@@ -554,7 +568,7 @@ export default function AdsBrain() {
           <div className="flex flex-wrap gap-2"><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Período<select aria-label="Período do relatório" value={period} onChange={(e) => { const nextPeriod = e.target.value; setPeriod(nextPeriod); if (nextPeriod !== "Personalizado") sync(nextPeriod); }} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground">{periodOptions.map((option) => <option key={option}>{option}</option>)}</select></label>{period === "Personalizado" && <><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">De<input type="date" value={customSince} onChange={(event) => setCustomSince(event.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground" /></label><label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Até<input type="date" value={customUntil} onChange={(event) => setCustomUntil(event.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground" /></label><Button type="button" variant="outline" className="self-end" disabled={!customSince || !customUntil || customSince > customUntil || syncing} onClick={() => sync("Personalizado", customSince, customUntil)}>Aplicar</Button></>}<label className="flex min-h-0 min-w-0 flex-col gap-1 text-[11px] font-medium text-muted-foreground">Canal<select aria-label="Canal de anúncios" value={selectedChannel} onChange={(e) => setSelectedChannel(e.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"><option>Todos os canais</option>{channels.map((c) => <option key={c.name}>{c.name}</option>)}</select></label></div>
         </div>
 
-        <div aria-live="polite" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Conexões oficiais</span><span>Próxima atualização automática em até {SYNC_INTERVAL_HOURS} horas</span><span>{syncing ? "Sincronização em andamento" : lastSync ? `Última sincronização manual: ${lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Nenhuma sincronização manual neste navegador"}</span></div>
+        <div aria-live="polite" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Conexões oficiais</span><span>Próxima atualização automática: {formatSyncDateTime(nextAutomaticSyncAt)}</span><span>{syncing ? "Sincronização em andamento" : latestSyncAccount ? `Última sincronização ${latestSyncAccount.lastSyncSource === "automatic" ? "automática" : latestSyncAccount.lastSyncSource === "manual" ? "manual" : "(origem não registrada)"}: ${formatSyncDateTime(latestSyncAccount.lastSyncCompletedAt)}` : "Nenhuma sincronização registrada"}</span></div>
 
         {lowBalanceAccounts.length > 0 && <div role="alert" className="w-full max-w-xl rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-2.5 text-amber-950"><div className="flex items-center gap-2"><div className="rounded-md bg-amber-100 p-1.5"><AlertCircle className="h-4 w-4 text-amber-600" /></div><div className="min-w-0"><p className="text-xs font-semibold">Saldo abaixo do limite</p><p className="text-[11px] text-amber-800">{lowBalanceAccounts.length === 1 ? "1 conta precisa de recarga." : `${lowBalanceAccounts.length} contas precisam de recarga.`}</p></div></div><div className="mt-2 flex flex-wrap gap-1.5">{lowBalanceAccounts.map((account) => <button key={account.id} type="button" onClick={() => setExpandedClient(account.id)} className="max-w-full rounded-md border border-amber-300 bg-white px-2 py-1 text-left text-[11px] font-medium text-amber-900 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"><span className="block truncate">{account.name}</span><span className="block text-[10px] font-normal text-amber-800">{account.balance} · mínimo {new Intl.NumberFormat("pt-BR", { style: "currency", currency: account.currency }).format(account.minimumBalance)}</span></button>)}</div></div>}
 

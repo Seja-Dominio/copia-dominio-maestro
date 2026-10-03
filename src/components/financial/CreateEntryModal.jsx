@@ -3,8 +3,8 @@ import StandardDrawer from "@/components/ui/StandardDrawer";
 import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-import { format, addDays, addWeeks, addMonths, addYears } from "date-fns";
+import { RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { format, addWeeks, addMonths, addYears } from "date-fns";
 
 const STATUSES = [
   { value: "forecast", label: "Previsão" },
@@ -190,8 +190,8 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
         });
         currentDate = addMonths(currentDate, 1);
       }
-      await maestro.entities.FinancialEntry.bulkCreate(entries);
-      onCreate(entries);
+      const created = await maestro.entities.FinancialEntry.bulkCreate(entries);
+      onCreate(created);
       return;
     }
 
@@ -203,8 +203,8 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
         entries.push({ ...baseEntry, due_date: dateStr, competence_date: dateStr, status: "forecast" });
         currentDate = advanceDate(currentDate, recurringInterval);
       }
-      await maestro.entities.FinancialEntry.bulkCreate(entries);
-      onCreate(entries[0]);
+      const created = await maestro.entities.FinancialEntry.bulkCreate(entries);
+      onCreate(created[0]);
     } else {
       const created = await maestro.entities.FinancialEntry.create(baseEntry);
       onCreate(created);
@@ -258,7 +258,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
               <Input placeholder={isTransfer ? "Ex: Transferência entre contas" : form.type === "revenue" ? "Ex: FEE Mensal — Cliente X" : "Ex: Aluguel escritório"} value={form.title} onChange={set("title")} required />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <FieldLabel required>Valor (R$)</FieldLabel>
                 <Input type="number" step="0.01" placeholder="0,00" value={form.amount} onChange={set("amount")} required />
@@ -274,7 +274,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
               <>
                 <SectionLabel>Classificação</SectionLabel>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <FieldLabel>Categoria</FieldLabel>
                     <SelectField
@@ -315,7 +315,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <FieldLabel>Centro de Custo</FieldLabel>
                     <SelectField
@@ -337,7 +337,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
             <SectionLabel>{isTransfer ? "Contas" : "Vínculo"}</SectionLabel>
 
             {isTransfer ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <FieldLabel>Banco Origem</FieldLabel>
                   <SelectField
@@ -358,7 +358,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <FieldLabel>Cliente</FieldLabel>
                   <SelectField
@@ -389,7 +389,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                 </button>
                 {showAdvanced && (
                   <div className="mt-2 space-y-3 p-3 bg-muted/30 rounded-xl border border-border">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <FieldLabel>Data de Competência</FieldLabel>
                         <Input type="date" value={form.competence_date} onChange={set("competence_date")} />
@@ -399,7 +399,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                         <Input type="date" value={form.payment_date} onChange={set("payment_date")} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <FieldLabel>Nº Documento</FieldLabel>
                         <Input placeholder="NF, boleto, etc." value={form.document_number} onChange={set("document_number")} />
@@ -426,7 +426,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                     <span className="text-sm font-semibold text-foreground">Parcelar</span>
                   </label>
                   {isInstallment && (
-                    <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <FieldLabel>Nº Parcelas</FieldLabel>
                         <Input type="number" min={2} max={120} value={installmentCount} onChange={e => setInstallmentCount(Number(e.target.value))} />
@@ -455,7 +455,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                       </div>
                     </label>
                     {isRecurring && (
-                      <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <FieldLabel>Intervalo</FieldLabel>
                           <SelectField value={recurringInterval} onChange={setRecurringInterval} options={RECURRING_INTERVALS} />
@@ -464,7 +464,7 @@ export default function CreateEntryModal({ type: initialType, entry: editingEntr
                           <FieldLabel>Repetições</FieldLabel>
                           <Input type="number" min={1} max={120} value={recurringCount} onChange={e => setRecurringCount(Number(e.target.value))} />
                         </div>
-                        <div className="col-span-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+                        <div className="col-span-full bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
                           <p className="text-xs font-semibold text-primary">
                             Serão criados <strong>{recurringCount}</strong> lançamentos — {RECURRING_INTERVALS.find(i => i.value === recurringInterval)?.label}
                           </p>

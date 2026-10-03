@@ -167,10 +167,10 @@ function AddHoursPanel({ job, collaboratorId, collaboratorName, onClose, onSucce
 }
 
 // Status dropdown
-function StatusDropdown({ value, onChange, canCancel = true }) {
+function StatusDropdown({ value, onChange }) {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
   const STATUSES = Object.entries(STATUS_CONFIG)
-    .filter(([v]) => canCancel || v !== "cancelled")
+    .filter(([v]) => v !== "cancelled")
     .map(([v, cfg]) => ({ value: v, ...cfg }));
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -347,7 +347,61 @@ function SubtaskRow({ subtask, collaborators, onUpdate, onDelete, dragHandleProp
 export default function JobDetailModal({ job: initialJob, subtasks: initialSubtasks, onClose, onUpdate, onSubtasksChange }) {
   const { statusConfig: STATUS_CONFIG, statusList } = useStatusConfig();
   const statusOrder = statusList.filter(s => s.key !== "cancelled").map(s => s.key);
+  const onUpdateRef = useRef(onUpdate);
   const [job, setJob] = useState(initialJob);
+  const latestJobRef = useRef(initialJob);
+  const fieldSaveTimersRef = useRef(new Map());
+  const fieldSavePromisesRef = useRef(new Map());
+  const closeJobDetailRef = useRef(null);
+  const attachmentSaveQueueRef = useRef(Promise.resolve());
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    latestJobRef.current = job;
+  }, [job]);
+
+  useEffect(() => () => {
+    for (const pending of fieldSaveTimersRef.current.values()) {
+      clearTimeout(pending.timer);
+      void pending.save?.();
+    }
+    fieldSaveTimersRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
+  // Dashboard jobs are intentionally compact and omit large fields such as
+  // attachments. Load the complete record when the detail modal opens so all
+  // collaborators see the same persisted files, regardless of entry point.
+  useEffect(() => {
+    if (!initialJob?.id) return undefined;
+    let active = true;
+    maestro.entities.Job.filter({ id: initialJob.id }, "-updated_date", 1)
+      .then(rows => {
+        const freshJob = rows?.[0];
+        if (!active || !freshJob) return;
+        setJob(current => ({ ...current, ...freshJob }));
+        onUpdateRef.current?.(freshJob);
+      })
+      .catch(error => console.warn("Não foi possível carregar o job completo:", error));
+    return () => { active = false; };
+  }, [initialJob?.id]);
+
+  // Keep the open job synchronized for every collaborator. The subscription
+  // is scoped to one record so attachments and other edits appear without
+  // polling the entire jobs collection.
+  useEffect(() => {
+    if (!job?.id) return undefined;
+    const stop = maestro.entities.Job.subscribe((event) => {
+      if (event?.type !== "update" || event.data?.id !== job.id) return;
+      setJob(current => ({ ...current, ...event.data }));
+      onUpdateRef.current?.(event.data);
+    }, { intervalMs: 15_000, limit: 1, filters: { id: job.id }, sort: "-updated_date" });
+    return stop;
+  }, [job?.id]);
+
   // Ordenar subtasks por 'order' field
   const [subtasks, setSubtasks] = useState(() => {
     const subs = initialSubtasks || [];
@@ -368,8 +422,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   const [newSubtaskDeadline, setNewSubtaskDeadline] = useState("");
   const [showNewSubtaskCal, setShowNewSubtaskCal] = useState(false);
   const newSubtaskCalRef = useRef(null);
-  const saveTimerRef = useRef(null);
-  const [tab, setTab] = useState(() => (initialJob.attachments?.length > 0) ? "attachments" : "comments");
+  const [tab, setTab] = useState("history");
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isUploadingDrop, setIsUploadingDrop] = useState(false);
   const dragCounterRef = useRef(0);
@@ -608,11 +661,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
           duration_minutes: duration,
         });
       }
-      onClose();
+      void closeJobDetailRef.current?.();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   async function startTimer() {
     if (!collabId) return;
@@ -646,178 +699,195 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
   }, [isReworkMode]);
 
   function update(key, value) {
-    const oldValue = job[key];
+    const currentValue = latestJobRef.current?.[key];
+    const pending = fieldSaveTimersRef.current.get(key);
+    const oldValue = pending?.originalValue ?? currentValue;
     
     // For status and date changes, save immediately (no debounce)
     const immediateKeys = ["status", "post_date", "delivery_date", "responsible_id", "content_type", "reference_url"];
     const isImmediate = immediateKeys.includes(key);
 
-    setJob(j => {
-      const updated = { ...j, [key]: value };
-      if (isImmediate) {
-        // Save immediately — only send the changed field to avoid race conditions
-        maestro.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
-      } else {
-        // Auto-save with debounce for text fields
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => {
-          maestro.entities.Job.update(j.id, { [key]: value }).then(saved => onUpdate(saved));
-        }, 800);
+    latestJobRef.current = { ...latestJobRef.current, [key]: value };
+    setJob(current => ({ ...current, [key]: value }));
+
+    const persist = async (valueToSave, rollbackValue) => {
+      try {
+        const saved = await maestro.entities.Job.update(latestJobRef.current.id, { [key]: valueToSave });
+        setSaveError("");
+        latestJobRef.current = { ...latestJobRef.current, ...saved };
+        setJob(current => current[key] === valueToSave ? { ...current, ...saved } : current);
+        onUpdate(saved);
+        return true;
+      } catch (error) {
+        console.error(`Não foi possível salvar o campo ${key}:`, error);
+        if (latestJobRef.current[key] === valueToSave) {
+          latestJobRef.current = { ...latestJobRef.current, [key]: rollbackValue };
+        }
+        setJob(current => current[key] === valueToSave ? { ...current, [key]: rollbackValue } : current);
+        setSaveError("Não foi possível salvar esta alteração. Confira sua conexão e tente novamente.");
+        return false;
       }
-      return updated;
-    });
+    };
 
-    // Build descriptive history label
-    let label;
-    let newValueStr = String(value ?? "");
-    let oldValueStr = String(oldValue ?? "");
+    const persistTracked = (valueToSave, rollbackValue) => {
+      const previous = fieldSavePromisesRef.current.get(key) || Promise.resolve(true);
+      const request = previous.catch(() => false).then(() => persist(valueToSave, rollbackValue)).finally(() => {
+        if (fieldSavePromisesRef.current.get(key) === request) fieldSavePromisesRef.current.delete(key);
+      });
+      fieldSavePromisesRef.current.set(key, request);
+      return request;
+    };
 
-    if (key === "status") {
-      label = `Status: ${STATUS_CONFIG[oldValue]?.label || oldValue} → ${STATUS_CONFIG[value]?.label || value}`;
-      oldValueStr = STATUS_CONFIG[oldValue]?.label || oldValue;
-      newValueStr = STATUS_CONFIG[value]?.label || value;
-    } else if (key === "post_date") {
-      label = `Data de postagem → ${value ? format(new Date(value + "T12:00:00"), "dd/MM/yyyy") : "removida"}`;
-    } else if (key === "delivery_date") {
-      label = `Data de entrega → ${value ? format(new Date(value + "T12:00:00"), "dd/MM/yyyy") : "removida"}`;
-    } else if (key === "title") {
-      label = `Título alterado`;
-    } else if (key === "briefing") {
-      label = `Briefing atualizado`;
-    } else if (key === "caption") {
-      label = `Legenda atualizada`;
-    } else if (key === "responsible_id") {
-      const collab = collaborators.find(c => c.id === value);
-      label = `Responsável → ${collab?.name || value}`;
-      newValueStr = collab?.name || value;
-    } else if (key === "is_favorite") {
-      label = value ? "Marcado como favorito" : "Removido dos favoritos";
+    let persistPromise;
+    if (isImmediate) {
+      if (pending?.timer) clearTimeout(pending.timer);
+      fieldSaveTimersRef.current.delete(key);
+      persistPromise = persistTracked(value, oldValue);
     } else {
-      label = `Campo "${key}" alterado`;
+      if (pending?.timer) clearTimeout(pending.timer);
+      const timer = setTimeout(() => {
+        fieldSaveTimersRef.current.delete(key);
+        void persistTracked(value, oldValue);
+      }, 800);
+      fieldSaveTimersRef.current.set(key, {
+        timer,
+        originalValue: oldValue,
+        save: () => persistTracked(value, oldValue),
+      });
     }
-
-    addHistory("change", label, { field: key, old_value: oldValueStr, new_value: newValueStr });
 
     // For status changes, auto-complete subtasks and fire notifications
-    if (key === "status") {
-      autoCompleteSubtasks(value, subtasks, maestro, statusOrder).then(updated => {
-        setSubtasks(updated);
-        onSubtasksChange?.();
+    if (key === "status" && persistPromise) {
+      void persistPromise.then(saved => {
+        if (!saved) return;
+        return autoCompleteSubtasks(value, subtasks, maestro, statusOrder).then(updated => {
+          setSubtasks(updated);
+          onSubtasksChange?.();
+          fireJobStatusNotifications({ ...job, id: job.id }, value, updated);
+        });
+      }).catch(error => {
+        console.error("Não foi possível sincronizar as subtarefas com o status:", error);
+        setSaveError("O status foi salvo, mas não foi possível sincronizar as subtarefas.");
       });
-      fireJobStatusNotifications(
-        { ...job, id: job.id },
-        value,
-        subtasks
-      );
     }
 
-    // When post_date changes, update subtask deadlines automatically
+    // Shift subtask deadlines only after the job date is confirmed saved.
     if (key === "post_date" && oldValue !== value && value) {
-      if (oldValue) {
-        // Shift all subtask deadlines by the same offset
-        const daysDiff = Math.round((new Date(value).getTime() - new Date(oldValue).getTime()) / (1000 * 60 * 60 * 24));
-        if (daysDiff !== 0) {
-          const updatedSubs = subtasks.map(s => {
-            if (s.deadline) {
-              const d = new Date(s.deadline + "T12:00:00");
-              d.setDate(d.getDate() + daysDiff);
-              return { ...s, deadline: d.toISOString().split('T')[0] };
+      void persistPromise.then(async saved => {
+        if (!saved) return;
+        try {
+          const daysDiff = oldValue
+            ? Math.round((new Date(`${value}T12:00:00`).getTime() - new Date(`${oldValue}T12:00:00`).getTime()) / 86400000)
+            : 0;
+          const updatedSubs = subtasks.map(subtask => {
+            if (oldValue && daysDiff && subtask.deadline) {
+              const date = new Date(`${subtask.deadline}T12:00:00`);
+              date.setDate(date.getDate() + daysDiff);
+              return { ...subtask, deadline: date.toISOString().split("T")[0] };
             }
-            return s;
+            if (!oldValue && subtask.days_before_post != null && !subtask.deadline) {
+              const date = new Date(`${value}T12:00:00`);
+              date.setDate(date.getDate() - Number(subtask.days_before_post));
+              return { ...subtask, deadline: date.toISOString().split("T")[0] };
+            }
+            return subtask;
           });
-          const changed = updatedSubs.filter((s, i) => s.deadline !== subtasks[i].deadline);
-          if (changed.length > 0) {
-            Promise.all(changed.map(s => maestro.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
-              setSubtasks(updatedSubs);
-              onSubtasksChange?.();
-            });
-          }
-        }
-      } else {
-        // No previous date — set deadlines for subtasks with days_before_post
-        const updatedSubs = subtasks.map(s => {
-          if (s.days_before_post && !s.deadline) {
-            const d = new Date(value + "T12:00:00");
-            d.setDate(d.getDate() - s.days_before_post);
-            return { ...s, deadline: d.toISOString().split('T')[0] };
-          }
-          return s;
-        });
-        const changed = updatedSubs.filter((s, i) => s.deadline !== subtasks[i].deadline);
-        if (changed.length > 0) {
-          Promise.all(changed.map(s => maestro.entities.Subtask.update(s.id, { deadline: s.deadline }))).then(() => {
+          const changed = updatedSubs.filter((subtask, index) => subtask.deadline !== subtasks[index].deadline);
+          await Promise.all(changed.map(subtask => maestro.entities.Subtask.update(subtask.id, { deadline: subtask.deadline })));
+          if (changed.length) {
             setSubtasks(updatedSubs);
             onSubtasksChange?.();
-          });
+          }
+        } catch (error) {
+          console.error("A data do job foi salva, mas alguns prazos não foram atualizados:", error);
+          setSaveError("A data do job foi salva, mas não foi possível atualizar todos os prazos das subtarefas. Revise-os.");
         }
-      }
+      });
     }
   }
+
+  async function flushPendingFieldSave(key) {
+    const pending = fieldSaveTimersRef.current.get(key);
+    if (pending) {
+      clearTimeout(pending.timer);
+      fieldSaveTimersRef.current.delete(key);
+      if (!await pending.save()) return false;
+    }
+    return await (fieldSavePromisesRef.current.get(key) || Promise.resolve(true));
+  }
+
+  async function flushPendingJobSaves() {
+    for (const key of [...fieldSaveTimersRef.current.keys()]) {
+      if (!await flushPendingFieldSave(key)) return false;
+    }
+    const pending = [...fieldSavePromisesRef.current.values()];
+    const results = await Promise.all(pending);
+    return results.every(Boolean);
+  }
+
+  async function closeJobDetail() {
+    if (!await flushPendingJobSaves()) return false;
+    await stopTimer();
+    onClose();
+    return true;
+  }
+
+  closeJobDetailRef.current = closeJobDetail;
 
   async function updateSubtask(subtaskId, data) {
     const currentSubtask = subtasks.find(s => s.id === subtaskId);
     const nextCompleted = data.is_completed !== undefined ? data.is_completed : currentSubtask?.is_completed;
     const persistedData = { ...data, status: nextCompleted ? "completed" : "pending" };
-    await maestro.entities.Subtask.update(subtaskId, persistedData);
-    const updatedSubtasks = subtasks.map(s => s.id === subtaskId ? { ...s, ...persistedData } : s);
-    setSubtasks(updatedSubtasks);
-    const sub = subtasks.find(s => s.id === subtaskId);
-    // Build history label
-    let label = `Tarefa "${sub?.title || subtaskId}" alterada`;
-    if (data.is_completed !== undefined) label = `Tarefa "${sub?.title}" → ${data.is_completed ? "concluída" : "reaberta"}`;
-    if (data.responsible_id) {
-      const c = collaborators.find(c => c.id === data.responsible_id);
-      label = `Tarefa "${sub?.title}" → responsável ${c?.name || data.responsible_id}`;
-    }
-    if (data.deadline) label = `Tarefa "${sub?.title}" → prazo ${data.deadline ? format(new Date(data.deadline + "T12:00:00"), "dd/MM/yyyy") : "removido"}`;
-    addHistory("subtask", label);
-    onSubtasksChange?.();
+    try {
+      await maestro.entities.Subtask.update(subtaskId, persistedData);
+      const updatedSubtasks = subtasks.map(s => s.id === subtaskId ? { ...s, ...persistedData } : s);
+      setSubtasks(updatedSubtasks);
+      onSubtasksChange?.();
 
-    // Derive job status from the UPDATED subtasks
-    if (data.is_completed !== undefined || data.status) {
-      const newJobStatus = deriveJobStatusFromSubtasks(job.status, updatedSubtasks, statusOrder);
-      if (newJobStatus) {
-        // Save job status directly (bypass debounce) and sync subtasks with the new status
-        const oldStatus = job.status;
-        const updatedJob = { ...job, status: newJobStatus };
-        setJob(updatedJob);
-        clearTimeout(saveTimerRef.current);
-        const saved = await maestro.entities.Job.update(job.id, updatedJob);
-        onUpdate(saved);
-
-        // Log status change
-        const oldLabel = STATUS_CONFIG[oldStatus]?.label || oldStatus;
-        const newLabel = STATUS_CONFIG[newJobStatus]?.label || newJobStatus;
-        addHistory("change", `Status: ${oldLabel} → ${newLabel}`, { field: "status", old_value: oldLabel, new_value: newLabel });
-
-        // Auto-complete/reopen other subtasks based on the new job status
-        const synced = await autoCompleteSubtasks(newJobStatus, updatedSubtasks, maestro, statusOrder);
-        setSubtasks(synced);
-        onSubtasksChange?.();
-
-        fireJobStatusNotifications({ ...job, id: job.id }, newJobStatus, updatedSubtasks);
+      if (data.is_completed !== undefined || data.status) {
+        const newJobStatus = deriveJobStatusFromSubtasks(job.status, updatedSubtasks, statusOrder);
+        if (newJobStatus) {
+          const saved = await maestro.entities.Job.update(job.id, { status: newJobStatus });
+          latestJobRef.current = { ...latestJobRef.current, ...saved };
+          setJob(current => ({ ...current, ...saved }));
+          onUpdate(saved);
+          const synced = await autoCompleteSubtasks(newJobStatus, updatedSubtasks, maestro, statusOrder);
+          setSubtasks(synced);
+          onSubtasksChange?.();
+          void fireJobStatusNotifications({ ...job, id: job.id }, newJobStatus, synced);
+        }
       }
+      setSaveError("");
+    } catch (error) {
+      console.error("Não foi possível salvar a subtarefa ou sincronizar o status:", error);
+      setSaveError("A subtarefa ou o status não pôde ser salvo completamente. Verifique os dados e tente novamente.");
+      return false;
     }
   }
 
   async function addSubtask() {
     if (!newSubtask.trim()) return;
     const collab = collaborators.find(c => c.id === newSubtaskResponsible);
-    const created = await maestro.entities.Subtask.create({
-      job_id: job.id, title: newSubtask.trim(),
-      status: "pending",
-      responsible_id: newSubtaskResponsible || undefined,
-      responsible_name: collab?.name || undefined,
-      deadline: newSubtaskDeadline || undefined,
-      order: subtasks.length,
-    });
-    setSubtasks(prev => [...prev, created]);
-    addHistory("subtask_add", `Tarefa adicionada: "${newSubtask.trim()}"`);
-    setNewSubtask("");
-    setNewSubtaskResponsible("");
-    setNewSubtaskDeadline("");
-    onSubtasksChange?.();
-    void fireNewSubtaskNotification(job, created).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
+    try {
+      const created = await maestro.entities.Subtask.create({
+        job_id: job.id, title: newSubtask.trim(),
+        status: "pending",
+        responsible_id: newSubtaskResponsible || undefined,
+        responsible_name: collab?.name || undefined,
+        deadline: newSubtaskDeadline || undefined,
+        order: subtasks.length,
+      });
+      setSubtasks(prev => [...prev, created]);
+      setNewSubtask("");
+      setNewSubtaskResponsible("");
+      setNewSubtaskDeadline("");
+      onSubtasksChange?.();
+      setSaveError("");
+      void fireNewSubtaskNotification(job, created).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
+    } catch (error) {
+      console.error("Não foi possível criar a subtarefa:", error);
+      setSaveError("Não foi possível salvar a subtarefa. Ela continua no formulário; tente novamente.");
+    }
   }
 
   async function deleteSubtask(subtaskId) {
@@ -831,11 +901,14 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
       const sub = subtasks.find(s => s.id === deleteConfirm.subtaskId);
       await safeDelete("subtask", "Subtask", sub || { id: deleteConfirm.subtaskId });
       setSubtasks(prev => prev.filter(s => s.id !== deleteConfirm.subtaskId));
-      addHistory("subtask_del", `Tarefa removida: "${sub?.title || deleteConfirm.subtaskId}"`);
       onSubtasksChange?.();
+      setSaveError("");
+      setDeleteConfirm({ isOpen: false, subtaskId: null, subtaskTitle: "" });
+    } catch (error) {
+      console.error("Não foi possível excluir a subtarefa:", error);
+      setSaveError("Não foi possível excluir a subtarefa. Ela continua no job e pode ser tentada novamente.");
     } finally {
       setIsDeleting(false);
-      setDeleteConfirm({ isOpen: false, subtaskId: null, subtaskTitle: "" });
     }
   }
 
@@ -902,6 +975,28 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     }
   }
 
+  function saveJobAttachments(nextAttachments) {
+    const request = attachmentSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const current = latestJobRef.current;
+      const currentAttachments = current.attachments || [];
+      const attachmentsToSave = typeof nextAttachments === "function"
+        ? nextAttachments(currentAttachments)
+        : nextAttachments;
+      const saved = await maestro.entities.Job.update(current.id, { attachments: attachmentsToSave });
+      latestJobRef.current = { ...current, ...saved };
+      setJob(previous => ({ ...previous, ...saved }));
+      onUpdate(saved);
+      setSaveError("");
+      return saved;
+    }).catch(error => {
+      console.error("Não foi possível salvar os anexos do job:", error);
+      setSaveError("O arquivo foi enviado, mas não foi possível vinculá-lo ao job. Tente novamente.");
+      throw error;
+    });
+    attachmentSaveQueueRef.current = request;
+    return request;
+  }
+
   // Global paste handler — paste images from clipboard to attachments from any tab
   useEffect(() => {
     function handlePaste(e) {
@@ -944,12 +1039,11 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         }
         setIsUploadingDrop(false);
         if (uploaded.length) {
-          setJob(j => {
-            const newAttachments = [...(j.attachments || []), ...uploaded];
-            maestro.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
-            uploaded.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
-            return { ...j, attachments: newAttachments };
-          });
+          try {
+            await saveJobAttachments(current => [...(current || []), ...uploaded]);
+          } catch {
+            window.alert("O upload terminou, mas os arquivos não foram vinculados ao job. Recarregue e tente anexá-los novamente.");
+          }
         }
       })();
     }
@@ -992,14 +1086,13 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
     }
     setIsUploadingDrop(false);
     if (uploaded.length) {
-      setJob(j => {
-        const newAttachments = [...(j.attachments || []), ...uploaded];
-        maestro.entities.Job.update(j.id, { attachments: newAttachments }).then(saved => onUpdate(saved));
-        uploaded.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
-        return { ...j, attachments: newAttachments };
-      });
+      try {
+        await saveJobAttachments(current => [...(current || []), ...uploaded]);
+      } catch {
+        window.alert("O upload terminou, mas não foi possível vincular os arquivos ao job.");
+      }
     }
-  }, []);
+  }, [saveJobAttachments]);
 
   const openCount = subtasks.filter(isOpenSubtask).length;
   const today = format(new Date(), "yyyy-MM-dd");
@@ -1034,7 +1127,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
 
   return createPortal(
     <>
-    <div aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={async () => { await stopTimer(); onClose(); }} />
+    <div aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={() => { void closeJobDetail(); }} />
     <div role="dialog" aria-modal="true" aria-labelledby="job-detail-title" tabIndex="-1" className="fixed inset-x-2 bottom-2 top-14 z-[10000] flex flex-col overflow-visible rounded-xl bg-card shadow-2xl md:bottom-auto md:left-[calc(0.5vw+40px)] md:right-auto md:top-[60px] md:h-[calc(100vh-70px)] md:w-[calc(59vw-80px)] md:max-w-[64rem]"
       onPointerDown={markTimesheetActivity}
       onKeyDown={markTimesheetActivity}
@@ -1069,7 +1162,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-white dark:bg-card flex-shrink-0 flex-wrap">
 
           {/* Status */}
-          <StatusDropdown value={job.status} canCancel={canCancelJob} onChange={v => update("status", v)} />
+          <StatusDropdown value={job.status} onChange={v => update("status", v)} />
 
           {/* Post date with calendar */}
           <PostDateDropdown value={job.post_date} onChange={v => update("post_date", v)} onRepeat={repeatJob} />
@@ -1126,15 +1219,21 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               >
                 <Ban className="w-3 h-3" /> Cancelar Job
               </button>
-            ) : (
+            ) : job.status === "cancelled" ? (
               <span className="text-xs font-semibold text-gray-400 px-2">Job Cancelado</span>
-            )}
-            <button onClick={async () => { await stopTimer(); onClose(); }}
+            ) : null}
+            <button onClick={() => { void closeJobDetail(); }}
               className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        {saveError && (
+          <div role="alert" className="px-4 py-2 border-b border-red-200 bg-red-50 text-xs font-medium text-red-700">
+            {saveError}
+          </div>
+        )}
 
         {/* JOB TITLE + BREADCRUMB */}
         <div className="px-6 py-0.5 border-b border-border bg-white dark:bg-card flex-shrink-0">
@@ -1142,7 +1241,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
             <span className="font-medium">{job.client_name}</span>
             <ChevronRight className="w-3 h-3" />
             <button
-              onClick={async (e) => { e.stopPropagation(); await stopTimer(); onClose(); window.history.pushState(null, "", `/Projects?project=${job.project_id}`); window.location.href = `/Projects?project=${job.project_id}`; }}
+              onClick={async (e) => { e.stopPropagation(); if (await closeJobDetail()) { window.history.pushState(null, "", `/Projects?project=${job.project_id}`); window.location.href = `/Projects?project=${job.project_id}`; } }}
               className="font-medium text-foreground hover:text-primary hover:underline transition-colors cursor-pointer"
             >{job.project_name}</button>
           </div>
@@ -1304,7 +1403,9 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                   placeholder="Descreva o briefing do job..."
                   value={job.briefing || ""}
                   onChange={e => update("briefing", e.target.value)}
-                  onBlur={() => setEditingBriefing(false)}
+                  onBlur={async () => {
+                    if (await flushPendingFieldSave("briefing")) setEditingBriefing(false);
+                  }}
                 />
               ) : (
                 <div
@@ -1529,6 +1630,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
               {tab === "attachments" && (
                 <div className="relative h-full flex flex-col">
                   <JobAttachmentsTab
+                    jobId={job.id}
                     currentUser={collabName}
                     isAdmin={isAdminLevel(sessionCollaborator)}
                     uploadContext={{ clientName: job.client_name, projectName: job.project_name, jobTitle: job.title }}
@@ -1540,17 +1642,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                       while ((m = regex.exec(c.content || "")) !== null) matches.push(m[1]);
                       return matches;
                     })}
-                    onAttachmentsChange={list => {
-                      setJob(j => {
-                        const oldList = j.attachments || [];
-                        const added = list.filter(f => !oldList.some(o => o.url === f.url));
-                        const removed = oldList.filter(f => !list.some(n => n.url === f.url));
-                        added.forEach(f => addHistory("attachment_add", `Anexo adicionado: "${f.name}"`));
-                        removed.forEach(f => addHistory("attachment_del", `Anexo removido: "${f.name}"`));
-                        maestro.entities.Job.update(j.id, { attachments: list }).then(saved => onUpdate(saved));
-                        return { ...j, attachments: list };
-                      });
-                    }}
+                    onAttachmentsChange={nextAttachments => saveJobAttachments(nextAttachments)}
                     fullscreenLightbox
                   />
                 </div>
@@ -1573,7 +1665,7 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
                           <p className="text-xs font-semibold text-foreground leading-snug">{h.text}</p>
                         </div>
                         {/* old → new value for changes */}
-                        {h.type === "change" && h.old_value && h.new_value && h.field !== "briefing" && h.field !== "caption" && h.field !== "title" && (
+                        {h.type === "change" && h.old_value && h.new_value && h.field !== "briefing" && h.field !== "caption" && h.field !== "title" && h.field !== "attachments" && (
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-[9px] bg-red-50 dark:bg-red-900/20 text-red-600 px-1.5 py-0.5 rounded line-through">{h.old_value || "—"}</span>
                             <span className="text-[9px] text-muted-foreground">→</span>
@@ -1636,12 +1728,17 @@ export default function JobDetailModal({ job: initialJob, subtasks: initialSubta
         isOpen={cancelJobConfirm}
         onConfirm={async () => {
           setCancelJobConfirm(false);
-          await stopTimer();
-          // Save immediately (bypass debounce) so the job moves to Cancelled section
-          const saved = await maestro.entities.Job.update(job.id, { status: "cancelled" });
-          setJob(j => ({ ...j, status: "cancelled" }));
-          onUpdate(saved);
-          addHistory("change", `Status: ${STATUS_CONFIG[job.status]?.label || job.status} → ${STATUS_CONFIG.cancelled?.label || "Cancelado"}`, { field: "status", old_value: STATUS_CONFIG[job.status]?.label || job.status, new_value: STATUS_CONFIG.cancelled?.label || "Cancelado" });
+          try {
+            await stopTimer();
+            const saved = await maestro.entities.Job.update(job.id, { status: "cancelled" });
+            latestJobRef.current = { ...latestJobRef.current, ...saved };
+            setJob(current => ({ ...current, ...saved }));
+            onUpdate(saved);
+            setSaveError("");
+          } catch (error) {
+            console.error("Não foi possível cancelar o job:", error);
+            setSaveError("Não foi possível cancelar o job. O status anterior foi mantido.");
+          }
         }}
         onCancel={() => setCancelJobConfirm(false)}
       />

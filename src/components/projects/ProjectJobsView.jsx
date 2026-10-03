@@ -2,23 +2,15 @@ import { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
 import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Plus, AlertTriangle, Clock, CheckCircle2,
   AlertCircle, Calendar, Briefcase, Image, Film, Play,
-  BarChart3, FileText, Users, Archive, ArchiveRestore, Trash2, ChevronDown, Pencil, Check, X, Ban, StickyNote
+  BarChart3, FileText, Archive, ArchiveRestore, Trash2, ChevronDown, Pencil, Check, X, Ban, StickyNote
 } from "lucide-react";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useStatusConfig } from "@/lib/AppConfigContext";
@@ -26,7 +18,7 @@ import JobDetailModal from "../jobs/JobDetailModal";
 import CreateJobModal from "../jobs/CreateJobModal";
 import ScheduleCalendar from "./ScheduleCalendar";
 import ProjectTimesheetModal from "./ProjectTimesheetModal";
-import { isJobOverdue } from "@/lib/jobWorkflow";
+import { isClosedJob, isJobOverdue } from "@/lib/jobWorkflow";
 
 const CONTENT_ICONS = {
   feed_card: Image,
@@ -43,7 +35,7 @@ const CONTENT_ICONS = {
   outros: Briefcase,
 };
 
-export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAdmin, initialJobId, onJobSelect, onJobClose }) {
+export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAdmin, canDeleteJobs = isAdmin, initialJobId, onJobSelect, onJobClose }) {
   const { statusConfig: STATUS_CONFIG } = useStatusConfig();
   const [jobs, setJobs] = useState([]);
   const [statusMenuOpen, setStatusMenuOpen] = useState(null);
@@ -51,6 +43,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
   const [timesheets, setTimesheets] = useState([]);
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -84,10 +77,15 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   async function handleSaveName() {
     if (!nameValue.trim()) return;
-    const updated = await maestro.entities.Project.update(projectData.id, { name: nameValue.trim() });
-    setProjectData(prev => ({ ...prev, name: nameValue.trim() }));
-    setEditingName(false);
-    onProjectUpdate && onProjectUpdate({ ...projectData, name: nameValue.trim() });
+    try {
+      const updated = await maestro.entities.Project.update(projectData.id, { name: nameValue.trim() });
+      setProjectData(updated);
+      setEditingName(false);
+      onProjectUpdate && onProjectUpdate(updated);
+    } catch (error) {
+      console.error("Não foi possível salvar o nome do projeto:", error);
+      window.alert("Não foi possível salvar o nome do projeto. O valor anterior foi mantido.");
+    }
   }
 
   async function handleToggleTeam(team) {
@@ -95,44 +93,54 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
     const newTeams = currentTeams.includes(team)
       ? currentTeams.filter(t => t !== team)
       : [...currentTeams, team];
-    const updated = await maestro.entities.Project.update(projectData.id, { teams: newTeams });
-    setProjectData(prev => ({ ...prev, teams: newTeams }));
-    onProjectUpdate && onProjectUpdate({ ...projectData, teams: newTeams });
-    if (!newTeams.includes(selectedTeam) && newTeams.length > 0) setSelectedTeam(newTeams[0]);
+    try {
+      const updated = await maestro.entities.Project.update(projectData.id, { teams: newTeams });
+      setProjectData(updated);
+      onProjectUpdate && onProjectUpdate(updated);
+      if (!newTeams.includes(selectedTeam) && newTeams.length > 0) setSelectedTeam(newTeams[0]);
+    } catch (error) {
+      console.error("Não foi possível salvar as equipes do projeto:", error);
+      window.alert("Não foi possível salvar a equipe. A configuração anterior foi mantida.");
+    }
   }
 
   async function loadData() {
     setLoading(true);
-    const [j, s, ts, c, collab, dlogs] = await Promise.all([
-      maestro.entities.Job.filter({ project_id: project.id }, "-created_date", 200),
-      maestro.entities.Subtask.list("-created_date", 500),
-      maestro.entities.Timesheet.filter({ project_id: project.id }, "-created_date", 500),
-      project.client_id ? maestro.entities.Client.filter({ id: project.client_id }, "name", 1) : Promise.resolve([]),
-      maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
-      maestro.entities.DeleteLog.filter({ entity_type: "job" }, "-deleted_at", 100),
-    ]);
-    setJobs(j);
-    setSubtasks(s.filter(st => j.some(jb => jb.id === st.job_id)));
-    setTimesheets(ts);
-    setClient(c[0] || null);
-    setCollaborators(collab);
-    // Filter deleted jobs belonging to this project
-    const projDeletedJobs = dlogs
-      .filter(dl => dl.entity_data?.project_id === project.id)
-      .map(dl => ({ ...dl.entity_data, _deletedAt: dl.deleted_at, _deletedBy: dl.deleted_by_name, _deleteLogId: dl.id }));
-    setDeletedJobs(projDeletedJobs);
-    // Extract observations from schedule_data
-    const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
-    const schedData = proj[0]?.schedule_data || {};
-    const obs = [];
-    Object.entries(schedData).forEach(([dayStr, posts]) => {
-      posts.forEach(p => {
-        if (p.is_observation) obs.push({ ...p, date: dayStr });
+    try {
+      const [j, s, ts, c, collab, dlogs] = await Promise.all([
+        maestro.entities.Job.filter({ project_id: project.id }, "-created_date", 200),
+        maestro.entities.Subtask.list("-created_date", 500),
+        maestro.entities.Timesheet.filter({ project_id: project.id }, "-created_date", 500),
+        project.client_id ? maestro.entities.Client.filter({ id: project.client_id }, "name", 1) : Promise.resolve([]),
+        maestro.entities.Collaborator.filter({ is_active: true }, "name", 100),
+        maestro.entities.DeleteLog.filter({ entity_type: "job" }, "-deleted_at", 100),
+      ]);
+      setJobs(j);
+      setSubtasks(s.filter(st => j.some(jb => jb.id === st.job_id)));
+      setTimesheets(ts);
+      setClient(c[0] || null);
+      setCollaborators(collab);
+      const projDeletedJobs = dlogs
+        .filter(dl => dl.entity_data?.project_id === project.id)
+        .map(dl => ({ ...dl.entity_data, _deletedAt: dl.deleted_at, _deletedBy: dl.deleted_by_name, _deleteLogId: dl.id }));
+      setDeletedJobs(projDeletedJobs);
+      const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
+      const schedData = proj[0]?.schedule_data || {};
+      const obs = [];
+      Object.entries(schedData).forEach(([dayStr, posts]) => {
+        posts.forEach(p => {
+          if (p.is_observation) obs.push({ ...p, date: dayStr });
+        });
       });
-    });
-    obs.sort((a, b) => a.date.localeCompare(b.date));
-    setObservations(obs);
-    setLoading(false);
+      obs.sort((a, b) => a.date.localeCompare(b.date));
+      setObservations(obs);
+      setLoadError("");
+    } catch (error) {
+      console.error("Não foi possível carregar jobs, subtarefas e dados do projeto:", error);
+      setLoadError("Não foi possível carregar os dados do projeto.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Open job from URL param after data loads
@@ -158,8 +166,8 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   const activeJobsAll = jobs.filter(j => j.status !== "cancelled");
   const cancelledJobs = jobs.filter(j => j.status === "cancelled");
-  const overdueJobs = activeJobsAll.filter(j => j.post_date && j.post_date < today && j.status !== "completed" && j.status !== "scheduled");
-  const notScheduledSoon = activeJobsAll.filter(j => j.post_date && j.post_date >= today && j.post_date <= in5Days && j.status !== "scheduled" && j.status !== "completed");
+  const overdueJobs = activeJobsAll.filter(j => j.post_date && j.post_date < today && !isClosedJob(j));
+  const notScheduledSoon = activeJobsAll.filter(j => j.post_date && j.post_date >= today && j.post_date <= in5Days && !isClosedJob(j));
   const totalTimesheetMinutes = timesheets.filter(t => !t.is_running).reduce((s, t) => s + (t.duration_minutes || 0), 0);
   const totalHours = (totalTimesheetMinutes / 60).toFixed(1);
 
@@ -204,15 +212,23 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       confirmVariant: "primary",
       message: "Todos os jobs (exceto cancelados) serão marcados como concluídos e o projeto será movido para a seção Concluídos/Arquivados.",
       onConfirm: async () => {
-        setConfirmAction(null);
         setArchiving(true);
-        await Promise.all(jobs.filter(j => j.status !== "cancelled").map(j => maestro.entities.Job.update(j.id, { status: "completed" })));
-        await Promise.all(subtasks.map(s => maestro.entities.Subtask.update(s.id, { is_completed: true, status: "completed" })));
-        await maestro.entities.Project.update(project.id, { status: "archived" });
-        const updatedProject = { ...projectData, status: "archived" };
-        setArchiving(false);
-        setProjectData(updatedProject);
-        onProjectUpdate && onProjectUpdate(updatedProject);
+        try {
+          await Promise.all(jobs.filter(j => j.status !== "cancelled").map(j => maestro.entities.Job.update(j.id, { status: "completed" })));
+          await Promise.all(subtasks.map(s => maestro.entities.Subtask.update(s.id, { is_completed: true, status: "completed" })));
+          const updatedProject = await maestro.entities.Project.update(project.id, { status: "archived" });
+          setConfirmAction(null);
+          setProjectData(updatedProject);
+          onProjectUpdate && onProjectUpdate(updatedProject);
+        } catch (error) {
+          console.error("Não foi possível concluir e arquivar o projeto:", error);
+          await loadData().catch(loadError => console.error("Não foi possível recarregar os jobs após a falha:", loadError));
+          const current = await maestro.entities.Project.filter({ id: project.id }, "id", 1).catch(() => []);
+          if (current[0]) setProjectData(current[0]);
+          window.alert("A operação parou antes de concluir. Parte dos status pode ter sido salva e registrada; confira os itens atualizados antes de tentar novamente.");
+        } finally {
+          setArchiving(false);
+        }
       },
     });
   }
@@ -228,26 +244,39 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       confirmVariant: "primary",
       message: "O projeto voltará ao status 'Em andamento'.",
       onConfirm: async () => {
-        setConfirmAction(null);
         setArchiving(true);
-        const updated = await maestro.entities.Project.update(project.id, { status: "in_progress" });
-        setArchiving(false);
-        setProjectData(prev => ({ ...prev, status: "in_progress" }));
-        onProjectUpdate && onProjectUpdate(updated);
+        try {
+          const updated = await maestro.entities.Project.update(project.id, { status: "in_progress" });
+          setConfirmAction(null);
+          setProjectData(updated);
+          onProjectUpdate && onProjectUpdate(updated);
+        } catch (error) {
+          console.error("Não foi possível reabrir o projeto:", error);
+          window.alert("Não foi possível reabrir o projeto. O status salvo não foi alterado.");
+        } finally {
+          setArchiving(false);
+        }
       },
     });
   }
 
   async function handleStatusChange(jobId, newStatus, e) {
     e.stopPropagation();
-    const updated = await maestro.entities.Job.update(jobId, { status: newStatus });
+    const previous = jobs.find(job => job.id === jobId)?.status;
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: newStatus } : j));
+    try {
+      const updated = await maestro.entities.Job.update(jobId, { status: newStatus });
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updated } : j));
+    } catch (error) {
+      console.error("Não foi possível salvar o status do job:", error);
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: previous } : j));
+      window.alert("Não foi possível salvar o novo status. Tente novamente.");
+    }
   }
 
   function handleDeleteJob(jobId, e) {
     e.stopPropagation();
     const job = jobs.find(j => j.id === jobId);
-    const collab = JSON.parse(sessionStorage.getItem("collaborator") || "{}");
     setConfirmAction({
       type: "deleteJob",
       title: "Excluir job?",
@@ -256,29 +285,21 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       onConfirm: async () => {
         setConfirmAction(null);
         // Optimistic: remove from list immediately
+        const previousJobs = jobs;
         setJobs(prev => prev.filter(j => j.id !== jobId));
         try {
-          const deletedAt = new Date().toISOString();
-          await maestro.entities.DeleteLog.create({
-            entity_type: "job",
-            entity_id: jobId,
-            entity_data: job,
-            deleted_by: collab?.id || "unknown",
-            deleted_by_name: collab?.name || "Desconhecido",
-            deleted_at: deletedAt,
-          });
           await maestro.entities.Job.delete(jobId);
-          // Add to deletedJobs for local display
-          setDeletedJobs(prev => [{ ...job, _deletedAt: deletedAt, _deletedBy: collab?.name || "Desconhecido", _deleteLogId: jobId + "_del" }, ...prev]);
+          await loadData();
         } catch (err) {
           console.error("Erro ao excluir job:", err);
+          setJobs(previousJobs);
+          window.alert("Não foi possível excluir o job. Nenhuma exclusão foi confirmada.");
         }
       },
     });
   }
 
   function handleDeleteProject() {
-    const collab = JSON.parse(sessionStorage.getItem("collaborator") || "{}");
     setConfirmAction({
       type: "deleteProject",
       title: "Excluir projeto?",
@@ -287,36 +308,35 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       onConfirm: async () => {
         setConfirmAction(null);
         setArchiving(true);
-        // Log all jobs to DeleteLog before deleting
-        await Promise.all(jobs.map(j => maestro.entities.DeleteLog.create({
-          entity_type: "job",
-          entity_id: j.id,
-          entity_data: j,
-          deleted_by: collab?.id || "unknown",
-          deleted_by_name: collab?.name || "Desconhecido",
-          deleted_at: new Date().toISOString(),
-        })));
-        await Promise.all(jobs.map(j => maestro.entities.Job.delete(j.id)));
-        await Promise.all(subtasks.map(s => maestro.entities.Subtask.delete(s.id)));
-        await maestro.entities.Project.delete(project.id);
-        setArchiving(false);
-        onProjectUpdate && onProjectUpdate(null);
-        onBack();
+        try {
+          await Promise.all(jobs.map(j => maestro.entities.Job.delete(j.id)));
+          await Promise.all(subtasks.map(s => maestro.entities.Subtask.delete(s.id)));
+          await maestro.entities.Project.delete(project.id);
+          setArchiving(false);
+          onProjectUpdate && onProjectUpdate(null);
+          onBack();
+        } catch (error) {
+          console.error("Erro ao excluir projeto:", error);
+          setArchiving(false);
+          await loadData();
+          window.alert("A exclusão do projeto foi interrompida. Os itens removidos já têm registro de recuperação; confira a lista antes de tentar novamente.");
+        }
       },
     });
   }
 
   async function toggleObservation(obs) {
-    // Update in schedule_data
-    const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
-    const schedData = { ...(proj[0]?.schedule_data || {}) };
-    const dayPosts = schedData[obs.date] || [];
-    const idx = dayPosts.findIndex(p => p.id === obs.id);
-    if (idx >= 0) {
+    try {
+      const proj = await maestro.entities.Project.filter({ id: project.id }, "id", 1);
+      const dayPosts = [...(proj[0]?.schedule_data?.[obs.date] || [])];
+      const idx = dayPosts.findIndex(p => p.id === obs.id);
+      if (idx < 0) return;
       dayPosts[idx] = { ...dayPosts[idx], is_completed: !dayPosts[idx].is_completed };
-      schedData[obs.date] = dayPosts;
-      await maestro.entities.Project.update(project.id, { schedule_data: schedData });
+      await maestro.entities.Project.update(project.id, { schedule_patch: { [obs.date]: dayPosts } });
       setObservations(prev => prev.map(o => o.id === obs.id ? { ...o, is_completed: !o.is_completed } : o));
+    } catch (error) {
+      console.error("Não foi possível salvar a conclusão da observação:", error);
+      window.alert("Não foi possível salvar a alteração da observação. Tente novamente.");
     }
   }
 
@@ -330,6 +350,12 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
 
   return (
     <div className="flex flex-col h-full">
+      {loadError && (
+        <div role="alert" className="flex items-center justify-between gap-3 bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-800">
+          <span>{loadError}</span>
+          <button className="font-semibold underline" onClick={() => void loadData()}>Tentar novamente</button>
+        </div>
+      )}
       {/* Back + header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border flex-shrink-0">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -399,7 +425,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={handleCompleteAndArchive} disabled={archiving} className="gap-1.5 h-8 text-xs border-green-300 text-green-700 hover:bg-green-50">
-                <Archive className="w-3.5 h-3.5" /> Concluir & Arquivar
+                <Archive className="w-3.5 h-3.5" /> Concluir &amp; Arquivar
               </Button>
             )
           )}
@@ -542,6 +568,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
                 {/* Desktop row */}
                 <div
                   onClick={() => handleSelectJob(j)}
+                  data-status-tone={isCompleted ? "done" : isLate ? "post-overdue" : "on-time"}
                   className={`hidden md:grid cursor-pointer rounded-xl border transition-all hover:shadow-md ${
                     isCompleted
                       ? "border-border bg-muted/30 opacity-70 hover:opacity-100"
@@ -611,6 +638,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
                 {/* Mobile card */}
                 <div
                   onClick={() => handleSelectJob(j)}
+                  data-status-tone={isCompleted ? "done" : isLate ? "post-overdue" : "on-time"}
                   className={`md:hidden cursor-pointer rounded-xl border p-3 transition-all ${
                     isCompleted
                       ? "border-border bg-muted/30 opacity-70"
@@ -869,7 +897,7 @@ export default function ProjectJobsView({ project, onBack, onProjectUpdate, isAd
       )}
 
       {showSchedule && ReactDOM.createPortal(
-        <ScheduleCalendar project={project} onClose={() => { setShowSchedule(false); loadData(); }} />,
+        <ScheduleCalendar project={projectData} canDeleteJobs={canDeleteJobs} onClose={() => { setShowSchedule(false); loadData(); }} />,
         document.body
       )}
 

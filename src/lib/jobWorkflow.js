@@ -1,7 +1,16 @@
 export const CLOSED_JOB_STATUSES = new Set(["completed", "scheduled", "cancelled"]);
 
 export function normalizeWorkflowStatus(status) {
-  return String(status || "").trim().toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (["concluido", "concluida", "finalizado", "finalizada", "done", "finished"].includes(normalized)) return "completed";
+  if (["agendado", "agendada", "published", "publicado", "publicada"].includes(normalized)) return "scheduled";
+  if (["cancelado", "cancelada", "canceled"].includes(normalized)) return "cancelled";
+  return normalized;
 }
 
 export function isClosedJob(job) {

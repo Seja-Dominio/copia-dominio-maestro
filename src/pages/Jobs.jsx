@@ -256,7 +256,7 @@ export default function Jobs() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)]">
+    <div className="flex min-h-[calc(100dvh-7rem)] flex-col md:h-[calc(100vh-7rem)]">
       {/* Sub-nav */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-card overflow-x-auto flex-shrink-0">
         {VIEWS.map(v => (
@@ -434,7 +434,8 @@ export default function Jobs() {
                        const isLate = isJobOverdue(j, today, "delivery_date");
                        return (
                          <tr
-                           key={j.id}
+                         key={j.id}
+                           data-status-tone={toneKey}
                            onClick={() => handleSelectJob(j)}
                            className={`border-b border-border cursor-pointer transition-colors ${TABLE_TONE_CLASSES[toneKey]}`}
                          >

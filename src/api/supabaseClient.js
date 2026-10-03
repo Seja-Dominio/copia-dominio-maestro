@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizeEntityRows } from '@/api/normalizeEntityRows';
+import { getMaestroDataEndpoint, getMaestroDataReadSource } from '@/api/coreDataRouting';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -90,7 +92,9 @@ function invalidateEntityReads(entity) {
 }
 
 async function readEntity(body, { cache = true } = {}) {
-  const key = getEntityReadKey(body);
+  const readSource = getMaestroDataReadSource(body?.entity);
+  const requestBody = readSource ? { ...body, read_source: readSource } : body;
+  const key = getEntityReadKey(requestBody);
   const now = Date.now();
   if (cache) {
     const cached = entityReadCache.get(key);
@@ -100,8 +104,8 @@ async function readEntity(body, { cache = true } = {}) {
     if (inflight) return inflight;
   }
 
-  const request = callMaestroData(body).then((result) => {
-    const value = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
+  const request = callMaestroData(requestBody).then((result) => {
+    const value = normalizeEntityRows(result);
     if (cache) entityReadCache.set(key, { value, expiresAt: Date.now() + ENTITY_READ_CACHE_TTL });
     return value;
   }).finally(() => entityReadInflight.delete(key));
@@ -241,8 +245,8 @@ export async function uploadFileToSupabase(file) {
   return data;
 }
 
-export function refreshFileUrlFromSupabase(path) {
-  return invokeSupabaseFunction('refresh-file-url', { path }).then((data) => data.file_url || '');
+export function refreshFileUrlFromSupabase(jobId, path) {
+  return invokeSupabaseFunction('refresh-file-url', { job_id: jobId, path }).then((data) => data.file_url || '');
 }
 
 export async function loginCollaboratorWithSupabase({ login, password }) {
@@ -274,7 +278,8 @@ export async function callMaestroData(body) {
   const sessionToken = getStoredSessionToken();
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
-  const response = await fetch(`${url}/functions/v1/maestro-data`, {
+  const endpoint = getMaestroDataEndpoint(body?.entity);
+  const response = await fetch(`${url}/functions/v1/${endpoint}`, {
     method: 'POST',
     headers: {
       apikey: anonKey,
@@ -285,6 +290,8 @@ export async function callMaestroData(body) {
   });
   const data = await response.json();
   if (!response.ok) throwSupabaseError(data, response, 'Erro ao acessar os dados do Maestro.');
+  const renewedSession = response.headers.get('X-Maestro-Session');
+  if (renewedSession) storeCollaboratorSession(getStoredCollaborator(), renewedSession);
   return data.data;
 }
 

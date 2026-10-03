@@ -41,6 +41,7 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
     template_id: "",
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     const promises = [
@@ -101,44 +102,52 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
     e.preventDefault();
     if (!form.title || !form.project_id) return;
     setSaving(true);
-    const tplData = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null;
-    const created = await maestro.entities.Job.create({
-      ...form,
-      score: tplData?.score || form.score || 0,
-    });
+    setSaveError("");
+    let created = null;
+    try {
+      const tplData = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null;
+      created = await maestro.entities.Job.create({
+        ...form,
+        score: tplData?.score || form.score || 0,
+      });
 
-    // Se tem template com subtarefas, criar subtasks com datas baseadas em days_before_post
-    if (selectedTemplateId) {
-      const tpl = templates.find(t => t.id === selectedTemplateId);
-      if (tpl?.subtasks?.length) {
-        const subtaskPromises = tpl.subtasks.map(s => {
-          let deadline = null;
-          if (form.post_date && s.days_before_post != null && s.days_before_post !== "") {
-            const postDate = new Date(form.post_date + "T12:00:00");
-            postDate.setDate(postDate.getDate() - Number(s.days_before_post));
-            deadline = postDate.toISOString().split("T")[0];
-          }
-          return maestro.entities.Subtask.create({
-            job_id: created.id,
-            title: s.title,
-            responsible_id: s.responsible_id || "",
-            responsible_name: s.responsible_name || "",
-            complete_at_status: s.complete_at_status || "",
-            notify_on_status: s.notify_on_status || "",
-            days_before_post: s.days_before_post || undefined,
-            deadline,
-            order: s.order || 0,
-            status: "pending",
-            is_completed: false,
+      if (selectedTemplateId) {
+        const tpl = templates.find(t => t.id === selectedTemplateId);
+        if (tpl?.subtasks?.length) {
+          const subtaskPromises = tpl.subtasks.map(s => {
+            let deadline = null;
+            if (form.post_date && s.days_before_post != null && s.days_before_post !== "") {
+              const postDate = new Date(form.post_date + "T12:00:00");
+              postDate.setDate(postDate.getDate() - Number(s.days_before_post));
+              deadline = postDate.toISOString().split("T")[0];
+            }
+            return maestro.entities.Subtask.create({
+              job_id: created.id,
+              title: s.title,
+              responsible_id: s.responsible_id || "",
+              responsible_name: s.responsible_name || "",
+              complete_at_status: s.complete_at_status || "",
+              notify_on_status: s.notify_on_status || "",
+              days_before_post: s.days_before_post ?? undefined,
+              deadline,
+              order: s.order ?? 0,
+              status: "pending",
+              is_completed: false,
+            });
           });
-        });
-        const createdSubtasks = await Promise.all(subtaskPromises);
-        // Notifica responsáveis cujas subtarefas têm notify_on_status = status inicial do job
-        void fireJobCreatedNotifications(created, createdSubtasks).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
+          const createdSubtasks = await Promise.all(subtaskPromises);
+          void fireJobCreatedNotifications(created, createdSubtasks).catch((error) => console.warn("Não foi possível enviar a notificação da nova demanda", error));
+        }
       }
+      onCreate(created);
+    } catch (error) {
+      console.error("Não foi possível criar o job e suas subtarefas:", error);
+      setSaveError(created
+        ? "O job foi salvo, mas houve falha ao salvar todas as subtarefas. Confira o job antes de criar outro para evitar duplicidade."
+        : "Não foi possível salvar o job. Seus dados continuam no formulário; tente novamente.");
+    } finally {
+      setSaving(false);
     }
-
-    onCreate(created);
   }
 
   const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
@@ -157,6 +166,7 @@ export default function CreateJobModal({ onClose, onCreate, projectId, projectNa
   return (
     <StandardDrawer open={true} onClose={onClose} title={drawerTitle} width={520} footer={drawerFooter}>
         <form id="create-job-form" onSubmit={handleSubmit} className="p-6 space-y-4">
+          {saveError && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>}
           {/* Projeto (obrigatório quando acessado fora de um projeto) */}
           {needsProjectSelection && (
             <div>

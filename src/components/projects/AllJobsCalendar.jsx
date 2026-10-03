@@ -62,6 +62,7 @@ export default function AllJobsCalendar({ jobs, onClose, onJobClick }) {
     const dayJobs = jobsByDate[key] || [];
     if (dayJobs.length === 0) return;
 
+    const isMobile = window.matchMedia("(max-width: 639px)").matches;
     const cellRect = e.currentTarget.getBoundingClientRect();
     const calRect = calendarRef.current?.getBoundingClientRect();
     if (!calRect) return;
@@ -71,13 +72,13 @@ export default function AllJobsCalendar({ jobs, onClose, onJobClick }) {
     let left = cellRect.left - calRect.left;
 
     // Clamp so popover doesn't overflow right edge
-    const popoverWidth = 640;
+    const popoverWidth = isMobile ? Math.min(640, window.innerWidth - 32) : 640;
     if (left + popoverWidth > calRect.width) {
       left = calRect.width - popoverWidth - 8;
     }
     if (left < 8) left = 8;
 
-    setPopoverPos({ top, left });
+    setPopoverPos({ top, left, isMobile });
     setSelectedDay(key);
   };
 
@@ -194,8 +195,8 @@ export default function AllJobsCalendar({ jobs, onClose, onJobClick }) {
         {selectedDay && popoverPos && (
           <div
             ref={popoverRef}
-            className="absolute z-60 w-[640px] bg-card border border-border rounded-xl shadow-2xl animate-fade-in"
-            style={{ top: popoverPos.top, left: popoverPos.left }}
+            className={`z-[60] animate-fade-in rounded-xl border border-border bg-card shadow-2xl ${popoverPos.isMobile ? "fixed inset-x-2 bottom-[calc(72px+env(safe-area-inset-bottom,0px))] max-h-[70dvh] w-auto overflow-y-auto" : "absolute w-[640px]"}`}
+            style={popoverPos.isMobile ? undefined : { top: popoverPos.top, left: popoverPos.left }}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="font-semibold text-sm text-foreground">

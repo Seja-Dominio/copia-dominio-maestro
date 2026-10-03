@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Search, Star, FolderKanban, Clock,
-  Calendar, CheckCircle2,
+  Calendar,
   Crown, Users, X
 } from "lucide-react";
 import { format } from "date-fns";
@@ -16,7 +16,8 @@ import ProjectJobsView from "../components/projects/ProjectJobsView";
 import AllJobsCalendar from "../components/projects/AllJobsCalendar";
 import BulkScheduleDownload from "../components/projects/BulkScheduleDownload";
 import { useStatusConfig } from "@/lib/AppConfigContext";
-import { isMaster } from "@/lib/accessControl";
+import { isAdminLevel, isMaster } from "@/lib/accessControl";
+import { sortProjectsByCreationDate } from "@/lib/projectOrdering";
 
 const ProjectCard = memo(function ProjectCard({ project, jobs, client, onClick, onToggleFavorite, totalMinutes, statusList }) {
   const activeJobs = jobs.filter(j => j.status !== "cancelled");
@@ -170,6 +171,7 @@ export default function Projects() {
 
   const collabSession = JSON.parse(sessionStorage.getItem("collaborator") || "null");
   const isAdmin = isMaster(collabSession);
+  const canDeleteJobs = isAdminLevel(collabSession);
   const { statusList } = useStatusConfig();
 
   const [jobsByProject, setJobsByProject] = useState({});
@@ -182,7 +184,10 @@ export default function Projects() {
     setLoadError("");
     try {
       const [data, jobs, clients, timesheets] = await Promise.all([
-        maestro.entities.Project.list("-created_date", 100),
+        // The Projects view must not silently truncate the portfolio at the
+        // first 100 records; older scheduled months otherwise disappear from
+        // the UI even though they still exist in the database.
+        maestro.entities.Project.list("-created_date", 500),
         maestro.entities.Job.list("-created_date", 300),
         maestro.entities.Client.list("name", 200),
         maestro.entities.Timesheet.filter({ is_running: false }, "-created_date", 500),
@@ -212,6 +217,20 @@ export default function Projects() {
   }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
+
+  // Mantém a lista atualizada para todos os usuários quando outro gestor ou
+  // master cria/edita um projeto, sem exigir recarregar a página.
+  useEffect(() => {
+    const stop = maestro.entities.Project.subscribe((event) => {
+      if (!event?.data?.id) return;
+      setProjects(current => {
+        if (event.type === "delete") return current.filter(project => project.id !== event.data.id);
+        if (event.type === "update") return current.map(project => project.id === event.data.id ? event.data : project);
+        return current.some(project => project.id === event.data.id) ? current : [event.data, ...current];
+      });
+    }, { intervalMs: 15_000, limit: 200, sort: "-created_date" });
+    return stop;
+  }, []);
 
   // Restore state from URL on load — skip archived/completed projects
   useEffect(() => {
@@ -294,23 +313,14 @@ export default function Projects() {
     return textMatch && teamMatch;
   }, [search, teamFilter]);
 
-  // Projetos ativos (em andamento) e finalizados (concluído/arquivado)
-  const { activeProjects, finishedProjects } = useMemo(() => {
-    const active = [];
-    const finished = [];
-    projects.forEach(p => {
-      if (!matchesSearch(p)) return;
-      const eff = getEffectiveStatus(p);
-      if (eff === "completed" || eff === "archived") {
-        finished.push(p);
-      } else {
-        active.push(p);
-      }
-    });
-    return { activeProjects: active, finishedProjects: finished };
-  }, [projects, matchesSearch, getEffectiveStatus]);
-
-  const filtered = useMemo(() => [...activeProjects, ...finishedProjects], [activeProjects, finishedProjects]);
+  // A lista principal contém somente projetos ativos, em ordem de criação.
+  const activeProjects = useMemo(() => sortProjectsByCreationDate(
+    projects.filter(p => {
+      if (!matchesSearch(p)) return false;
+      const status = getEffectiveStatus(p);
+      return status !== "completed" && status !== "archived";
+    }),
+  ), [projects, matchesSearch, getEffectiveStatus]);
 
   if (openProjectJobs) {
     return (
@@ -318,6 +328,7 @@ export default function Projects() {
         project={openProjectJobs}
         onBack={handleCloseProject}
         isAdmin={isAdmin}
+        canDeleteJobs={canDeleteJobs}
         initialJobId={pendingJobId}
         onJobSelect={(jobId) => updateUrl(openProjectJobs.id, jobId)}
         onJobClose={() => updateUrl(openProjectJobs.id)}
@@ -350,7 +361,7 @@ export default function Projects() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Projetos</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Exibindo {filtered.length} de {projects.length} projetos
+            Exibindo {activeProjects.length} projetos em andamento
           </p>
         </div>
         <div className="flex gap-2 self-start sm:self-auto">
@@ -408,7 +419,7 @@ export default function Projects() {
             </div>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : activeProjects.length === 0 ? (
         <div className="text-center py-20">
           <FolderKanban className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-40" />
           <p className="text-muted-foreground font-medium">Nenhum projeto encontrado</p>
@@ -442,30 +453,6 @@ export default function Projects() {
             </>
           )}
 
-          {/* Projetos concluídos / arquivados */}
-          {finishedProjects.length > 0 && (
-            <>
-              <div className="border-t border-border my-6" />
-              <h2 className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-                Concluídos / Arquivados ({finishedProjects.length})
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-70">
-                {finishedProjects.map(p => (
-                  <ProjectCard
-                    key={p.id}
-                    project={p}
-                    jobs={jobsByProject[p.id] || []}
-                    client={clientsById[p.client_id]}
-                    totalMinutes={hoursByProject[p.id] || 0}
-                    statusList={statusList}
-                    onClick={handleOpenProject}
-                    onToggleFavorite={toggleFavorite}
-                  />
-                ))}
-              </div>
-            </>
-          )}
         </>
       )}
 

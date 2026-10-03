@@ -3,6 +3,7 @@ import { maestro } from "@/api/maestroClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StandardDrawer from "@/components/ui/StandardDrawer";
+import { withTimeout } from "@/lib/withTimeout";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -25,6 +26,7 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
     reference_year: format(new Date(), "yyyy"),
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -33,7 +35,7 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
     ]).then(([c, squads]) => {
       setClients(c.filter(cl => cl.status !== "inactive"));
       setAvailableTeams(squads.map(s => s.name).sort());
-    });
+    }).catch(loadError => setError(loadError?.message || "Não foi possível carregar clientes e equipes."));
   }, []);
 
   function handleClientChange(clientId) {
@@ -53,21 +55,33 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (saving) return;
     const finalName = form.name.trim() || buildAutoName();
     if (!finalName || !form.client_id) return;
     setSaving(true);
-    const created = await maestro.entities.Project.create({
-      name: finalName,
-      client_id: form.client_id,
-      client_name: form.client_name,
-      team: form.team,
-      teams: form.team ? [form.team] : [],
-      reference_month: form.reference_month && form.reference_year
-        ? `${form.reference_year}-${form.reference_month}`
-        : undefined,
-      status: "no_status",
-    });
-    onCreate(created);
+    setError("");
+    const now = new Date().toISOString();
+    try {
+      const created = await withTimeout(maestro.entities.Project.create({
+        name: finalName,
+        client_id: form.client_id,
+        client_name: form.client_name,
+        team: form.team,
+        teams: form.team ? [form.team] : [],
+        reference_month: form.reference_month && form.reference_year
+          ? `${form.reference_year}-${form.reference_month}`
+          : undefined,
+        status: "no_status",
+        created_date: now,
+        updated_date: now,
+      }), 20_000, "A criação demorou mais que o esperado. Verifique sua conexão e tente novamente.");
+      if (!created?.id) throw new Error("O projeto não retornou um identificador válido.");
+      onCreate(created);
+    } catch (createError) {
+      setError(createError?.message || "Não foi possível criar o projeto.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const drawerFooter = (
@@ -82,6 +96,7 @@ export default function CreateProjectModal({ onClose, onCreate, isAdmin }) {
   return (
     <StandardDrawer open={true} onClose={onClose} title="Novo Projeto" width={520} footer={drawerFooter}>
         <form id="create-project-form" onSubmit={handleSubmit} className="p-6 space-y-5">
+          {error && <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
           {/* Cliente */}
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Cliente *</label>

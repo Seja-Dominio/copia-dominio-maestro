@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, Download, ChevronLeft, ChevronRight, Briefcase, Loader2, Ban, GripVertical, StickyNote, CheckCircle2, Link2 } from "lucide-react";
+import { X, Plus, Download, ChevronLeft, ChevronRight, Briefcase, Ban, GripVertical, StickyNote, CheckCircle2, Link2, Trash2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import BulkJobConfirmModal from "@/components/jobs/BulkJobConfirmModal";
 import { Button } from "@/components/ui/button";
@@ -46,10 +46,27 @@ function getBgFromFormats(formats) {
 
 // Salva schedule no Project entity como campo JSON
 async function persistSchedule(projectId, schedule) {
-  await maestro.entities.Project.update(projectId, { schedule_data: schedule });
+  await maestro.entities.Project.update(projectId, { schedule_patch: schedule });
 }
 
-function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobData, dragHandleProps, onComplete }) {
+const MONTH_NAMES = {
+  janeiro: "01", fevereiro: "02", março: "03", abril: "04",
+  maio: "05", junho: "06", julho: "07", agosto: "08",
+  setembro: "09", outubro: "10", novembro: "11", dezembro: "12",
+};
+
+function getProjectReferenceMonth(project) {
+  if (project?.reference_month && /^\d{4}-\d{2}$/.test(project.reference_month)) {
+    return project.reference_month;
+  }
+
+  const name = (project?.name || "").toLowerCase();
+  const year = name.match(/20\d{2}/)?.[0];
+  const monthName = Object.keys(MONTH_NAMES).find(month => name.includes(month));
+  return year && monthName ? `${year}-${MONTH_NAMES[monthName]}` : "";
+}
+
+function PostCard({ post, onUpdate, onCancel, onDelete, onCreateJob, hasJob, compact, jobData, dragHandleProps, onComplete, canDeleteJobs }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(post.text || "");
   const [editingUrl, setEditingUrl] = useState(false);
@@ -78,28 +95,38 @@ function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobD
     if (editingUrl && urlInputRef.current) urlInputRef.current.focus();
   }, [editingUrl]);
 
-  function commitUrl() {
+  async function commitUrl() {
     const trimmed = editUrl.trim();
     if (trimmed !== (post.reference_url || "")) {
-      onUpdate({ ...post, reference_url: trimmed || undefined });
-      // Sync to Job entity if post is backed by a job
-      if (post.job_id) {
-        maestro.entities.Job.update(post.job_id, { reference_url: trimmed || "" });
+      try {
+        if (post.job_id) {
+          await maestro.entities.Job.update(post.job_id, { reference_url: trimmed || "" });
+        }
+        const saved = await onUpdate({ ...post, reference_url: trimmed || undefined });
+        if (saved === false) throw new Error("Schedule save failed");
+      } catch (error) {
+        console.error("Não foi possível salvar o link do cronograma:", error);
+        alert("Não foi possível salvar o link. Tente novamente.");
+        return;
       }
     }
     setEditingUrl(false);
   }
 
-  function commitEdit() {
+  async function commitEdit() {
     const trimmed = editText.trim();
     if (trimmed && trimmed !== post.text) {
-      onUpdate({ ...post, text: trimmed });
-      // If it's a job-backed post, also update the Job title
-      if (post.job_id) {
-        const jobId = post.job_id;
-        const formatLabel = FORMAT_OPTIONS.find(o => o.value === post.formats?.[0])?.label || "";
-        const newTitle = `${formatLabel} — ${trimmed}`;
-        maestro.entities.Job.update(jobId, { title: newTitle });
+      try {
+        if (post.job_id) {
+          const formatLabel = FORMAT_OPTIONS.find(o => o.value === post.formats?.[0])?.label || "";
+          await maestro.entities.Job.update(post.job_id, { title: `${formatLabel} — ${trimmed}` });
+        }
+        const saved = await onUpdate({ ...post, text: trimmed });
+        if (saved === false) throw new Error("Schedule save failed");
+      } catch (error) {
+        console.error("Não foi possível salvar o título do cronograma:", error);
+        alert("Não foi possível salvar o título. Tente novamente.");
+        return;
       }
     }
     setEditing(false);
@@ -230,8 +257,19 @@ function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobD
       ) : !isCancelled ? (
         <div data-job-status className="mt-0.5">
           {hasJob ? (
-            <div className="flex items-center justify-center gap-0.5 text-[8px] font-semibold text-green-700">
-              <Briefcase className="w-2 h-2" /> Job criado
+            <div className="flex items-center justify-center gap-1 text-[8px] font-semibold">
+              <span className="flex items-center gap-0.5 text-green-700">
+                <Briefcase className="w-2 h-2" /> Job criado
+              </span>
+              {canDeleteJobs && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete?.(); }}
+                  className="flex items-center gap-0.5 text-red-500 hover:text-red-700 hover:underline transition-colors"
+                  title="Excluir job"
+                >
+                  <Trash2 className="w-2 h-2" /> Excluir
+                </button>
+              )}
             </div>
           ) : (
             <button
@@ -247,11 +285,12 @@ function PostCard({ post, onUpdate, onCancel, onCreateJob, hasJob, compact, jobD
           <Ban className="w-2 h-2" /> Cancelado
         </div>
       )}
-      {/* Cancel button instead of delete */}
+      {/* Job actions */}
+      {/* Cancel button */}
       {!isCancelled && (
         <button
           onClick={handleCancel}
-          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity w-2.5 h-2.5 bg-gray-400 text-white rounded-full flex items-center justify-center no-touch-min"
+          className={`absolute top-0 ${canDeleteJobs && hasJob ? "right-3.5" : "right-0"} opacity-0 group-hover:opacity-100 transition-opacity w-2.5 h-2.5 bg-gray-400 text-white rounded-full flex items-center justify-center no-touch-min`}
           title="Cancelar"
         >
           <Ban className="w-1.5 h-1.5" />
@@ -447,7 +486,7 @@ function AddPostForm({ onAdd, onCancel, position, containerBounds }) {
   );
 }
 
-function DayCell({ date, posts, onAddPost, onUpdatePost, onCancelPost, onCompletePost, onCreateJobForPost, isCurrentMonth, onOpenForm, activeFormDay, compact, jobsByPostId }) {
+function DayCell({ date, posts, onAddPost, onUpdatePost, onCancelPost, onDeletePost, onCompletePost, onCreateJobForPost, isCurrentMonth, onOpenForm, activeFormDay, compact, jobsByPostId, canDeleteJobs }) {
   const cellRef = useRef(null);
   const dayStr = format(date, "yyyy-MM-dd");
   const isToday = format(new Date(), "yyyy-MM-dd") === dayStr;
@@ -488,6 +527,7 @@ function DayCell({ date, posts, onAddPost, onUpdatePost, onCancelPost, onComplet
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
+            data-calendar-posts
             className={`flex-1 overflow-y-auto rounded transition-colors ${snapshot.isDraggingOver ? "bg-blue-50/60" : ""}`}
             style={{ maxHeight: "120px", minHeight: "20px" }}
           >
@@ -505,12 +545,14 @@ function DayCell({ date, posts, onAddPost, onUpdatePost, onCancelPost, onComplet
                         post={post}
                         onUpdate={updated => onUpdatePost(dayStr, originalIdx, updated)}
                         onCancel={() => onCancelPost(dayStr, originalIdx)}
+                        onDelete={() => onDeletePost(dayStr, originalIdx)}
                         onComplete={() => onCompletePost(dayStr, originalIdx)}
                         onCreateJob={() => onCreateJobForPost(dayStr, post)}
                         hasJob={!!post.job_id}
                         compact={compact}
                         jobData={jobsByPostId?.[post.id]}
                         dragHandleProps={dragProvided.dragHandleProps}
+                        canDeleteJobs={canDeleteJobs}
                       />
                     </div>
                   )}
@@ -535,19 +577,28 @@ function DayCell({ date, posts, onAddPost, onUpdatePost, onCancelPost, onComplet
   );
 }
 
-export default function ScheduleCalendar({ project, onClose }) {
+export default function ScheduleCalendar({ project, onClose, canDeleteJobs = false }) {
   const [currentDate, setCurrentDate] = useState(() => {
-    // Use reference_month if available
-    if (project.reference_month) {
-      const [y, m] = project.reference_month.split("-").map(Number);
+    const referenceMonth = getProjectReferenceMonth(project);
+    if (referenceMonth) {
+      const [y, m] = referenceMonth.split("-").map(Number);
       return new Date(y, m - 1, 1);
     }
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [schedule, setSchedule] = useState({});
-  const [loadingSchedule, setLoadingSchedule] = useState(true);
   const [existingJobs, setExistingJobs] = useState([]);
+  const scheduleRef = useRef(schedule);
+  const scheduleSaveQueueRef = useRef(Promise.resolve());
+  const persistedSchedulesRef = useRef(new Map());
+  const scheduleEditVersionRef = useRef(0);
+  const savedScheduleVersionRef = useRef(0);
+  const existingJobsRef = useRef(existingJobs);
+  const [scheduleSaveError, setScheduleSaveError] = useState("");
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [deletingJobId, setDeletingJobId] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [allTemplatesList, setAllTemplatesList] = useState([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -645,36 +696,17 @@ export default function ScheduleCalendar({ project, onClose }) {
     });
   }, [project.client_id]);
 
-  // Detect which project matches the current month and auto-switch
+  // If a dedicated project exists for the viewed month, use it. Otherwise keep
+  // the current project so the user can browse months without being bounced back.
   useEffect(() => {
     if (clientProjects.length === 0) return;
     const monthStr = format(currentDate, "yyyy-MM");
-    
-    // Priority 1: match by reference_month field
-    const matchedByRef = clientProjects.find(p => p.reference_month === monthStr);
-    if (matchedByRef) {
-      setActiveProjectId(matchedByRef.id);
-      return;
-    }
-    
-    // Priority 2: fallback to name-based matching
-    const monthNames = {
-      "01": "janeiro", "02": "fevereiro", "03": "março", "04": "abril",
-      "05": "maio", "06": "junho", "07": "julho", "08": "agosto",
-      "09": "setembro", "10": "outubro", "11": "novembro", "12": "dezembro",
-    };
-    const [yyyy, mm] = monthStr.split("-");
-    const monthName = monthNames[mm] || "";
-    const yearShort = yyyy.slice(2);
-    
-    const matched = clientProjects.find(p => {
-      const name = (p.name || "").toLowerCase();
-      return (name.includes(monthName) && (name.includes(yyyy) || name.includes(yearShort)));
-    });
-    if (matched) {
+
+    const matched = clientProjects.find(p => getProjectReferenceMonth(p) === monthStr);
+    if (matched && matched.id !== activeProjectId) {
       setActiveProjectId(matched.id);
     }
-  }, [currentDate, clientProjects]);
+  }, [currentDate, clientProjects, activeProjectId, project]);
 
   // Carrega schedule salvo no projeto ativo + jobs existentes + templates da equipe
   useEffect(() => {
@@ -687,6 +719,13 @@ export default function ScheduleCalendar({ project, onClose }) {
           maestro.entities.JobTemplate.list("name", 200),
         ]);
         const savedSchedule = proj[0]?.schedule_data || {};
+        const savedDrafts = Object.fromEntries(Object.entries(savedSchedule).flatMap(([day, posts]) => {
+          const drafts = (posts || []).filter(post => !post.job_id && !post.job_created);
+          return drafts.length ? [[day, drafts]] : [];
+        }));
+        persistedSchedulesRef.current.set(activeProjectId, savedDrafts);
+        scheduleEditVersionRef.current = 0;
+        savedScheduleVersionRef.current = 0;
         setDocLink1(proj[0]?.doc_link_1 || "");
         setDocLink2(proj[0]?.doc_link_2 || "");
         setDocLabel1(proj[0]?.doc_label_1 || "");
@@ -708,7 +747,10 @@ export default function ScheduleCalendar({ project, onClose }) {
         } else {
           setTemplates(allTpls);
         }
-      } catch {}
+      } catch (error) {
+        console.error("Não foi possível carregar o cronograma:", error);
+        setScheduleSaveError("Não foi possível carregar este cronograma. Atualize a página ou tente novamente.");
+      }
       setLoadingSchedule(false);
     }
     load();
@@ -736,15 +778,112 @@ export default function ScheduleCalendar({ project, onClose }) {
 
   const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+  useEffect(() => {
+    scheduleRef.current = schedule;
+  }, [schedule]);
+
+  function setScheduleSnapshot(nextSchedule) {
+    scheduleEditVersionRef.current += 1;
+    scheduleRef.current = nextSchedule;
+    setSchedule(nextSchedule);
+  }
+
   // Only persist draft posts (non-job) to schedule_data
   const saveSchedule = useCallback(async (newSchedule) => {
+    const editVersion = scheduleEditVersionRef.current;
     const draftsOnly = {};
     Object.entries(newSchedule).forEach(([dayStr, posts]) => {
       const drafts = posts.filter(p => !p.job_id && !p.job_created);
       if (drafts.length > 0) draftsOnly[dayStr] = drafts;
     });
-    await persistSchedule(activeProjectId, draftsOnly);
+    const request = scheduleSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const previouslySaved = persistedSchedulesRef.current.get(activeProjectId) || {};
+      const allDays = new Set([...Object.keys(previouslySaved), ...Object.keys(draftsOnly)]);
+      const patch = {};
+      for (const day of allDays) {
+        const before = previouslySaved[day] ?? null;
+        const after = draftsOnly[day] ?? null;
+        if (JSON.stringify(before) !== JSON.stringify(after)) patch[day] = after;
+      }
+      if (!Object.keys(patch).length) return true;
+      const saved = await persistSchedule(activeProjectId, patch);
+      if (saved !== false) {
+        persistedSchedulesRef.current.set(activeProjectId, draftsOnly);
+        if (scheduleEditVersionRef.current === editVersion) savedScheduleVersionRef.current = editVersion;
+      }
+      return saved;
+    });
+    scheduleSaveQueueRef.current = request;
+    setIsSavingSchedule(true);
+    try {
+      await request;
+      setScheduleSaveError("");
+      return true;
+    } catch (error) {
+      console.error("Não foi possível salvar o cronograma:", error);
+      setScheduleSaveError("Não foi possível salvar as alterações do cronograma.");
+      return false;
+    } finally {
+      if (scheduleSaveQueueRef.current === request) setIsSavingSchedule(false);
+    }
   }, [activeProjectId]);
+
+  async function closeCalendar() {
+    let saved = await scheduleSaveQueueRef.current.catch(() => false);
+    if (saved === false || scheduleEditVersionRef.current !== savedScheduleVersionRef.current) {
+      saved = await saveSchedule(scheduleRef.current);
+    }
+    if (saved === false) return;
+    onClose();
+  }
+
+  useEffect(() => {
+    existingJobsRef.current = existingJobs;
+  }, [existingJobs]);
+
+  // Keep an open calendar in sync with changes saved by other collaborators.
+  useEffect(() => {
+    if (!activeProjectId) return undefined;
+    const stop = maestro.entities.Project.subscribe((event) => {
+      if (!event?.data || event.data.id !== activeProjectId || event.type === "delete") return;
+      const savedSchedule = event.data.schedule_data || {};
+      const savedDrafts = Object.fromEntries(Object.entries(savedSchedule).flatMap(([day, posts]) => {
+        const drafts = (posts || []).filter(post => !post.job_id && !post.job_created);
+        return drafts.length ? [[day, drafts]] : [];
+      }));
+      if (scheduleEditVersionRef.current === savedScheduleVersionRef.current) {
+        persistedSchedulesRef.current.set(activeProjectId, savedDrafts);
+        scheduleRef.current = buildMergedSchedule(savedSchedule, existingJobsRef.current);
+        setSchedule(scheduleRef.current);
+      }
+      setDocLink1(event.data.doc_link_1 || "");
+      setDocLink2(event.data.doc_link_2 || "");
+      setDocLabel1(event.data.doc_label_1 || "");
+      setDocLabel2(event.data.doc_label_2 || "");
+    }, { intervalMs: 15_000, limit: 1, filters: { id: activeProjectId }, sort: "-updated_date" });
+    return stop;
+  }, [activeProjectId]);
+
+  // Job-backed calendar entries use the Job row as their shared source of truth.
+  useEffect(() => {
+    if (!activeProjectId) return undefined;
+    const stop = maestro.entities.Job.subscribe((event) => {
+      const row = event?.data;
+      if (!row || row.project_id !== activeProjectId) return;
+      setExistingJobs(current => {
+        if (event.type === "delete") return current.filter(job => job.id !== row.id);
+        if (event.type === "create") return current.some(job => job.id === row.id) ? current : [row, ...current];
+        return current.map(job => job.id === row.id ? { ...job, ...row } : job);
+      });
+    }, { intervalMs: 15_000, limit: 200, filters: { project_id: activeProjectId }, sort: "-created_date" });
+    return stop;
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    if (loadingSchedule) return;
+    scheduleRef.current = buildMergedSchedule(scheduleRef.current, existingJobs);
+    setSchedule(scheduleRef.current);
+  }, [existingJobs, loadingSchedule]);
 
   // Drag-and-drop: move post between days
   function handleDragEnd(result) {
@@ -755,7 +894,8 @@ export default function ScheduleCalendar({ project, onClose }) {
     const dstDay = destination.droppableId;
 
     // Find the post being moved
-    const srcPosts = schedule[srcDay] || [];
+    const currentSchedule = scheduleRef.current;
+    const srcPosts = currentSchedule[srcDay] || [];
     const visibleSrc = srcPosts.filter(p => !p.cancelled);
     const movedPost = visibleSrc[source.index];
     if (!movedPost) return;
@@ -764,7 +904,7 @@ export default function ScheduleCalendar({ project, onClose }) {
     const newSrcPosts = srcPosts.filter(p => p.id !== movedPost.id);
 
     // Add to destination at correct position
-    const dstPosts = srcDay === dstDay ? newSrcPosts : [...(schedule[dstDay] || [])];
+    const dstPosts = srcDay === dstDay ? newSrcPosts : [...(currentSchedule[dstDay] || [])];
     const visibleDst = dstPosts.filter(p => !p.cancelled);
     // Calculate insertion index in the full array
     const insertAfter = destination.index > 0 ? visibleDst[destination.index - 1] : null;
@@ -772,80 +912,99 @@ export default function ScheduleCalendar({ project, onClose }) {
     const newDstPosts = [...dstPosts];
     newDstPosts.splice(insertIdx, 0, movedPost);
 
-    const newSchedule = { ...schedule, [srcDay]: newSrcPosts, [dstDay]: newDstPosts };
-    setSchedule(newSchedule);
-    saveSchedule(newSchedule);
+    const newSchedule = { ...currentSchedule, [srcDay]: newSrcPosts, [dstDay]: newDstPosts };
+    setScheduleSnapshot(newSchedule);
+    void saveSchedule(newSchedule);
 
     // If it's a job-backed post, update the job's post_date and shift subtask deadlines
     if (movedPost.job_id && srcDay !== dstDay) {
       const diffMs = new Date(dstDay + "T12:00:00") - new Date(srcDay + "T12:00:00");
       const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
-      maestro.entities.Job.update(movedPost.job_id, { post_date: dstDay });
-      setExistingJobs(prev => prev.map(j => j.id === movedPost.job_id ? { ...j, post_date: dstDay } : j));
+      void (async () => {
+        let jobDateSaved = false;
+        try {
+          await maestro.entities.Job.update(movedPost.job_id, { post_date: dstDay });
+          jobDateSaved = true;
+          setExistingJobs(prev => prev.map(j => j.id === movedPost.job_id ? { ...j, post_date: dstDay } : j));
 
-      // Recalculate subtask deadlines based on days_before_post from the new post_date
-      const newPostDate = new Date(dstDay + "T12:00:00");
-      maestro.entities.Subtask.filter({ job_id: movedPost.job_id }, "order", 50).then(subtasks => {
-        subtasks.forEach(sub => {
-          if (sub.days_before_post !== undefined && sub.days_before_post !== null) {
-            const d = new Date(newPostDate);
-            d.setDate(d.getDate() - Number(sub.days_before_post));
-            const newDeadline = d.toISOString().split("T")[0];
-            maestro.entities.Subtask.update(sub.id, { deadline: newDeadline });
-          } else if (sub.deadline) {
-            // Fallback: shift by diff if no days_before_post defined
-            const d = new Date(sub.deadline + "T12:00:00");
-            d.setDate(d.getDate() + diffDays);
-            const newDeadline = d.toISOString().split("T")[0];
-            maestro.entities.Subtask.update(sub.id, { deadline: newDeadline });
+          const newPostDate = new Date(dstDay + "T12:00:00");
+          const subtasks = await maestro.entities.Subtask.filter({ job_id: movedPost.job_id }, "order", 50);
+          const updates = subtasks.flatMap(sub => {
+            let newDeadline;
+            if (sub.days_before_post !== undefined && sub.days_before_post !== null) {
+              const date = new Date(newPostDate);
+              date.setDate(date.getDate() - Number(sub.days_before_post));
+              newDeadline = date.toISOString().split("T")[0];
+            } else if (sub.deadline) {
+              const date = new Date(sub.deadline + "T12:00:00");
+              date.setDate(date.getDate() + diffDays);
+              newDeadline = date.toISOString().split("T")[0];
+            }
+            return newDeadline && newDeadline !== sub.deadline
+              ? [maestro.entities.Subtask.update(sub.id, { deadline: newDeadline })]
+              : [];
+          });
+          await Promise.all(updates);
+          setScheduleSaveError("");
+        } catch (error) {
+          console.error("Não foi possível salvar a mudança de data do job:", error);
+          if (!jobDateSaved) {
+            setScheduleSnapshot(currentSchedule);
+            setScheduleSaveError("Não foi possível salvar a nova data do job. A alteração foi revertida.");
+          } else {
+            setScheduleSaveError("A nova data do job foi salva, mas não foi possível atualizar os prazos das subtarefas. Revise-os no job.");
           }
-        });
-      });
+        }
+      })();
     }
   }
 
   function addPost(dayStr, post) {
-    setSchedule(prev => {
-      const updated = { ...prev, [dayStr]: [...(prev[dayStr] || []), post] };
-      saveSchedule(updated);
-      return updated;
-    });
+    const current = scheduleRef.current;
+    const updated = { ...current, [dayStr]: [...(current[dayStr] || []), post] };
+    setScheduleSnapshot(updated);
+    void saveSchedule(updated);
   }
 
   function updatePost(dayStr, idx, updated) {
-    setSchedule(prev => {
-      const posts = [...(prev[dayStr] || [])];
-      posts[idx] = updated;
-      const newSched = { ...prev, [dayStr]: posts };
-      saveSchedule(newSched);
-      return newSched;
-    });
+    const current = scheduleRef.current;
+    const posts = [...(current[dayStr] || [])];
+    posts[idx] = updated;
+    const newSched = { ...current, [dayStr]: posts };
+    setScheduleSnapshot(newSched);
+    const saved = saveSchedule(newSched);
     // Sync reference_url to existingJobs state so it stays in sync
     if (updated.job_id && updated.reference_url !== undefined) {
       setExistingJobs(prev => prev.map(j => j.id === updated.job_id ? { ...j, reference_url: updated.reference_url || "" } : j));
     }
+    return saved;
   }
 
   function completePost(dayStr, idx) {
-    setSchedule(prev => {
-      const posts = [...(prev[dayStr] || [])];
-      posts[idx] = { ...posts[idx], is_completed: !posts[idx].is_completed };
-      const newSched = { ...prev, [dayStr]: posts };
-      saveSchedule(newSched);
-      return newSched;
-    });
+    const current = scheduleRef.current;
+    const posts = [...(current[dayStr] || [])];
+    posts[idx] = { ...posts[idx], is_completed: !posts[idx].is_completed };
+    const newSched = { ...current, [dayStr]: posts };
+    setScheduleSnapshot(newSched);
+    void saveSchedule(newSched);
   }
 
-  function cancelPost(dayStr, idx) {
-    const post = schedule[dayStr]?.[idx];
+  async function cancelPost(dayStr, idx) {
+    const post = scheduleRef.current[dayStr]?.[idx];
     if (!post) return;
     
     if (post.job_id) {
       // Cancel the actual job — schedule will reflect via job data
       const associatedJob = existingJobs.find(j => j.id === post.job_id);
       if (associatedJob && associatedJob.status !== "cancelled") {
-        maestro.entities.Job.update(associatedJob.id, { status: "cancelled" });
+        try {
+          await maestro.entities.Job.update(associatedJob.id, { status: "cancelled" });
+        } catch (error) {
+          console.error("Não foi possível cancelar o job:", error);
+          setScheduleSaveError("Não foi possível salvar o cancelamento do job.");
+          return;
+        }
         const updatedJobs = existingJobs.map(j => j.id === associatedJob.id ? { ...j, status: "cancelled" } : j);
         setExistingJobs(updatedJobs);
         // Rebuild schedule from updated jobs
@@ -860,13 +1019,54 @@ export default function ScheduleCalendar({ project, onClose }) {
       }
     } else {
       // Cancel a draft post
-      setSchedule(prev => {
-        const posts = [...(prev[dayStr] || [])];
-        posts[idx] = { ...posts[idx], cancelled: true };
-        const newSched = { ...prev, [dayStr]: posts };
-        saveSchedule(newSched);
-        return newSched;
+      const current = scheduleRef.current;
+      const posts = [...(current[dayStr] || [])];
+      posts[idx] = { ...posts[idx], cancelled: true };
+      const newSched = { ...current, [dayStr]: posts };
+      setScheduleSnapshot(newSched);
+      const saved = await saveSchedule(newSched);
+      if (!saved) setScheduleSnapshot(current);
+    }
+  }
+
+  async function deleteJobPost(dayStr, idx) {
+    if (!canDeleteJobs) return;
+    const post = schedule[dayStr]?.[idx];
+    if (!post?.job_id) return;
+
+    const associatedJob = existingJobs.find(j => j.id === post.job_id);
+    if (!associatedJob || deletingJobId === associatedJob.id) return;
+    if (!window.confirm(`Excluir "${associatedJob.title || post.text || "este job"}" do cronograma? O job poderá ser recuperado na página de Recuperação.`)) return;
+
+    const previousJobs = existingJobs;
+    const remainingJobs = previousJobs.filter(j => j.id !== associatedJob.id);
+    setDeletingJobId(associatedJob.id);
+    setExistingJobs(remainingJobs);
+    setSchedule(prev => {
+      const draftsOnly = {};
+      Object.entries(prev).forEach(([d, posts]) => {
+        const drafts = posts.filter(p => !p.job_id && !p.job_created);
+        if (drafts.length > 0) draftsOnly[d] = drafts;
       });
+      return buildMergedSchedule(draftsOnly, remainingJobs);
+    });
+
+    try {
+      await maestro.entities.Job.delete(associatedJob.id);
+    } catch (error) {
+      console.error("Erro ao excluir job do cronograma:", error);
+      setExistingJobs(previousJobs);
+      setSchedule(prev => {
+        const draftsOnly = {};
+        Object.entries(prev).forEach(([d, posts]) => {
+          const drafts = posts.filter(p => !p.job_id && !p.job_created);
+          if (drafts.length > 0) draftsOnly[d] = drafts;
+        });
+        return buildMergedSchedule(draftsOnly, previousJobs);
+      });
+      window.alert("Não foi possível excluir o job. Tente novamente.");
+    } finally {
+      setDeletingJobId(null);
     }
   }
 
@@ -1017,24 +1217,24 @@ export default function ScheduleCalendar({ project, onClose }) {
   }
 
   async function handleCreateJobForPost(dayStr, post) {
-    const created = await createJobFromPost(dayStr, post);
-    const updatedJobs = [created, ...existingJobs];
-    setExistingJobs(updatedJobs);
+    try {
+      const created = await createJobFromPost(dayStr, post);
+      const updatedJobs = [created, ...existingJobs];
+      setExistingJobs(updatedJobs);
 
-    // Remove the draft post from schedule_data and let the job take its place
-    setSchedule(prev => {
-      const updatedDay = (prev[dayStr] || []).filter(p => p.id !== post.id);
-      const newSched = { ...prev, [dayStr]: updatedDay };
-      // Save only drafts
-      saveSchedule(newSched);
-      // Rebuild merged view
-      const draftsOnly = {};
-      Object.entries(newSched).forEach(([d, posts]) => {
-        const drafts = posts.filter(p => !p.job_id && !p.job_created);
-        if (drafts.length > 0) draftsOnly[d] = drafts;
-      });
-      return buildMergedSchedule(draftsOnly, updatedJobs);
-    });
+      // Persist removal of the draft before rebuilding the visible job-backed calendar.
+      const current = scheduleRef.current;
+      const updatedDay = (current[dayStr] || []).filter(item => item.id !== post.id);
+      const draftsOnly = { ...current, [dayStr]: updatedDay };
+      setScheduleSnapshot(buildMergedSchedule(draftsOnly, updatedJobs));
+      const saved = await saveSchedule(draftsOnly);
+      if (!saved) {
+        setScheduleSaveError("O job foi criado, mas o rascunho permaneceu no cronograma. Remova o rascunho após tentar salvar novamente.");
+      }
+    } catch (error) {
+      console.error("Não foi possível criar o job a partir do cronograma:", error);
+      setScheduleSaveError("A criação do job ou das subtarefas falhou. Atualize o cronograma antes de tentar novamente para evitar duplicidade.");
+    }
   }
 
   function openBulkModal() {
@@ -1151,7 +1351,7 @@ export default function ScheduleCalendar({ project, onClose }) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(15);
     pdf.setTextColor(30, 41, 59);
-    const pdfTitle = `${activeProject.client_name || activeProject.name} — ${monthLabelUpper}`;
+    const pdfTitle = displayProjectName;
     pdf.text(pdfTitle, MARGIN, MARGIN + 7);
 
     // Doc links — top-right, next to logo
@@ -1220,18 +1420,48 @@ export default function ScheduleCalendar({ project, onClose }) {
       });
     }
 
-    const canvas = await html2canvas(el, {
-      scale: 1.8,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      allowTaint: true,
+    // As listas dos dias são roláveis na interface. Expanda-as para a captura
+    // incluir todos os jobs e anotações, inclusive os que ficam abaixo da dobra.
+    const postLists = [...el.querySelectorAll("[data-calendar-posts]")];
+    const postListStyles = postLists.map(node => ({
+      node,
+      maxHeight: node.style.maxHeight,
+      minHeight: node.style.minHeight,
+      height: node.style.height,
+      overflow: node.style.overflow,
+      overflowY: node.style.overflowY,
+      flex: node.style.flex,
+    }));
+    postLists.forEach(node => {
+      node.style.maxHeight = "none";
+      node.style.minHeight = "0";
+      node.style.height = "auto";
+      node.style.overflow = "visible";
+      node.style.overflowY = "visible";
+      node.style.flex = "none";
     });
 
-    // Remove overlays temporários e restaura status de job
-    overlays.forEach(({ cell, overlay }) => { cell.removeChild(overlay); });
-    jobStatusEls.forEach(node => node.style.display = '');
-    if (calHeader) calHeader.style.display = '';
+    let canvas;
+    try {
+      canvas = await html2canvas(el, {
+        scale: 1.8,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        allowTaint: true,
+      });
+    } finally {
+      postListStyles.forEach(({ node, ...styles }) => {
+        Object.entries(styles).forEach(([property, value]) => {
+          node.style[property] = value;
+        });
+      });
+      overlays.forEach(({ cell, overlay }) => {
+        if (overlay.parentNode === cell) cell.removeChild(overlay);
+      });
+      jobStatusEls.forEach(node => { node.style.display = ""; });
+      if (calHeader) calHeader.style.display = "";
+    }
 
     // JPEG com compressão para manter arquivo leve
     const imgData = canvas.toDataURL("image/jpeg", 0.70);
@@ -1274,19 +1504,23 @@ export default function ScheduleCalendar({ project, onClose }) {
       pdf.link(pdfLinkX, pdfLinkY, pdfLinkW, pdfLinkH, { url });
     });
 
-    pdf.save(`Cronograma-${activeProject.client_name || activeProject.name}_${format(currentDate, "MMMM_yyyy", { locale: ptBR })}.pdf`);
+    pdf.save(`Cronograma-${displayProjectName.replace(/[^\p{L}\p{N}-]+/gu, "_")}.pdf`);
   }
 
   const monthLabel = format(currentDate, "MMMM 'de' yyyy", { locale: ptBR });
   const monthLabelUpper = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+  const projectNameWithoutMonth = (activeProject.name || activeProject.client_name || "Projeto")
+    .replace(/\s*[-–—]\s*(janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+20\d{2}\s*$/i, "")
+    .trim();
+  const displayProjectName = `${projectNameWithoutMonth} - ${monthLabelUpper}`;
 
 
 
   return createPortal(
     <>
-    <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={onClose} />
+    <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100dvh", zIndex: 9999, background: "rgba(0,0,0,0.5)" }} onClick={onClose} />
     <div ref={modalRef} className="bg-white shadow-2xl flex flex-col overflow-hidden border border-gray-200 rounded-xl"
-      style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", width: "calc(100% - 2rem)", maxWidth: "1400px", height: "calc(100vh - 70px)", maxHeight: "calc(100vh - 70px)", zIndex: 10000, borderRadius: 12 }}
+      style={{ position: "fixed", top: "calc(60px + env(safe-area-inset-top, 0px))", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 2rem)", maxWidth: "1400px", height: "calc(100dvh - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))", maxHeight: "calc(100dvh - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))", zIndex: 10000, borderRadius: 12 }}
       onClick={e => e.stopPropagation()}>
 
         {/* Toolbar */}
@@ -1297,7 +1531,14 @@ export default function ScheduleCalendar({ project, onClose }) {
               {clientProjects.map(p => (
                 <button
                   key={p.id}
-                  onClick={() => { setActiveProjectId(p.id); }}
+                  onClick={() => {
+                    setActiveProjectId(p.id);
+                    const referenceMonth = getProjectReferenceMonth(p);
+                    if (referenceMonth) {
+                      const [year, month] = referenceMonth.split("-").map(Number);
+                      setCurrentDate(new Date(year, month - 1, 1));
+                    }
+                  }}
                   className={`px-3 py-1.5 text-[10px] font-bold whitespace-nowrap border-b-2 transition-colors ${
                     p.id === activeProjectId
                       ? "border-blue-600 text-blue-700 bg-blue-50/50"
@@ -1355,11 +1596,24 @@ export default function ScheduleCalendar({ project, onClose }) {
           </Button>
 
           {/* Close */}
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-500 flex-shrink-0 ml-1">
+          <button onClick={() => { void closeCalendar(); }} disabled={isSavingSchedule} title={isSavingSchedule ? "Aguarde o salvamento do cronograma" : "Fechar cronograma"} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-500 flex-shrink-0 ml-1 disabled:cursor-wait disabled:opacity-50">
             <X className="w-4 h-4" />
           </button>
           </div>
         </div>
+
+        {(scheduleSaveError || isSavingSchedule) && (
+          <div className={`flex items-center justify-between px-4 py-1.5 text-xs border-b ${scheduleSaveError ? "bg-red-50 text-red-700 border-red-200" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
+            <span role={scheduleSaveError ? "alert" : "status"}>
+              {scheduleSaveError || "Salvando cronograma…"}
+            </span>
+            {scheduleSaveError && (
+              <button className="font-semibold underline" onClick={() => void saveSchedule(schedule)}>
+                Tentar novamente
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Calendar content — fit entire month on screen */}
         <div className="flex-1 overflow-auto p-2 bg-gray-50 flex flex-col">
@@ -1368,7 +1622,7 @@ export default function ScheduleCalendar({ project, onClose }) {
             {/* Header */}
             <div data-pdf-hide className="px-4 pt-3 pb-2 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
               <div>
-                <h1 className="text-base font-black text-gray-800 tracking-tight leading-tight">{activeProject.name}</h1>
+                <h1 className="text-base font-black text-gray-800 tracking-tight leading-tight">{displayProjectName}</h1>
                 <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">
                   Cronograma · {monthLabelUpper}
                 </p>
@@ -1385,7 +1639,10 @@ export default function ScheduleCalendar({ project, onClose }) {
                       placeholder="Cole o link aqui"
                       value={doc.link}
                       onChange={e => doc.setLink(e.target.value)}
-                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.field]: doc.link }).catch(() => {})}
+                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.field]: doc.link }).then(() => setScheduleSaveError("")).catch(error => {
+                        console.error("Não foi possível salvar o link do documento:", error);
+                        setScheduleSaveError("Não foi possível salvar o link do documento.");
+                      })}
                       className="h-6 w-40 text-[10px] px-2 rounded border border-gray-200 bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
                     />
                     <input
@@ -1393,7 +1650,10 @@ export default function ScheduleCalendar({ project, onClose }) {
                       placeholder="Nome (ex: Roteiro)"
                       value={doc.label}
                       onChange={e => doc.setLabel(e.target.value)}
-                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.labelField]: doc.label }).catch(() => {})}
+                      onBlur={() => maestro.entities.Project.update(activeProjectId, { [doc.labelField]: doc.label }).then(() => setScheduleSaveError("")).catch(error => {
+                        console.error("Não foi possível salvar o nome do documento:", error);
+                        setScheduleSaveError("Não foi possível salvar o nome do documento.");
+                      })}
                       className="h-6 w-28 text-[10px] px-2 rounded border border-gray-200 bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
                     />
                     {doc.link && (
@@ -1446,6 +1706,7 @@ export default function ScheduleCalendar({ project, onClose }) {
                         onAddPost={addPost}
                         onUpdatePost={updatePost}
                         onCancelPost={cancelPost}
+                        onDeletePost={deleteJobPost}
                         onCompletePost={completePost}
                         onCreateJobForPost={handleCreateJobForPost}
                         isCurrentMonth={true}
@@ -1453,6 +1714,7 @@ export default function ScheduleCalendar({ project, onClose }) {
                         onOpenForm={openForm}
                         activeFormDay={activeFormDay}
                         compact={true}
+                        canDeleteJobs={canDeleteJobs}
                       />
                     );
                   })}

@@ -191,7 +191,8 @@ export default function KanbanView({ jobs, getSubtasksForJob, onSelectJob, onUpd
           return (
             <div
               key={status}
-              className={`flex-shrink-0 w-72 flex flex-col rounded-xl transition-all ${isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/40"}`}
+              data-jobs-kanban-lane
+              className={`flex-shrink-0 w-72 flex flex-col rounded-2xl transition-all ${isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/40"}`}
               onDragOver={e => handleDragOver(e, status)}
               onDrop={e => handleDrop(e, status)}
             >
