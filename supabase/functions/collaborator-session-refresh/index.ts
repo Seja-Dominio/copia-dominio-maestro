@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { accessLevelForOrganizationRole } from "../_shared/maestro-tenant.mjs";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -101,7 +102,7 @@ Deno.serve(async (request) => {
 
     const { data, error } = await supabase
       .from("maestro_collaborators")
-      .select("id, is_active, profile")
+      .select("id, is_active")
       .eq("id", session.sub)
       .maybeSingle();
     if (error) throw error;
@@ -120,8 +121,7 @@ Deno.serve(async (request) => {
     const { data: products } = await supabase.from("organization_products").select("product_key").eq("organization_id", organizationId).in("status", ["trial", "enabled"]);
     const scopedSession = { ...session, organization_id: organizationId, organization_role: String(memberships[0].role || "member"), products: (products || []).map((product) => String(product.product_key)) };
 
-    const rawAccessLevel = String(data.profile?.access_level || "collaborator").toLowerCase();
-    const accessLevel = rawAccessLevel === "admin" ? "master" : rawAccessLevel;
+    const accessLevel = accessLevelForOrganizationRole(memberships[0].role);
     const sessionToken = await signSession(scopedSession, accessLevel);
     return new Response(JSON.stringify({ session_token: sessionToken }), {
       status: 200,

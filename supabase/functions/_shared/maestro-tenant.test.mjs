@@ -174,6 +174,18 @@ test("credential administration requires an active org admin and cannot overwrit
   assert.match(modal, /hashCollaboratorPassword\([\s\S]*?collaboratorId: collaborator\.id,[\s\S]*?login: formData\.login,[\s\S]*?\}\);[\s\S]*?maestro\.entities\.Collaborator\.update\(collaborator\.id/);
 });
 
+test("session refresh derives its signed access level from the selected active membership", async () => {
+  const source = await fs.readFile(new URL("../collaborator-session-refresh/index.ts", import.meta.url), "utf8");
+  assert.match(source, /accessLevelForOrganizationRole\(memberships\[0\]\.role\)/);
+  assert.match(source, /\.eq\("organization_id", session\.organization_id\)/);
+  assert.doesNotMatch(source, /data\.profile\?\.access_level/);
+  assert.doesNotMatch(source, /select\("id, is_active, profile"\)/);
+
+  assert.equal(accessLevelForOrganizationRole("admin"), "master");
+  assert.equal(accessLevelForOrganizationRole("manager"), "gestor");
+  assert.equal(accessLevelForOrganizationRole("member"), "collaborator");
+});
+
 test("Dominus memory reviews, rules, events and comments stay inside the active organization", async () => {
   const source = await fs.readFile(new URL("../dominus-memory/index.ts", import.meta.url), "utf8");
   assert.match(source, /authorizeDominusAuditSession\(\{ payload, collaborator: data, memberships, products \}\)/);
