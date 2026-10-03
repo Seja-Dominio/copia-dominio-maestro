@@ -2,9 +2,9 @@
 
 ## Separar dependências de build do runtime e validar a imagem final — 03/10/2026
 
-- **Evidência:** `tailwindcss-animate` era dependência de produção apesar de ser importado apenas por `tailwind.config.js`; isso fazia `npm audit --omit=dev` reportar cinco High de ferramentas Tailwind. Ao movê-lo para `devDependencies` e atualizar React Router 6.30.6→7.18.4, a auditoria runtime passou com zero findings. O `npm ci` completo ainda mostra seis High no ambiente de build, enquanto a imagem multi-stage Nginx contém apenas `dist` e não tem Node. Build Vite, 133 testes Node, isolamento Playwright 8/8 e smoke HTTP de rotas profundas no container passaram; CI do SHA de integração é o próximo gate. Esforço ativo não medido.
+- **Evidência:** `tailwindcss-animate` era dependência de produção apesar de ser importado apenas por `tailwind.config.js`; isso fazia `npm audit --omit=dev` reportar cinco High de ferramentas Tailwind. Ao movê-lo para `devDependencies` e atualizar React Router 6.30.6→7.18.4, a auditoria runtime passou com zero findings. O `npm ci` completo ainda mostra seis High no ambiente de build, enquanto a imagem multi-stage Nginx contém apenas `dist` e não tem Node. Build Vite, 133 testes Node, isolamento Playwright 8/8 e smoke HTTP de rotas profundas no container passaram. O CI `37108649952` passou no SHA `df23111a627f49ae20b651beb2a3367c355ccad5`, incluindo replay clean-room, scanners e regressões de isolamento. Esforço ativo não medido.
 - **Aplicação:** classificar plugins/configuradores usados só na compilação como dependências de desenvolvimento; rodar auditoria de produção e, separadamente, auditar/inspecionar o estágio final do container. Não concluir que a imagem publicada leva todos os pacotes do estágio de build, nem que scanner que ignora findings sem patch comprova árvore de build limpa.
-- **Skill:** nenhuma alterada; o processo existente de migração/testes cobre a verificação. O gate restante é acompanhar CI do commit e manter registradas as findings do estágio de build.
+- **Skill:** nenhuma alterada; o processo existente de migração/testes cobre a verificação. Findings do estágio de build continuam registradas e sem resolução nesta mudança.
 
 ## Role tenant-aware não pode vir do perfil global — 03/10/2026
 
