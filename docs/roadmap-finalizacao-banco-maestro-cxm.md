@@ -21,7 +21,7 @@ Percentuais calculados por critérios de saída demonstrados, não por quantidad
 | 4. Validar fluxos integrados prioritários | 15% | **20%** | Fronteira de rota Jobs/Ads Brain validada; falta validar fluxos de produto e contratos backend no candidato conjunto. |
 | 5. Homologar e ensaiar recuperação/rollback | 10% | **10%** | Backup lógico/restore manual passou em cópia local Prod-shaped sem dados de negócio; linha sintética e catálogo principal voltaram íntegros. Falta snapshot Dev representativo, restauração operacional e rollback do frontend no VPS. |
 | 6. Publicar no VPS autorizado e passar smoke tests | 15% | **0%** | Bloqueado pelos marcos anteriores; nenhum deploy foi feito nesta etapa. |
-| **Geral ponderado** | **100%** | **40%** | `10%×80% + 20%×74% + 30%×45% + 15%×20% + 10%×10%`; arredondado ao inteiro mais próximo. Publicação segue em zero até passar todos os gates. |
+| **Geral ponderado** | **100%** | **41%** | `10%×80% + 20%×76% + 30%×45% + 15%×20% + 10%×10%`; arredondado ao inteiro mais próximo. Publicação segue em zero até passar todos os gates. |
 
 **Estimativa restante:** 4–7 dias úteis ativos no caminho-base, mais esperas de CI/acesso; aproximadamente 1–2 semanas corridas. A faixa pressupõe que a reconciliação dos conflitos de migrations seja resolvida com mudanças forward e testes isolados. Se o drift exigir reconstruir baseline ou recuperar dados/configuração faltantes, acrescentar 2–5 dias úteis. Não antecipar publicação para compensar atraso de ambiente.
 
