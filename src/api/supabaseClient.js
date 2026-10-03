@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { parseCollaboratorSession } from '@/lib/collaborator-session.mjs';
 import { resolveMaestroSupabaseTarget } from '@/lib/maestro-environment.mjs';
+import { resolveMaestroDataEndpoint } from '@/api/maestro-data-endpoint.mjs';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -95,7 +96,7 @@ async function readEntity(body, { cache = true } = {}) {
 
   const request = callMaestroData(body, { includeMetadata: true }).then((result) => {
     const value = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
-    if (body.read_source === 'relational' && result?.read_source !== 'relational') {
+    if (resolveMaestroDataEndpoint(body) === 'maestro-data' && body.read_source === 'relational' && result?.read_source !== 'relational') {
       console.warn(`[Maestro] ${body.entity} continuou em legacy: filtro/capacidade relacional não suportados nesta consulta.`);
     }
     if (cache) entityReadCache.set(key, { value, expiresAt: Date.now() + ENTITY_READ_CACHE_TTL });
@@ -263,7 +264,8 @@ export async function callMaestroData(body, { includeMetadata = false } = {}) {
   const sessionToken = getStoredSessionToken();
   if (!sessionToken) throw new Error('Sessão do colaborador não encontrada.');
 
-  const response = await fetch(`${url}/functions/v1/maestro-data`, {
+  const endpoint = resolveMaestroDataEndpoint(body);
+  const response = await fetch(`${url}/functions/v1/${endpoint}`, {
     method: 'POST',
     headers: {
       apikey: anonKey,
