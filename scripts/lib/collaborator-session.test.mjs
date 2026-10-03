@@ -37,3 +37,13 @@ test("collaborator login returns the canonical database id in the HMAC-bound pro
   assert.match(endpoint, /const collaborator = \{\s*\.\.\.data\.profile,\s*id: data\.id,/);
   assert.match(endpoint, /sub: data\.id,[\s\S]*organization_id: membership\.organization_id/);
 });
+
+test("collaborator login derives signed tenant and privileges from one active selected membership", () => {
+  const endpoint = readFileSync(fileURLToPath(new URL("../../supabase/functions/collaborator-login/index.ts", import.meta.url)), "utf8");
+  assert.match(endpoint, /\.from\("organization_members"\)[\s\S]*?\.eq\("status", "active"\)[\s\S]*?\.eq\("organizations\.status", "active"\)/);
+  assert.match(endpoint, /selectOrganizationMembership\(memberships, requestedOrganizationId\)/);
+  assert.match(endpoint, /organizationChoice\.reason === "organization_required"/);
+  assert.match(endpoint, /const accessLevel = accessLevelForOrganizationRole\(membership\.organization_role\)/);
+  assert.match(endpoint, /signSession\(\{[\s\S]*?access_level: accessLevel,[\s\S]*?organization_id: membership\.organization_id/);
+  assert.doesNotMatch(endpoint, /const rawAccessLevel = String\(data\.profile\?/);
+});
