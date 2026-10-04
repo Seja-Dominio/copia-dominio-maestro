@@ -1,5 +1,12 @@
 # Reconciliação read-only dos ledgers de migrations
 
+## Revalidação do bloqueio P0 e do ledger Dev — 04/10/2026
+
+- `supabase migration list --project-ref tqmfuskvllpqmvayjuqu` foi executado somente para leitura, no ref mapeado explicitamente como Dev em `docs/ambiente-homologacao.md`. O resultado lista 240 identidades: 34 com ID local/remoto coincidente, 153 somente locais e 53 somente remotas; o ID remoto máximo é `20261003040000`. A presença de `0004` nos dois lados confirma identidade, não igualdade do SQL nem segurança de reaplicação.
+- Inspeção read-only do contexto Docker `colima` encontrou o clone `maestro_0004_conflict_repro_20261003_a` e baselines/backups Dev/Prod anteriormente nomeados. As cinco relações centrais (`legacy_records`, Jobs, Projects, JobHistory, FinancialEntries) têm zero linhas em cada baseline/snapshot consultado; logo esses bancos não provam upgrade representativo. A clone de reprodução `0004` contém apenas as linhas sintéticas do ensaio já documentado; nenhuma fonte empresarial foi encontrada nela.
+- Os seis anexos `/Users/grimm/Downloads/logs_100637569709*.zip` foram listados sem extração e cada um está vazio (22-byte ZIP, sem entradas). Não contêm logs nem snapshot/export que resolva a proveniência.
+- A evidência mantém `0004` como gate P0: o SQL histórico pode substituir conflitos e redefinir `imported_at`, e não surgiu origem confiável para escolher snapshot ou destino. Não houve fetch de payload empresarial adicional, alteração de migration/ledger, escrita hospedada ou acesso a Produção/VPS. Próximo desbloqueio material: obter export sanitizado representativo com proveniência/contrato de autoria, ou evidência equivalente de uma fonte autoritativa, para gerar clone isolado e testar upgrade/preservação. Não usar baselines vazios como substituto.
+
 ## Recontagem do ledger Dev — 03/10/2026
 
 - `supabase migration list --project-ref tqmfuskvllpqmvayjuqu` confirmou 87 entradas remotas. A árvore contém 187 arquivos locais. O fetch foi somente leitura do histórico Dev para um diretório temporário; não alterou migrations do checkout nem aplicou SQL no banco. A comparação repetível está disponível em `npm run audit:migration-files -- --details <local-dir> <fetched-remote-dir>`; usa `fingerprintSqlStatements`, não imprime SQL e separa identidade de conteúdo.
