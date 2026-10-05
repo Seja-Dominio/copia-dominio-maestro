@@ -8,6 +8,8 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:4174",
   "http://localhost:4175",
   "http://127.0.0.1:4175",
+  "http://localhost:4176",
+  "http://127.0.0.1:4176",
 ]);
 
 const fallbackOrigin = "https://dominiomaestro.com.br";
