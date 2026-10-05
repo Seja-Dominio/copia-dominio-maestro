@@ -18,3 +18,12 @@
 - **Regra operacional:** antes de extrair/buildar, criar uma pasta exclusiva com `mktemp -d`, imprimir e validar seu caminho, passar esse caminho explicitamente ao processo e confirmar o diretório de trabalho. Manter symlinks de troca dentro dessa pasta. Nunca extrair arquivos versionados diretamente em `/tmp`, no checkout ou em diretório compartilhado.
 - **Impacto/recuperação:** não houve mudança no Git rastreado, VPS ou banco. Conteúdo anterior possivelmente substituído em `/tmp` permanece indeterminado; não executar limpeza ou restauração especulativa.
 - **Esforço:** não medido.
+
+## 2026-10-05 — Confirmar o fonte Edge ativo antes de tratar relatos de fluxo como falha de código
+
+- **Contexto:** hotfix de Produção para edições de Jobs/Projetos/Tarefas após cutover relacional.
+- **Evidência:** diferença entre as fontes `legacy_records` e relacionais foi confirmada por agregações read-only; o backup da função Prod v2 foi comparado antes do patch e a fonte foi baixada novamente após o deploy. A comparação confirmou byte a byte a correção relacional publicada. A inspeção do mesmo fonte mostrou que criação de Projeto já usa `saveFrozen` e retorna quando `legacy_write_allowed=false`, contrariando a hipótese inicial de que esse ramo ainda tentava a gravação legada.
+- **Regra candidata:** antes de corrigir cada causa atribuída a uma Edge Function, inspecionar a versão remota ativa (não apenas o checkout) e seguir o ramo exato da operação; validar a função baixada após deploy. Distinguir observação sobre dado divergente de prova de sobrescrita ou perda.
+- **Validações:** testes de seleção **13/13**; build; bundle; comparação pós-deploy; requisição sem sessão recusada com 401. Nenhuma escrita autenticada em Produção.
+- **Limites/bloqueios:** CI [37361790804](https://github.com/Seja-Dominio/dominio-maestro/actions/runs/37361790804) falhou por inventário remoto/local inconsistente e scripts ausentes; update autenticado positivo ainda não foi executado. Esforço ativo não medido.
+- **Skill candidata:** `dominio-integration-testing` ou `dominio-milestone-execution`; não alterada automaticamente porque a evidência é de um caso e a regra já pode estar coberta no procedimento existente.
