@@ -7,6 +7,7 @@ import { mergeProjectSchedulePatch } from "../_shared/project-schedule.js";
 import { buildRenewedSessionClaims } from "../_shared/session-renewal.mjs";
 import { normalizeEntries } from "./financial-entry-bulk-write.mjs";
 import { loadCurrentCoreRecord } from "./current-record-selection.mjs";
+import { selectCoreWritePath } from "./core-write-path.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -403,7 +404,8 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
     return response({ data: next }, 200, origin);
   }
 
-  if (!allowed && ["Job", "Subtask"].includes(entity)) {
+  const coreWritePath = selectCoreWritePath({ entity, operation, legacyWritesAllowed: allowed });
+  if (coreWritePath === "relational-history-rpc") {
     const { data, error } = await db.rpc("maestro_write_frozen_core_with_history", {
       p_organization_id: org,
       p_entity: entity,
@@ -436,7 +438,7 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
     if (error) throw error;
     return response({ data }, 200, origin);
   }
-  if (!allowed && entity === "Project") {
+  if (coreWritePath === "relational-upsert") {
     await saveFrozen(entity, id, payload, org, now);
     return response({ data: payload }, 200, origin);
   }

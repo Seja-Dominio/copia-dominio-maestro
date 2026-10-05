@@ -383,3 +383,10 @@ Atualizado em 05/10/2026. Escopo: frontend Maestro e integridade do banco em tri
 - A tentativa de atualizar o mesmo Job sob outro `organization_id` foi rejeitada como “record not found in organization”. O clone confirmou as FKs tenant-aware relevantes para Job→Projeto/Cliente e Histórico→Job.
 - A transação foi revertida; consulta posterior confirmou **0** Jobs, organizações e eventos de histórico sintéticos remanescentes. Nenhuma escrita foi feita em Dev hospedado, Produção ou VPS.
 - Isto comprova a RPC e as constraints no clone isolado, não a autenticação/handler Edge real nem a persistência no projeto Dev hospedado. O gate de homologação autenticada permanece parcial até autorização de fixture descartável no Dev e readback via aplicação. Sem novo código necessário nesta prova; nenhum commit adicional foi criado.
+
+### Gate de regressão da seleção de escrita em Jobs/Projetos — 05/10/2026
+
+- Revalidei as funções ativas: `maestro-core-data` está em v3 na Produção e v15 no Dev. O seletor relacional e o helper de gravação têm os mesmos hashes nos dois ambientes. As diferenças restantes incluem CORS, logs seguros e autorização de colaboradores; não as copiei para Produção. O ramo de mutação de Job/Project mantém a gravação relacional no modo de cutover, e a criação de Projeto retorna antes de qualquer RPC legada.
+- Identifiquei que os testes cobriam leitura/seleção da fonte, mas não a escolha do mecanismo de escrita. Extraí essa decisão para helper puro e adicionei regressões: Jobs/Subtasks em cutover → RPC relacional com histórico; Project create/update em cutover → upsert relacional; modo legacy mantém RPC antiga; Financeiro e exclusão de Projeto preservam dispatch anterior.
+- Validação local: Edge/shared **17/17**, build Vite aprovado, fronteiras frontend **271 arquivos / zero violações**, `git diff --check` aprovado. Isto adiciona proteção contra regressão; não substitui chamada HTTP autenticada nem readback no Dev hospedado.
+- Alteração fica somente na branch de estabilização (sem deploy de função ou frontend). A homologação autenticada real e o rollback VPS continuam gates pendentes; CXM fica fora.
