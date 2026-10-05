@@ -6,3 +6,11 @@ export function selectCurrentCoreRecord({ entity, legacyWritesAllowed, legacyRec
   }
   return legacyRecord?.payload ? legacyRecord : relationalRecord;
 }
+
+export async function loadCurrentCoreRecord({ entity, legacyWritesAllowed, loadLegacyRecord, loadRelationalRecord }) {
+  if (!legacyWritesAllowed && RELATIONAL_CORE_ENTITIES.has(String(entity || ""))) {
+    const relationalRecord = await loadRelationalRecord();
+    if (relationalRecord?.payload) return relationalRecord;
+  }
+  return await loadLegacyRecord();
+}

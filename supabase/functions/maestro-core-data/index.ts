@@ -7,7 +7,7 @@ import { mergeProjectSchedulePatch } from "../_shared/project-schedule.js";
 import { buildRenewedSessionClaims } from "../_shared/session-renewal.mjs";
 import { buildSafeEdgeErrorContext } from "../_shared/safe-edge-error-context.mjs";
 import { normalizeEntries } from "./financial-entry-bulk-write.mjs";
-import { selectCurrentCoreRecord } from "./current-record-selection.mjs";
+import { loadCurrentCoreRecord } from "./current-record-selection.mjs";
 import { resolveCoreDataCorsOrigin } from "./cors-policy.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -337,18 +337,24 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
   if (!id) return response({ error: "ID inválido" }, 400, origin);
   const rawPayload = body.data && typeof body.data === "object" && !Array.isArray(body.data) ? { ...(body.data as Record<string, unknown>) } : {};
   let allowed = await legacyWritesAllowed(entity);
-  let current = operation === "create" ? null : await getLegacy(entity, id, org);
+  let current = operation === "create" || ["Project", "Job", "Subtask"].includes(entity) ? null : await getLegacy(entity, id, org);
   if (operation !== "create" && !allowed && entity === "FinancialEntry") {
     const { data, error } = await db.from("maestro_financial_entries").select("source_payload,created_at,updated_at")
       .eq("organization_id", org).eq("legacy_record_id", id).maybeSingle();
     if (error) throw error;
     if (data?.source_payload) current = { payload: data.source_payload, source_created_at: data.created_at, source_updated_at: data.updated_at };
-  } else if (operation !== "create" && !allowed && ["Project", "Job", "Subtask"].includes(entity)) {
+  } else if (operation !== "create" && ["Project", "Job", "Subtask"].includes(entity)) {
     const table = entity === "Project" ? "maestro_projects" : entity === "Job" ? "maestro_jobs" : entity === "Subtask" ? "maestro_job_tasks" : "maestro_financial_entries";
-    const { data, error } = await db.from(table).select("source_payload,created_at,updated_at").eq("organization_id", org).eq("legacy_record_id", id).maybeSingle();
-    if (error && error.code !== "42P01" && error.code !== "PGRST205") throw error;
-    const relationalRecord = data?.source_payload ? { payload: data.source_payload, source_created_at: data.created_at, source_updated_at: data.updated_at } : null;
-    current = selectCurrentCoreRecord({ entity, legacyWritesAllowed: allowed, legacyRecord: current, relationalRecord });
+    current = await loadCurrentCoreRecord({
+      entity,
+      legacyWritesAllowed: allowed,
+      loadLegacyRecord: () => getLegacy(entity, id, org),
+      loadRelationalRecord: async () => {
+        const { data, error } = await db.from(table).select("source_payload,created_at,updated_at").eq("organization_id", org).eq("legacy_record_id", id).maybeSingle();
+        if (error && error.code !== "42P01" && error.code !== "PGRST205") throw error;
+        return data?.source_payload ? { payload: data.source_payload, source_created_at: data.created_at, source_updated_at: data.updated_at } : null;
+      },
+    });
   }
   if (operation !== "create" && !current?.payload) return response({ error: "Registro não encontrado" }, 404, origin);
   const payload = operation === "update" ? { ...current!.payload, ...rawPayload, id } : { ...rawPayload, id };
