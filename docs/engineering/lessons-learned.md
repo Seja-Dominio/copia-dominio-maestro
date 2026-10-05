@@ -1,5 +1,15 @@
 # Lições de engenharia
 
+## 2026-10-05 — Fixtures relacionais respeitam CHECK constraints
+
+- **Contexto:** upgrade local isolado com fixture sanitizada de alta cobertura baseada no checkpoint de Jobs/agenda.
+- **Evidência:** duas cargas de teste foram rejeitadas por `organization_members_role_check` (`master`) e `maestro_job_tasks_resolution_status_check` (`unresolved`). A leitura de `pg_get_constraintdef` identificou os valores aceitos; após trocar para `owner` e `pending`, a carga e as 24 migrations posteriores passaram.
+- **Causa confirmada:** valores plausíveis foram presumidos em vez de derivados do catálogo do schema.
+- **Regra operacional:** antes de gerar dados em colunas com enum/check, consulte as constraints efetivas e selecione um valor permitido; mantenha o seed transacional e confirme ausência de resíduos após falha.
+- **Impacto/recuperação:** falhas ocorreram somente no clone local isolado; a primeira transação foi revertida. Nenhum dado hospedado foi alterado.
+- **Skill atualizada:** `dominio-database-migrations`, com regra para conferir catálogo, validar opções e reverter fixtures inválidas.
+- **Esforço:** não medido.
+
 ## 2026-10-05 — Diretórios temporários de ensaios de release
 
 - **Contexto:** ensaio local de build e rollback do frontend do Maestro.
