@@ -1,18 +1,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { collaboratorCanReadJob } from "../_shared/attachment-access.js";
-import { authorizeCollaboratorJobPatch, canReadFinancialData, collaboratorJobPatchAllowed, collaboratorSubtaskCreateAllowed } from "../_shared/mutation-access.js";
+import { canReadFinancialData, collaboratorJobPatchAllowed, collaboratorJobPatchMaySkipAssignment, collaboratorSubtaskCreateAllowed } from "../_shared/mutation-access.js";
 import { loadCurrentCollaboratorSession } from "../_shared/session-authorization.js";
 import { listRelationalJobHistoryRows } from "../_shared/relational-job-history.js";
 import { mergeProjectSchedulePatch } from "../_shared/project-schedule.js";
 import { buildRenewedSessionClaims } from "../_shared/session-renewal.mjs";
-import { buildSafeEdgeErrorContext } from "../_shared/safe-edge-error-context.mjs";
 import { normalizeEntries } from "./financial-entry-bulk-write.mjs";
 import { loadCurrentCoreRecord } from "./current-record-selection.mjs";
-import { resolveCoreDataCorsOrigin } from "./cors-policy.mjs";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
 const entities = new Set(["Project", "Job", "Subtask", "FinancialEntry", "JobHistory"]);
+const allowedOrigins = new Set(["https://dominiomaestro.com.br", "http://localhost:4173", "http://127.0.0.1:4173", "http://localhost:4174", "http://127.0.0.1:4174"]);
 const encoder = new TextEncoder();
 
 type Session = {
@@ -27,7 +26,7 @@ type Row = { entity: string; record_id: string; payload: Record<string, unknown>
 
 function response(body: Record<string, unknown>, status = 200, origin = "") {
   return new Response(JSON.stringify(body), { status, headers: {
-    "Access-Control-Allow-Origin": resolveCoreDataCorsOrigin(origin),
+    "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://dominiomaestro.com.br",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Expose-Headers": "X-Maestro-Session",
@@ -351,7 +350,7 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
       loadLegacyRecord: () => getLegacy(entity, id, org),
       loadRelationalRecord: async () => {
         const { data, error } = await db.from(table).select("source_payload,created_at,updated_at").eq("organization_id", org).eq("legacy_record_id", id).maybeSingle();
-        if (error && error.code !== "42P01" && error.code !== "PGRST205") throw error;
+        if (error) throw error;
         return data?.source_payload ? { payload: data.source_payload, source_created_at: data.created_at, source_updated_at: data.updated_at } : null;
       },
     });
@@ -364,7 +363,8 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
   } else if (entity === "Project") {
     if (!["master", "admin", "gestor"].includes(role)) return response({ error: "Sem permissão para alterar projetos" }, 403, origin);
   } else if (entity === "Job" && role === "collaborator") {
-    if (operation === "create" || operation === "delete" || !await authorizeCollaboratorJobPatch(rawPayload, () => assertCollaboratorJob(session, id))) return response({ error: "Colaboradores só podem atualizar campos operacionais autorizados dos próprios jobs" }, 403, origin);
+    if (operation === "create" || operation === "delete" || !collaboratorJobPatchAllowed(rawPayload)) return response({ error: "Colaboradores só podem atualizar campos operacionais autorizados dos próprios jobs" }, 403, origin);
+    if (!collaboratorJobPatchMaySkipAssignment(rawPayload)) await assertCollaboratorJob(session, id);
   } else if (entity === "Subtask" && role === "collaborator") {
     if (operation === "delete") return response({ error: "Colaboradores não podem excluir tarefas" }, 403, origin);
     if (operation === "create") {
@@ -447,28 +447,17 @@ async function handle(body: Record<string, unknown>, session: Session, origin: s
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("Origin") || "";
-  const requestId = crypto.randomUUID();
-  let stage = "authenticate";
-  let operation: unknown;
-  let entity: unknown;
-  if (request.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": resolveCoreDataCorsOrigin(origin), "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" } });
+  if (request.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": allowedOrigins.has(origin) ? origin : "https://dominiomaestro.com.br", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" } });
   if (request.method !== "POST") return response({ error: "Método não permitido" }, 405, origin);
   try {
     const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
     const session = await authenticate(token);
     if (!session) return response({ error: "Sessão inválida ou expirada" }, 401, origin);
-    stage = "parse_body";
-    const body = await request.json() as Record<string, unknown>;
-    operation = body.operation;
-    entity = body.entity;
-    stage = "handle";
-    const result = await handle(body, session, origin);
+    const result = await handle(await request.json() as Record<string, unknown>, session, origin);
     if (result.status < 400 && session.exp - Math.floor(Date.now() / 1000) <= 12 * 60 * 60) result.headers.set("X-Maestro-Session", await renewSession(session));
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao processar a operação";
-    const status = /permiss|atribuído|financeiros/.test(message) ? 403 : 500;
-    if (status >= 500) console.error(JSON.stringify(buildSafeEdgeErrorContext({ requestId, method: request.method, operation, entity, stage, status, error })));
-    return response({ error: message }, status, origin);
+    return response({ error: message }, /permiss|atribuído|financeiros/.test(message) ? 403 : 500, origin);
   }
 });
