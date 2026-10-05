@@ -10,6 +10,14 @@
 - **Skill atualizada:** `dominio-database-migrations`, com regra para conferir catálogo, validar opções e reverter fixtures inválidas.
 - **Esforço:** não medido.
 
+## 2026-10-05 — Não inferir scheduler efetivo só pelo SQL histórico
+
+- **Contexto:** reconciliação do scheduler de automações WhatsApp entre ledger Dev, migration local/candidata e configuração ativa.
+- **Evidência:** a migration remota `20260910100000_enable_whatsapp_automation_scheduler` contém URL fixa do endpoint de Produção; a inspeção read-only de `cron.job` no Dev confirmou job ativo `whatsapp_automation_runner` com destino Dev. A candidata substitui a URL fixa por `whatsapp_automation_project_url` do Vault e não agenda se URL/segredo estiverem ausentes. O estado ativo e o replay histórico, portanto, não são equivalentes.
+- **Lição/regra candidata:** em reconciliação de scheduler, registrar separadamente (1) SQL versionado, (2) ledger e (3) comando efetivo ativo; testar replay limpo sem permitir que cron/net disparem chamadas externas. Tratar URL hardcoded de outro ambiente como bloqueio de replay, mesmo quando o job atual já aponta ao ambiente certo.
+- **Validações/impacto:** download de migration e função sem publicação; consulta somente leitura ao catálogo Dev; nenhuma alteração de cron, segredo, banco ou Produção. Esforço ativo não medido.
+- **Skill:** `dominio-database-migrations` já cobre scheduler, configuração por ambiente e validação do estado efetivo; nenhuma edição adicional para evitar duplicação.
+
 ## 2026-10-05 — Diretórios temporários de ensaios de release
 
 - **Contexto:** ensaio local de build e rollback do frontend do Maestro.
