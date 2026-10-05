@@ -5,6 +5,8 @@ import { buildAdsBrainCorsHeaders } from "./meta-ads-cors.js";
 test("Ads Brain allows only the production origin and configured local Dev previews", () => {
   const allowedOrigins = [
     "https://dominiomaestro.com.br",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
     "http://localhost:4174",
