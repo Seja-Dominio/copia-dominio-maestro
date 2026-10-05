@@ -13,7 +13,11 @@ permissions:
 
 jobs:
   unit-tests:
-    if: github.ref != 'refs/heads/codex/maestro-stability-release' && github.head_ref != 'codex/maestro-stability-release'
+    if: >-
+      github.ref != 'refs/heads/codex/maestro-stability-release' &&
+      github.head_ref != 'codex/maestro-stability-release' &&
+      github.ref != 'refs/heads/codex/maestro-prod-coredata-hotfix' &&
+      github.head_ref != 'codex/maestro-prod-coredata-hotfix'
     name: Authorization and regression tests
     runs-on: ubuntu-latest
     steps:
@@ -30,7 +34,11 @@ jobs:
       - run: npm run verify:functional-inventory
 
   release-module-isolation:
-    if: github.ref == 'refs/heads/codex/maestro-stability-release' || github.head_ref == 'codex/maestro-stability-release'
+    if: >-
+      github.ref == 'refs/heads/codex/maestro-stability-release' ||
+      github.head_ref == 'codex/maestro-stability-release' ||
+      github.ref == 'refs/heads/codex/maestro-prod-coredata-hotfix' ||
+      github.head_ref == 'codex/maestro-prod-coredata-hotfix'
     name: Frontend module isolation and build
     runs-on: ubuntu-latest
     steps:
