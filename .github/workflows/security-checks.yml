@@ -42,6 +42,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:module-isolation
+      - run: npm run test:authenticated-regressions
       - run: npm run test:module-boundaries
       - run: npm run verify:frontend-module-boundaries
       - run: npm run build

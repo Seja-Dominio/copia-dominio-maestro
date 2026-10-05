@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:test": "vite --mode test --host 127.0.0.1 --port 4174",
     "test:module-isolation": "playwright test -c playwright.module-isolation.config.mjs",
+    "test:authenticated-regressions": "playwright test -c playwright.authenticated-regressions.config.mjs",
     "test:module-boundaries": "node --test scripts/lib/frontend-module-boundaries.test.mjs",
     "verify:frontend-module-boundaries": "node scripts/verify-frontend-module-boundaries.mjs",
     "build": "vite build",
