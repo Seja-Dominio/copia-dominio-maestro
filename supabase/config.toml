@@ -4,6 +4,9 @@ verify_jwt = false
 [functions.maestro-data]
 verify_jwt = false
 
+[functions.maestro-core-data]
+verify_jwt = false
+
 [functions.hash-collaborator-password]
 verify_jwt = false
 
