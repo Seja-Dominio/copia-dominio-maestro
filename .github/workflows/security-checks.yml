@@ -40,6 +40,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: node --test supabase/functions/_shared/meta-ads-cors.test.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:module-isolation
       - run: npm run test:authenticated-regressions

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildCompetitiveReport } from "./competitiveMetrics.ts";
+import { buildAdsBrainCorsHeaders } from "../_shared/meta-ads-cors.js";
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const sessionSecret = Deno.env.get("MAESTRO_SESSION_SECRET") || "";
@@ -45,11 +46,7 @@ async function decryptSecret(value: string) {
   const encrypted = Uint8Array.from(decode(rawEncrypted), c => c.charCodeAt(0));
   return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, encrypted));
 }
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://dominiomaestro.com.br",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const corsHeaders = buildAdsBrainCorsHeaders();
 function json(body: Record<string, unknown>, status = 200) { return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 function parseFundingSourceAmount(displayString: unknown) {
   if (typeof displayString !== "string") return null;
@@ -185,7 +182,7 @@ async function loadMetaAccessForClient(context: { clientName: string }) {
   return decryptSecret(authorization.access_token_encrypted);
 }
 
-Deno.serve(async (request) => {
+const handleMetaAdsRequest = async (request: Request) => {
   try {
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (request.method !== "POST") return json({ error: "Método não permitido" }, 405);
@@ -502,4 +499,17 @@ Deno.serve(async (request) => {
     if (authorizationError) throw authorizationError;
     return json({ accounts: accounts.data || [], authorization_id: authorization.id, expires_at: tokenExpiresAt });
   } catch (error) { console.error("Meta Ads OAuth error", error); return json({ error: "Erro ao conectar com a Meta" }, 500); }
+};
+
+Deno.serve(async (request) => {
+  const response = await handleMetaAdsRequest(request);
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(buildAdsBrainCorsHeaders(request.headers.get("Origin") || ""))) {
+    headers.set(name, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 });
