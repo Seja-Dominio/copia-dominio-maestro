@@ -27,3 +27,12 @@
 - **Validações:** testes de seleção **13/13**; build; bundle; comparação pós-deploy; requisição sem sessão recusada com 401. Nenhuma escrita autenticada em Produção.
 - **Limites/bloqueios:** CI [37361790804](https://github.com/Seja-Dominio/dominio-maestro/actions/runs/37361790804) falhou por inventário remoto/local inconsistente e scripts ausentes; update autenticado positivo ainda não foi executado. Esforço ativo não medido.
 - **Skill candidata:** `dominio-integration-testing` ou `dominio-milestone-execution`; não alterada automaticamente porque a evidência é de um caso e a regra já pode estar coberta no procedimento existente.
+
+## 2026-10-05 — Revalidar o clone específico antes de reutilizar fixtures relacionais
+
+- **Contexto:** prova transacional do RPC de escrita relacional de Jobs, após confirmar a causa do erro visível em Projetos no preview Dev.
+- **Evidência:** o clone `maestro_dev_schema_baseline_20261003a` tinha zero FKs em Project/Job/Subtask; o clone `...20261003b` tinha 14 e assinaturas de colunas, constraints, índices, RLS, policies e grants idênticas ao Dev. O clone B ainda tinha apenas 1 dos 7 event triggers globais do Dev. No clone B, sob `service_role`, passaram criação e vínculo same-tenant, update de briefing com histórico e rejeição cross-tenant; a transação foi revertida e as quatro contagens de teste ficaram em zero.
+- **Causa confirmada:** clones com nomes e datas parecidos representam baselines diferentes; inspeção prévia de um clone não prova que outro contenha o mesmo schema nem hooks globais.
+- **Regra operacional:** vincular cada resultado ao nome exato do banco dentro do container; comparar assinatura do catálogo e event triggers antes de selecionar fixture. Separar o que uma prova DML demonstra do que exige hooks de DDL ou autenticação Edge.
+- **Skill:** `dominio-database-migrations` já exige validar objetos do clone, equivalência do baseline e event triggers; não foi alterada para evitar duplicar uma orientação existente.
+- **Esforço:** não medido.
