@@ -24,7 +24,11 @@ async function authenticateTestCollaborator(page) {
       let payload = {};
       try { payload = JSON.parse(request.postData() || '{}'); } catch { /* return empty test data */ }
       const endpoint = new URL(request.url()).pathname.split('/').pop();
-      requests.push({ endpoint, payload });
+      requests.push({
+        endpoint,
+        payload,
+        authorization: request.headers().authorization,
+      });
       if (endpoint === 'collaborator-login') {
         await route.fulfill({
           status: 200,
@@ -47,11 +51,17 @@ async function authenticateTestCollaborator(page) {
   await expect(page.getByRole('link', { name: 'Jobs', exact: true })).toBeVisible();
   expect(requests.some(({ endpoint }) => endpoint === 'collaborator-login')).toBe(true);
 
-  return requests;
+  return { requests, testSessionToken };
+}
+
+function expectProtectedCallsUseSessionToken(requests, testSessionToken) {
+  const protectedCalls = requests.filter(({ endpoint }) => endpoint !== 'collaborator-login');
+  expect(protectedCalls.length).toBeGreaterThan(0);
+  expect(protectedCalls.every(({ authorization }) => authorization === `Bearer ${testSessionToken}`)).toBe(true);
 }
 
 test('mocked collaborator login opens Jobs and the global tasks drawer without leaving the route', async ({ page }) => {
-  const requests = await authenticateTestCollaborator(page);
+  const { requests, testSessionToken } = await authenticateTestCollaborator(page);
   await page.goto('/Jobs');
 
   await expect(page.getByRole('link', { name: 'Jobs', exact: true })).toBeVisible();
@@ -63,18 +73,20 @@ test('mocked collaborator login opens Jobs and the global tasks drawer without l
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentId);
   expect(requests.some(({ payload }) => payload.entity === 'MiniTask' && payload.operation === 'filter')).toBe(true);
   expect(requests.some(({ payload }) => ['create', 'delete'].includes(payload.operation))).toBe(false);
+  expectProtectedCallsUseSessionToken(requests, testSessionToken);
 });
 
 test('mocked collaborator login opens Financeiro and its Acompanhamento tab', async ({ page }) => {
-  await authenticateTestCollaborator(page);
+  const { requests, testSessionToken } = await authenticateTestCollaborator(page);
   await page.goto('/Financial');
 
   await expect(page.getByRole('link', { name: 'Financeiro', exact: true })).toBeVisible();
   await expect(page.getByText('Acompanhamento', { exact: true }).first()).toBeVisible();
+  expectProtectedCallsUseSessionToken(requests, testSessionToken);
 });
 
 test('mocked collaborator login opens Ads Brain while another route remains reachable', async ({ page }) => {
-  await authenticateTestCollaborator(page);
+  const { requests, testSessionToken } = await authenticateTestCollaborator(page);
   await page.goto('/AdsBrain');
 
   await expect(page.getByRole('link', { name: 'Ads Brain', exact: true })).toBeVisible();
@@ -82,4 +94,5 @@ test('mocked collaborator login opens Ads Brain while another route remains reac
   await page.getByRole('link', { name: 'Jobs', exact: true }).click();
   await expect(page).toHaveURL(/\/Jobs$/);
   await expect(page.getByRole('button', { name: /Todos os Jobs/ })).toBeVisible();
+  expectProtectedCallsUseSessionToken(requests, testSessionToken);
 });
