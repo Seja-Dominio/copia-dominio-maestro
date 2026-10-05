@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectCurrentCoreRecord } from "./current-record-selection.mjs";
+import { selectCurrentCoreRecord } from "../maestro-core-data/current-record-selection.mjs";
 
 test("frozen core entities use relational values when both sources exist", () => {
   const legacyRecord = { payload: { title: "stale legacy" } };
