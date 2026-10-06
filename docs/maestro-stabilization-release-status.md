@@ -516,6 +516,13 @@ Atualizado em 06/10/2026. Escopo: frontend Maestro e integridade do banco em tri
 - Portanto, não criei fixtures nesta tentativa. Para executar o round-trip e os testes autenticados restantes com segurança, é necessário que o usuário entre no preview Dev com uma conta de teste existente; depois disso, usarei somente IDs sintéticos exclusivos e confirmarei readback e remoção. Não solicitarei senha, token ou segredo no chat.
 - Nenhum dado, schema, migration, Edge Function, container ou configuração de Produção/VPS foi alterado neste checkpoint. Os smoke anteriores e o rollback local permanecem comprovados; regressões autenticadas de Financeiro/Minhas Tarefas/Ads Brain, login fresco e replay/upgrade integral do banco continuam pendentes.
 
+### Auditoria estática do candidato canônico de migrations — 06/10/2026 UTC
+
+- No worktree canônico separado (`codex/maestro-db-canonical-candidate`, SHA `100bbbad0c02f649ff5ea592038bb6903831bda8`), sem editar seus arquivos, rodei `verify:migration-files`: **187 migrations**, status `ok`; testes de identidade/fingerprint, referência opcional da migration-base e scheduler passaram **8/8**. O inventário funcional passou: **20 rotas**, **32 entidades**, **119 operações**, 15 entidades fora do registry todas com disposição explícita e sem lacunas de contrato/rota. Testes de inventário e ownership de políticas passaram **15/15**.
+- Escopo confirmado: essa sequência e o mapa são candidatos abrangentes e preservam dependências/backlog CXM; portanto, esses gates estáticos não provam replay Maestro-only sem CXM. O CI de replay completo do candidato executa a cadeia inteira, não o recorte deste goal. Não transplantar a sequência nem contar esse replay como gate de produção deste recorte.
+- Os clones locais examinados neste checkout também não são prova substituta: `maestro_goal_clean_supabase_20261003` não tem as relações core e clones schema-only como `maestro_dev_schema_eventhooks_20261005` têm ledger vazio. As consultas foram somente leitura e revertidas com `ROLLBACK`; nenhuma migration, fixture, schema, dado hospedado ou estado do worktree canônico foi alterado.
+- Próximo trabalho da trilha DB: estabelecer uma cadeia/manifesto com ownership explícito Maestro, mantendo Ads Brain/Insights e removendo somente CXM; então executá-la em stack Supabase limpa e em baseline representativa, com hooks, ledger, RLS e testes tenant-aware. O objetivo ainda não está fechado.
+
 ### Correção do gate Trivy — 06/10/2026 UTC
 
 - O CI do checkpoint documental `9ca8212f95dba0dadd9676a6d7668679344b8049` falhou somente no job `Active application dependency scan`; os demais jobs executados passaram, enquanto “Authorization and regression tests” foi explicitamente ignorado pela condição da branch.
