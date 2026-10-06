@@ -44,3 +44,11 @@
 - **Regra operacional:** vincular cada resultado ao nome exato do banco dentro do container; comparar assinatura do catálogo e event triggers antes de selecionar fixture. Separar o que uma prova DML demonstra do que exige hooks de DDL ou autenticação Edge.
 - **Skill:** `dominio-database-migrations` já exige validar objetos do clone, equivalência do baseline e event triggers; não foi alterada para evitar duplicar uma orientação existente.
 - **Esforço:** não medido.
+
+## 2026-10-05 — Comparar fonte Edge implantado com checkout antes de corrigir
+
+- **Contexto:** auditoria de tenancy do backend compartilhado Maestro/CXM no Supabase Dev.
+- **Evidência:** `maestro-data` estava ACTIVE na v57 (`verify_jwt=false`, SHA `f7df4ce0…25d4b847`); o fonte baixado diferia do checkout em 702 linhas adicionadas e 22 removidas. O checkout não podia ser tratado como fonte de deploy. No fonte ativo, o gateway usa `service_role`, não consome `organization_id` em filtros/gravações e prioriza o papel global do perfil sobre o role assinado da membership; login/refresh transportam tenant e role, mas o gateway não os aplica. O Dev tem uma única organização, logo isolamento e autorização entre tenants continuam não comprovados.
+- **Lição aplicada:** antes de editar ou implantar Edge Function, comparar versão/SHA e fonte ativo com checkout; com drift, patchar o artefato ativo ou portar mudanças revisadas, e validar novamente o fonte e `verify_jwt` depois. Não mudar o handler compartilhado enquanto os contratos Maestro/CXM não estiverem separados.
+- **Validação/impacto:** inventário somente leitura de Dev, download do fonte para pasta temporária, inspeção do claim de login/refresh, membership agregada sem IDs e comparação com checkout. Sem gravação, migration, deploy ou acesso a Produção/VPS. Esforço ativo não medido.
+- **Skill atualizada:** `dominio-database-migrations`, no passo de inventário de Edge Functions; a regra evita tratar versão do checkout como artefato implantado.
