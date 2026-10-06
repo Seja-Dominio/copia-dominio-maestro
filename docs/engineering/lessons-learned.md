@@ -59,4 +59,12 @@
 - **Evidência:** duas tentativas em databases PostgreSQL sem bootstrap Supabase foram interrompidas antes de validar a sequência pretendida: uma por hooks/extensões que requeriam o banco configurado (`pg_cron` e privilégio de `log_min_messages`), outra em `0003_job_attachments_storage.sql` por ausência de `storage.buckets`. O segundo database temporário foi removido. Em seguida, a migration foi aplicada em clone novo de baseline schema-only com as relações reais e função anterior; as assertions passaram sob `service_role`, o rollback restaurou o hash anterior e a fixture terminou com zero resíduos. Isso prova upgrade/rollback isolado da migration, não replay integral.
 - **Lição aplicada:** replay integral exige stack Supabase e seus schemas/extensões gerenciados; `migration up --db-url` contra PostgreSQL simples não é substituto. Baseline schema-only serve para prova de upgrade delimitada e deve ser reportado como tal.
 - **Skill atualizada:** `dominio-database-migrations`, etapa 4, com a distinção explícita entre replay Supabase completo e teste de upgrade em baseline schema-only.
+
+## 2026-10-06 — Preserve sessão local ao desbloquear CORS no Dev
+
+- **Contexto:** sessão Dev autenticada em `127.0.0.1:4187`, com Projetos/Jobs bloqueados porque o `maestro-core-data` ativo não autorizava essa origem.
+- **Evidência:** fonte Dev v15 baixada antes do patch; v16 limitou a mudança à allowlist exata de localhost/127.0.0.1:4187. Preflight da origem permitida 200, origem não listada não refletida, POST anônimo 401, fonte CORS pós-deploy idêntica e `verify_jwt=false` preservado. Sem trocar de porta, a sessão existente carregou 718 Jobs, 21 Projetos, Financeiro, 3 Minhas Tarefas e o estado esperado de Ads Brain.
+- **Lição:** quando o único bloqueio é CORS local, conservar a origem autenticada reduz re-login e retrabalho; fazer isso somente após auditar a fonte Edge ativa e testar allowlist exata e negação anônima no Dev.
+- **Skill:** `dominio-integration-testing` já exige preflight por origem, comparação exata de ACAO, teste negativo e auditoria da fonte ativa; nenhuma edição adicional para evitar duplicação.
+- **Esforço:** não medido.
 - **Esforço:** não medido.

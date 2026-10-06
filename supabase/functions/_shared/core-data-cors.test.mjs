@@ -10,6 +10,8 @@ test("Maestro core data permits configured local development origins", () => {
     "http://localhost:4174",
     "http://127.0.0.1:4176",
     "http://localhost:4176",
+    "http://127.0.0.1:4187",
+    "http://localhost:4187",
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "https://dominiomaestro.com.br",
