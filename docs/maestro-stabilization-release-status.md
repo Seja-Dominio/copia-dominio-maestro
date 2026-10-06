@@ -509,6 +509,13 @@ Atualizado em 06/10/2026. Escopo: frontend Maestro e integridade do banco em tri
 - A listagem read-only do ledger Dev confirma a migration corretiva `20261005230000` aplicada. A linha `20260917150839` ainda é local sem registro remoto, e há várias versões remotas sem arquivos nesta branch; não executar `db push`, repair ou replay hospedado. Nenhuma migration, fixture, DML, alteração de Edge Function ou deploy foi feito nesta revalidação.
 - Próxima ação verificável: após o usuário autenticar no preview Dev, criar somente Project/Job sintéticos com identificador único, confirmar readback pela aplicação/Edge Function e removê-los pelos IDs exatos; registrar resposta, estado relacional e zero resíduos. Até lá, manter Marco 3 parcial e os marcos de banco/publicação abertos.
 
+### Autorização de fixtures Dev e estado da sessão — 06/10/2026 UTC
+
+- O usuário autorizou explicitamente criar e remover fixtures sintéticas de Job/Projeto somente no Supabase Dev `tqmfuskvllpqmvayjuqu`; Produção continua excluída. Essa autorização remove a pendência de escopo para fixtures, mas não fornece uma identidade/sessão de colaborador.
+- Verifiquei o estado atual dos navegadores: o preview `http://127.0.0.1:4188/` está aberto sem sessão, na tela inicial/login. A aba autenticada disponível é `https://dominiomaestro.com.br`, domínio de Produção, e não será usada para testes de escrita.
+- Portanto, não criei fixtures nesta tentativa. Para executar o round-trip e os testes autenticados restantes com segurança, é necessário que o usuário entre no preview Dev com uma conta de teste existente; depois disso, usarei somente IDs sintéticos exclusivos e confirmarei readback e remoção. Não solicitarei senha, token ou segredo no chat.
+- Nenhum dado, schema, migration, Edge Function, container ou configuração de Produção/VPS foi alterado neste checkpoint. Os smoke anteriores e o rollback local permanecem comprovados; regressões autenticadas de Financeiro/Minhas Tarefas/Ads Brain, login fresco e replay/upgrade integral do banco continuam pendentes.
+
 ### Correção do gate Trivy — 06/10/2026 UTC
 
 - O CI do checkpoint documental `9ca8212f95dba0dadd9676a6d7668679344b8049` falhou somente no job `Active application dependency scan`; os demais jobs executados passaram, enquanto “Authorization and regression tests” foi explicitamente ignorado pela condição da branch.
