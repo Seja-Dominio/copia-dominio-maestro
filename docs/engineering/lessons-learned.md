@@ -52,3 +52,11 @@
 - **Lição aplicada:** antes de editar ou implantar Edge Function, comparar versão/SHA e fonte ativo com checkout; com drift, patchar o artefato ativo ou portar mudanças revisadas, e validar novamente o fonte e `verify_jwt` depois. Não mudar o handler compartilhado enquanto os contratos Maestro/CXM não estiverem separados.
 - **Validação/impacto:** inventário somente leitura de Dev, download do fonte para pasta temporária, inspeção do claim de login/refresh, membership agregada sem IDs e comparação com checkout. Reprodução transacional em clone Dev-shaped sob `service_role`: dois tenants ativos, dois registros Notification sem tenant explícito, leitura global por entidade retornou ambos; rollback confirmado sem resíduos. Sem gravação em banco hospedado, migration, deploy ou acesso a Produção/VPS. Esforço ativo não medido.
 - **Skill atualizada:** `dominio-database-migrations`, no passo de inventário de Edge Functions; a regra evita tratar versão do checkout como artefato implantado.
+
+## 2026-10-06 — Não chamar PostgreSQL simples de replay limpo Supabase
+
+- **Contexto:** validar a migration `20261005230000_allow_frozen_job_updates_with_unchanged_orphan_refs.sql` sem tocar em Produção nem resetar clones existentes.
+- **Evidência:** duas tentativas em databases PostgreSQL sem bootstrap Supabase foram interrompidas antes de validar a sequência pretendida: uma por hooks/extensões que requeriam o banco configurado (`pg_cron` e privilégio de `log_min_messages`), outra em `0003_job_attachments_storage.sql` por ausência de `storage.buckets`. O segundo database temporário foi removido. Em seguida, a migration foi aplicada em clone novo de baseline schema-only com as relações reais e função anterior; as assertions passaram sob `service_role`, o rollback restaurou o hash anterior e a fixture terminou com zero resíduos. Isso prova upgrade/rollback isolado da migration, não replay integral.
+- **Lição aplicada:** replay integral exige stack Supabase e seus schemas/extensões gerenciados; `migration up --db-url` contra PostgreSQL simples não é substituto. Baseline schema-only serve para prova de upgrade delimitada e deve ser reportado como tal.
+- **Skill atualizada:** `dominio-database-migrations`, etapa 4, com a distinção explícita entre replay Supabase completo e teste de upgrade em baseline schema-only.
+- **Esforço:** não medido.
