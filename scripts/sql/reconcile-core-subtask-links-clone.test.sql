@@ -69,9 +69,10 @@ select
   'linked',
   jsonb_build_object('job_id', 'tenant-ci-parent-loss-job-' || (((task_no - 1) % 96) + 1)::text)
 from generate_series(1, 496) as task_no;
--- Synthetic cardinality twin of the observed production cutover shape:
--- 6,606 of 7,102 legacy-backed tasks already linked, plus the 496 above;
--- 170 of 290 relational-only tasks linked, 114 exact candidates, six absent.
+-- Synthetic row-count twin of the latest observed production checkpoint:
+-- the main cohorts below total 7,957 tasks. Keep the existing edge-case
+-- cohorts so migration behavior (relinks, absent parents, and pending rows)
+-- remains covered; this is not a row-for-row status distribution clone.
 insert into public.maestro_job_tasks (
   organization_id, legacy_record_id, legacy_job_record_id, job_id,
   title, resolution_status, source_payload
@@ -84,7 +85,7 @@ select
   'Synthetic linked task ' || task_no::text,
   'linked',
   jsonb_build_object('job_id', 'tenant-ci-scale-job-' || (((task_no - 1) % 100) + 1)::text)
-from generate_series(1, 6606) as task_no;
+from generate_series(1, 7171) as task_no;
 insert into public.maestro_job_tasks (
   organization_id, legacy_record_id, legacy_job_record_id, job_id,
   title, resolution_status, source_payload
@@ -181,7 +182,7 @@ begin
     raise exception 'Production-shape relational-only parent cohort did not relink/stage as expected';
   end if;
   if (select count(*) from public.maestro_job_tasks
-      where legacy_record_id like 'tenant-ci-linked-task-%') <> 6606
+      where legacy_record_id like 'tenant-ci-linked-task-%') <> 7171
     or (select count(*) from public.maestro_job_tasks
       where legacy_record_id like 'tenant-ci-relational-only-linked-%'
         and job_id is not null and resolution_status = 'linked') <> 170 then
