@@ -49,6 +49,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test supabase/functions/_shared/*.test.mjs
+      - run: node --test scripts/lib/frontend-module-boundaries.test.mjs scripts/lib/patch-maestro-data-dev-cors.test.mjs
       - run: npm run verify:relational-dispatch
       - run: npx playwright install --with-deps chromium
       - run: npm run test:module-isolation
